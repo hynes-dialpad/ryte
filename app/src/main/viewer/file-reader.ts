@@ -1,7 +1,10 @@
 import { readFile, realpath } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
 
-export async function readFileSafe(absPath: string, notesRoot: string): Promise<string> {
+export async function resolveAndAssertUnderRoot(
+  absPath: string,
+  notesRoot: string
+): Promise<string> {
   const resolvedRoot = await realpath(resolve(notesRoot))
 
   let resolvedTarget: string
@@ -15,5 +18,10 @@ export async function readFileSafe(absPath: string, notesRoot: string): Promise<
     throw new Error(`path outside notes root: ${absPath}`)
   }
 
-  return readFile(resolvedTarget, 'utf8')
+  return resolvedTarget
+}
+
+export async function readFileSafe(absPath: string, notesRoot: string): Promise<string> {
+  const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+  return readFile(safePath, 'utf8')
 }

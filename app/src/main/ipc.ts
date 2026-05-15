@@ -5,7 +5,8 @@ import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
-import { readFileSafe } from './viewer/file-reader'
+import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
+import { viewerWatcher } from './viewer/viewer-watcher'
 
 /**
  * Register all IPC handlers. Call once during app.whenReady() after
@@ -59,5 +60,22 @@ export function registerIpc(): void {
   ipcMain.handle('files:read', async (_event, absPath: string) => {
     const notesRoot = settingsStore.load().notesRoot
     return readFileSafe(absPath, notesRoot)
+  })
+
+  ipcMain.handle('files:watch', async (_event, absPath: string) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+    await viewerWatcher.watch(safePath)
+  })
+
+  ipcMain.handle('files:unwatch', async () => {
+    await viewerWatcher.stop()
+  })
+
+  // Push viewer-watcher change events to all renderer windows.
+  viewerWatcher.onChange((path) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('viewer:file-changed', path)
+    }
   })
 }

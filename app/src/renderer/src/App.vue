@@ -2,21 +2,29 @@
 import { computed, onMounted, ref } from 'vue'
 
 import SettingsModal from './components/SettingsModal.vue'
+import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
+import Viewer from './components/Viewer.vue'
 import { useIndexStatusStore } from './stores/index-status'
 import { useSettingsStore } from './stores/settings'
+import { useViewerStore } from './stores/viewer'
 
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
+const viewer = useViewerStore()
 const showSettings = ref(false)
 
 onMounted(async () => {
   await Promise.all([settings.hydrate(), indexStatus.bind()])
   if (!settings.state?.hasOpenAIKey) {
     showSettings.value = true
-  } else if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
-    // Cold launch with credentials but empty index — start indexing automatically.
-    void indexStatus.triggerReindex()
+  } else {
+    if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
+      // Cold launch with credentials but empty index — start indexing automatically.
+      void indexStatus.triggerReindex()
+    }
+    // Hydrate the file tree for the viewer (requires a configured notesRoot).
+    await viewer.hydrate()
   }
 })
 
@@ -28,6 +36,10 @@ function openSettings(): void {
 
 function closeSettings(): void {
   showSettings.value = false
+  // After saving settings the notesRoot may have changed — re-hydrate the tree.
+  if (settings.state?.hasOpenAIKey) {
+    void viewer.hydrate()
+  }
 }
 </script>
 
@@ -39,9 +51,8 @@ function closeSettings(): void {
     </header>
 
     <main class="app-main">
-      <p class="placeholder">
-        Search and viewer coming in V2/V3. Your index is being built in the background.
-      </p>
+      <Sidebar />
+      <Viewer />
     </main>
 
     <StatusBar />
@@ -67,6 +78,7 @@ function closeSettings(): void {
   align-items: center;
   padding: 0.625rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
 }
 
 h1 {
@@ -94,15 +106,8 @@ h1 {
 .app-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.placeholder {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.875rem;
-  max-width: 32rem;
-  text-align: center;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
 }
 </style>

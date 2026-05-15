@@ -32,6 +32,9 @@ export interface RyteApi {
   files: {
     listTree(): Promise<FileTreeResponse>
     read(absPath: string): Promise<string>
+    watch(absPath: string): Promise<void>
+    unwatch(): Promise<void>
+    onChange(cb: (path: string) => void): () => void
   }
 }
 
@@ -54,7 +57,14 @@ const api: RyteApi = {
   },
   files: {
     listTree: () => ipcRenderer.invoke('files:list-tree'),
-    read: (absPath) => ipcRenderer.invoke('files:read', absPath)
+    read: (absPath) => ipcRenderer.invoke('files:read', absPath),
+    watch: (absPath) => ipcRenderer.invoke('files:watch', absPath),
+    unwatch: () => ipcRenderer.invoke('files:unwatch'),
+    onChange: (cb) => {
+      const listener = (_: unknown, path: string): void => cb(path)
+      ipcRenderer.on('viewer:file-changed', listener)
+      return () => ipcRenderer.removeListener('viewer:file-changed', listener)
+    }
   }
 }
 
