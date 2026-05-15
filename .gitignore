@@ -1,0 +1,15 @@
+# App
+app/node_modules/
+app/out/
+app/dist/
+app/.eslintcache
+
+# Spikes (local research only, not committed)
+spikes/
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.env.*
