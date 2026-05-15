@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useViewerStore } from '../stores/viewer'
 
 const viewer = useViewerStore()
 const renderedHtml = ref<string>('')
+const renderError = ref<string | null>(null)
 const renderCache = new Map<string, string>()
+const proseEl = ref<HTMLElement | null>(null)
+const sourceEl = ref<HTMLElement | null>(null)
 
 const filenameDisplay = computed(() => {
   if (!viewer.selectedPath) return ''
@@ -38,19 +41,38 @@ async function updateRender(text: string): Promise<void> {
 watch(
   () => viewer.content,
   (next) => {
+    renderError.value = null
     if (!next) {
       renderedHtml.value = ''
       return
     }
-    void updateRender(next)
+    updateRender(next).catch((err) => {
+      renderError.value = err instanceof Error ? err.message : String(err)
+      renderedHtml.value = ''
+    })
   },
   { immediate: true }
 )
 
+async function togglePreservingScroll(): Promise<void> {
+  // Capture scroll percentage of the current view before the DOM swap.
+  const fromEl = viewer.sourceMode ? sourceEl.value : proseEl.value
+  const scrollPct = fromEl && fromEl.scrollHeight > 0 ? fromEl.scrollTop / fromEl.scrollHeight : 0
+
+  viewer.toggleSourceMode()
+
+  // Wait for Vue to swap the element, then restore position.
+  await nextTick()
+  const toEl = viewer.sourceMode ? sourceEl.value : proseEl.value
+  if (toEl && toEl.scrollHeight > 0) {
+    toEl.scrollTop = scrollPct * toEl.scrollHeight
+  }
+}
+
 function onKeydown(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key === 'e') {
     event.preventDefault()
-    viewer.toggleSourceMode()
+    void togglePreservingScroll()
   }
 }
 
@@ -67,7 +89,7 @@ onUnmounted(() => {
   <section class="viewer" aria-label="Markdown viewer">
     <header v-if="viewer.selectedPath" class="viewer-toolbar">
       <span class="filename" :title="viewer.selectedPath">{{ filenameDisplay }}</span>
-      <button type="button" class="toggle" @click="viewer.toggleSourceMode()">
+      <button type="button" class="toggle" @click="togglePreservingScroll()">
         {{ viewer.sourceMode ? 'Rendered' : 'Source' }}
         <span class="shortcut">⌘E</span>
       </button>
@@ -79,10 +101,18 @@ onUnmounted(() => {
       </p>
       <p class="error-detail">{{ viewer.error }}</p>
     </div>
+    <div v-else-if="renderError" class="error">
+      <p>Render failed</p>
+      <p class="error-detail">{{ renderError }}</p>
+    </div>
     <p v-else-if="!viewer.selectedPath" class="empty">Select a file to view</p>
-    <pre v-else-if="viewer.sourceMode" class="source"><code>{{ viewer.content }}</code></pre>
+    <pre
+      v-else-if="viewer.sourceMode"
+      ref="sourceEl"
+      class="source"
+    ><code>{{ viewer.content }}</code></pre>
     <!-- eslint-disable-next-line vue/no-v-html -- markdown-it has html:false; shiki output is generator-produced -->
-    <article v-else class="prose" v-html="renderedHtml"></article>
+    <article v-else ref="proseEl" class="prose" v-html="renderedHtml"></article>
   </section>
 </template>
 
@@ -227,9 +257,18 @@ onUnmounted(() => {
   margin: 0.85em 0;
 }
 
-.prose :deep(ul),
+.prose :deep(ul) {
+  padding-left: 1.5em;
+  list-style-type: disc;
+}
+
 .prose :deep(ol) {
   padding-left: 1.5em;
+  list-style-type: decimal;
+}
+
+.prose :deep(ul ul) {
+  list-style-type: circle;
 }
 
 .prose :deep(li) {
@@ -285,19 +324,37 @@ onUnmounted(() => {
   width: 100%;
   margin: 1.25em 0;
   font-size: 0.875em;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .prose :deep(th),
 .prose :deep(td) {
   text-align: left;
   padding: 0.5em 0.85em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prose :deep(th):last-child,
+.prose :deep(td):last-child {
+  border-right: none;
 }
 
 .prose :deep(th) {
   font-weight: 600;
   color: white;
-  border-bottom-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.prose :deep(tr:last-child td) {
+  border-bottom: none;
+}
+
+.prose :deep(tr:hover td) {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .prose :deep(hr) {
