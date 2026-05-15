@@ -1,8 +1,11 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { relative } from 'node:path'
 
 import { indexerService } from './indexing/indexer-service'
+import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
+import { readFileSafe } from './viewer/file-reader'
 
 /**
  * Register all IPC handlers. Call once during app.whenReady() after
@@ -44,5 +47,17 @@ export function registerIpc(): void {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('indexer:status-event', status)
     }
+  })
+
+  ipcMain.handle('files:list-tree', async () => {
+    const notesRoot = settingsStore.load().notesRoot
+    const absolutePaths = await walkNotes(notesRoot)
+    const paths = absolutePaths.map((p) => relative(notesRoot, p)).sort()
+    return { notesRoot, paths }
+  })
+
+  ipcMain.handle('files:read', async (_event, absPath: string) => {
+    const notesRoot = settingsStore.load().notesRoot
+    return readFileSafe(absPath, notesRoot)
   })
 }

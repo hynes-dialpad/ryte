@@ -24,11 +24,15 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@shikijs/markdown-it": "^4.0.2",
+    "@types/markdown-it": "^14.1.2",
     "better-sqlite3": "^12.10.0",
     "chokidar": "^4.0.3",
     "gray-matter": "^4.0.3",
+    "markdown-it": "^14.1.1",
     "openai": "^4.77.0",
     "pinia": "^2.3.0",
+    "shiki": "^4.0.2",
     "sqlite-vec": "^0.1.6"
   },
   "devDependencies": {

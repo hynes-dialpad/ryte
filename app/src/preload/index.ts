@@ -11,6 +11,11 @@ export interface IndexerStatus {
   error?: string
 }
 
+export interface FileTreeResponse {
+  notesRoot: string
+  paths: string[]
+}
+
 export interface RyteApi {
   settings: {
     getState(): Promise<PublicSettingsState>
@@ -23,6 +28,10 @@ export interface RyteApi {
     triggerReindex(): Promise<void>
     getStatus(): Promise<IndexerStatus>
     onStatus(cb: (status: IndexerStatus) => void): () => void
+  }
+  files: {
+    listTree(): Promise<FileTreeResponse>
+    read(absPath: string): Promise<string>
   }
 }
 
@@ -42,6 +51,10 @@ const api: RyteApi = {
       ipcRenderer.on('indexer:status-event', listener)
       return () => ipcRenderer.removeListener('indexer:status-event', listener)
     }
+  },
+  files: {
+    listTree: () => ipcRenderer.invoke('files:list-tree'),
+    read: (absPath) => ipcRenderer.invoke('files:read', absPath)
   }
 }
 
