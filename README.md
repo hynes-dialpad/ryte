@@ -7,24 +7,13 @@ Local macOS app for searching and browsing `~/notes/` — a personal knowledge b
 - **Indexes** your notes corpus using OpenAI embeddings into a local SQLite + sqlite-vec database
 - **Browses** your notes in a file tree sidebar with clean markdown rendering and syntax-highlighted code blocks
 - **Watches** for file changes and re-renders live
-- **Searches** (V3, coming next) — natural-language queries answered by hybrid retrieval + Claude synthesis
-
-## Status
-
-| Version | Feature | Status |
-|---------|---------|--------|
-| V1 | Settings + indexer | ✅ Shipped |
-| V2 | Read-only viewer + sidebar | ✅ Shipped |
-| V3 | Search overlay (hybrid retrieval + LLM synthesis) | Planned |
-| V4 | macOS shell polish (menu bar, global shortcut) | Planned |
 
 ## Requirements
 
 - macOS
 - Node.js 22+
 - pnpm
-- OpenAI API key (for embeddings)
-- Anthropic API key (for V3 synthesis)
+- OpenAI API key
 
 ## Getting started
 
