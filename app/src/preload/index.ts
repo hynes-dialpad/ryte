@@ -11,6 +11,11 @@ export interface IndexerStatus {
   error?: string
 }
 
+export interface FileTreeResponse {
+  notesRoot: string
+  paths: string[]
+}
+
 export interface RyteApi {
   settings: {
     getState(): Promise<PublicSettingsState>
@@ -23,6 +28,13 @@ export interface RyteApi {
     triggerReindex(): Promise<void>
     getStatus(): Promise<IndexerStatus>
     onStatus(cb: (status: IndexerStatus) => void): () => void
+  }
+  files: {
+    listTree(): Promise<FileTreeResponse>
+    read(absPath: string): Promise<string>
+    watch(absPath: string): Promise<void>
+    unwatch(): Promise<void>
+    onChange(cb: (path: string) => void): () => void
   }
 }
 
@@ -41,6 +53,17 @@ const api: RyteApi = {
       const listener = (_: unknown, status: IndexerStatus): void => cb(status)
       ipcRenderer.on('indexer:status-event', listener)
       return () => ipcRenderer.removeListener('indexer:status-event', listener)
+    }
+  },
+  files: {
+    listTree: () => ipcRenderer.invoke('files:list-tree'),
+    read: (absPath) => ipcRenderer.invoke('files:read', absPath),
+    watch: (absPath) => ipcRenderer.invoke('files:watch', absPath),
+    unwatch: () => ipcRenderer.invoke('files:unwatch'),
+    onChange: (cb) => {
+      const listener = (_: unknown, path: string): void => cb(path)
+      ipcRenderer.on('viewer:file-changed', listener)
+      return () => ipcRenderer.removeListener('viewer:file-changed', listener)
     }
   }
 }

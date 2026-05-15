@@ -1,15 +1,47 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useIndexStatusStore } from '../stores/index-status'
 
 const indexStatus = useIndexStatusStore()
+const visible = ref(false)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearHideTimer(): void {
+  if (hideTimer !== null) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+}
+
+watch(
+  () => indexStatus.status.phase,
+  (phase) => {
+    clearHideTimer()
+    if (phase === 'walking' || phase === 'indexing' || phase === 'error') {
+      visible.value = true
+    } else if (phase === 'done') {
+      const s = indexStatus.status
+      if (s.chunksTotal === 0 && s.filesTotal === 0) {
+        visible.value = false
+        return
+      }
+      visible.value = true
+      hideTimer = setTimeout(() => {
+        visible.value = false
+        hideTimer = null
+      }, 4000)
+    } else {
+      // idle
+      visible.value = false
+    }
+  },
+  { immediate: true }
+)
 
 const message = computed(() => {
   const s = indexStatus.status
   switch (s.phase) {
-    case 'idle':
-      return ''
     case 'walking':
       return 'Walking notes…'
     case 'indexing': {
@@ -42,7 +74,7 @@ const tone = computed(() => {
 </script>
 
 <template>
-  <footer class="status-bar" :class="`tone-${tone}`">
+  <footer class="status-bar" :class="[`tone-${tone}`, { hidden: !visible }]">
     <span class="status-text">{{ message }}</span>
   </footer>
 </template>
@@ -58,6 +90,16 @@ const tone = computed(() => {
   font-variant-numeric: tabular-nums;
   background: rgba(0, 0, 0, 0.2);
   color: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  transition:
+    height 350ms ease,
+    opacity 350ms ease;
+}
+
+.status-bar.hidden {
+  height: 0;
+  opacity: 0;
+  border-top-color: transparent;
 }
 
 .status-text {
