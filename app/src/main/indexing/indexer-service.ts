@@ -13,6 +13,7 @@ export class IndexerService extends EventEmitter {
   private vectorStore: VectorStore | null = null
   private indexState: IndexStateStore | null = null
   private indexer: Indexer | null = null
+  private embedder: OpenAIEmbeddingProvider | null = null
   private lastStatus: IndexerProgress = {
     phase: 'idle',
     filesTotal: 0,
@@ -32,6 +33,7 @@ export class IndexerService extends EventEmitter {
 
     const settings = settingsStore.load()
     const embedder = new OpenAIEmbeddingProvider(openaiKey)
+    this.embedder = embedder
     this.vectorStore = new VectorStore(indexDbPath())
     this.vectorStore.init(embedder.dim)
     this.indexState = new IndexStateStore(this.vectorStore.database)
@@ -114,11 +116,21 @@ export class IndexerService extends EventEmitter {
     return () => this.off(STATUS_EVENT, cb)
   }
 
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    if (!this.embedder) throw new Error('IndexerService not initialized — call init() first')
+    return this.embedder.embed(texts)
+  }
+
+  getVectorStore(): VectorStore | null {
+    return this.vectorStore
+  }
+
   close(): void {
     this.vectorStore?.close()
     this.vectorStore = null
     this.indexState = null
     this.indexer = null
+    this.embedder = null
   }
 
   private broadcast(p: IndexerProgress): void {

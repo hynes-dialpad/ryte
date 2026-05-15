@@ -16,6 +16,17 @@ export interface FileTreeResponse {
   paths: string[]
 }
 
+export interface SearchSource {
+  sourcePath: string
+  headingPath: string[]
+}
+
+export interface SearchCitation {
+  index: number
+  sourcePath: string
+  headingPath: string[]
+}
+
 export interface RyteApi {
   settings: {
     getState(): Promise<PublicSettingsState>
@@ -35,6 +46,15 @@ export interface RyteApi {
     watch(absPath: string): Promise<void>
     unwatch(): Promise<void>
     onChange(cb: (path: string) => void): () => void
+  }
+  search: {
+    query(q: string): Promise<string | null>
+    cancel(requestId: string): Promise<void>
+    onToken(cb: (requestId: string, token: string) => void): () => void
+    onSources(cb: (requestId: string, sources: SearchSource[]) => void): () => void
+    onCitation(cb: (requestId: string, citation: SearchCitation) => void): () => void
+    onDone(cb: (requestId: string) => void): () => void
+    onError(cb: (requestId: string, error: string) => void): () => void
   }
 }
 
@@ -64,6 +84,45 @@ const api: RyteApi = {
       const listener = (_: unknown, path: string): void => cb(path)
       ipcRenderer.on('viewer:file-changed', listener)
       return () => ipcRenderer.removeListener('viewer:file-changed', listener)
+    }
+  },
+  search: {
+    query: (q) => ipcRenderer.invoke('search:query', q),
+    cancel: (requestId) => ipcRenderer.invoke('search:cancel', requestId),
+    onToken: (cb) => {
+      const listener = (_: unknown, payload: { requestId: string; token: string }): void =>
+        cb(payload.requestId, payload.token)
+      ipcRenderer.on('search:stream-token', listener)
+      return () => ipcRenderer.removeListener('search:stream-token', listener)
+    },
+    onSources: (cb) => {
+      const listener = (
+        _: unknown,
+        payload: { requestId: string; sources: SearchSource[] }
+      ): void => cb(payload.requestId, payload.sources)
+      ipcRenderer.on('search:sources', listener)
+      return () => ipcRenderer.removeListener('search:sources', listener)
+    },
+    onCitation: (cb) => {
+      const listener = (_: unknown, payload: SearchCitation & { requestId: string }): void =>
+        cb(payload.requestId, {
+          index: payload.index,
+          sourcePath: payload.sourcePath,
+          headingPath: payload.headingPath
+        })
+      ipcRenderer.on('search:citation', listener)
+      return () => ipcRenderer.removeListener('search:citation', listener)
+    },
+    onDone: (cb) => {
+      const listener = (_: unknown, payload: { requestId: string }): void => cb(payload.requestId)
+      ipcRenderer.on('search:done', listener)
+      return () => ipcRenderer.removeListener('search:done', listener)
+    },
+    onError: (cb) => {
+      const listener = (_: unknown, payload: { requestId: string; error: string }): void =>
+        cb(payload.requestId, payload.error)
+      ipcRenderer.on('search:error', listener)
+      return () => ipcRenderer.removeListener('search:error', listener)
     }
   }
 }

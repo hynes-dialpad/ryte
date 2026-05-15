@@ -1,34 +1,50 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import SearchOverlay from './components/SearchOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import Viewer from './components/Viewer.vue'
 import { useIndexStatusStore } from './stores/index-status'
+import { useSearchStore } from './stores/search'
 import { useSettingsStore } from './stores/settings'
 import { useViewerStore } from './stores/viewer'
 
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
 const viewer = useViewerStore()
+const search = useSearchStore()
 const showSettings = ref(false)
+const showSearch = ref(false)
+
+let _unbindSearch: (() => void) | undefined
 
 onMounted(async () => {
+  _unbindSearch = search.bind()
   await Promise.all([settings.hydrate(), indexStatus.bind()])
-  if (!settings.state?.hasOpenAIKey) {
+
+  const state = settings.state
+  const isClaudeModel = state && !state.model.startsWith('gpt-')
+  const needsAnthropicKey = isClaudeModel && !state?.hasAnthropicKey
+  if (!state?.hasOpenAIKey || needsAnthropicKey) {
     showSettings.value = true
   } else {
     if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
-      // Cold launch with credentials but empty index — start indexing automatically.
       void indexStatus.triggerReindex()
     }
-    // Hydrate the file tree for the viewer (requires a configured notesRoot).
     await viewer.hydrate()
   }
 })
 
+onUnmounted(() => _unbindSearch?.())
+
 const dismissable = computed(() => settings.state?.hasOpenAIKey ?? false)
+
+function openSearch(): void {
+  search.$patch({ answer: '', citations: [], status: 'idle', error: null })
+  showSearch.value = true
+}
 
 function openSettings(): void {
   showSettings.value = true
@@ -44,10 +60,13 @@ function closeSettings(): void {
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" tabindex="0" @keydown.meta.k.prevent="openSearch">
     <header class="app-header">
       <h1>ryte</h1>
-      <button type="button" class="settings-btn" @click="openSettings">Settings</button>
+      <div class="header-actions">
+        <button type="button" class="search-trigger-btn" @click="openSearch">Search</button>
+        <button type="button" class="settings-btn" @click="openSettings">Settings</button>
+      </div>
     </header>
 
     <main class="app-main">
@@ -57,6 +76,7 @@ function closeSettings(): void {
 
     <StatusBar />
 
+    <SearchOverlay v-if="showSearch" @close="showSearch = false" />
     <SettingsModal v-if="showSettings" :dismissable="dismissable" @close="closeSettings" />
   </div>
 </template>
@@ -79,6 +99,27 @@ function closeSettings(): void {
   padding: 0.625rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-trigger-btn {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.825rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.search-trigger-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 h1 {

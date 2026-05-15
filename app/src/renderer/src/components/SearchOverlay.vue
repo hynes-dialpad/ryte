@@ -1,0 +1,344 @@
+<script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
+
+import { render } from '../markdown/renderer'
+import { useSearchStore } from '../stores/search'
+import { useViewerStore } from '../stores/viewer'
+
+const emit = defineEmits<{ close: [] }>()
+
+const search = useSearchStore()
+const viewer = useViewerStore()
+
+const inputRef = ref<HTMLInputElement | null>(null)
+const localQuery = ref('')
+const renderedAnswer = ref('')
+
+watch(
+  () => search.answer,
+  async (md) => {
+    renderedAnswer.value = md ? await render(md) : ''
+  }
+)
+
+watch(
+  () => true,
+  async () => {
+    await nextTick()
+    inputRef.value?.focus()
+  },
+  { immediate: true }
+)
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') emit('close')
+}
+
+async function submit(): Promise<void> {
+  if (!localQuery.value.trim() || search.status === 'searching' || search.status === 'streaming')
+    return
+  await search.runQuery(localQuery.value.trim())
+}
+
+function openCitation(sourcePath: string): void {
+  if (!viewer.notesRoot) return
+  void viewer.openFile(`${viewer.notesRoot}/${sourcePath}`)
+  emit('close')
+}
+
+function formatPath(sourcePath: string, headingPath: string[]): string {
+  return headingPath.length ? `${sourcePath} › ${headingPath.join(' › ')}` : sourcePath
+}
+</script>
+
+<template>
+  <div class="search-backdrop" @click.self="emit('close')" @keydown="onKeydown">
+    <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
+
+      <!-- Input row -->
+      <div class="search-input-row">
+        <input
+          ref="inputRef"
+          v-model="localQuery"
+          class="search-input"
+          type="text"
+          placeholder="Ask anything about your notes…"
+          @keydown.enter="submit"
+          @keydown.esc="emit('close')"
+        />
+        <button
+          class="search-btn"
+          :disabled="!localQuery.trim() || search.status === 'searching' || search.status === 'streaming'"
+          @click="submit"
+        >
+          {{ search.status === 'searching' || search.status === 'streaming' ? '…' : '↵' }}
+        </button>
+      </div>
+
+      <!-- Current result -->
+      <template v-if="search.status !== 'idle' || search.answer">
+        <div v-if="search.status === 'searching'" class="search-status">
+          Searching…
+        </div>
+
+        <!-- Sources found (appear as retrieval completes, before synthesis) -->
+        <div v-if="search.sources.length > 0 && search.status !== 'idle'" class="sources-section">
+          <span class="sources-label">Found {{ search.sources.length }} source{{ search.sources.length !== 1 ? 's' : '' }}</span>
+          <ul class="sources-list">
+            <li v-for="(s, i) in search.sources" :key="i" class="source-item">
+              {{ formatPath(s.sourcePath, s.headingPath) }}
+            </li>
+          </ul>
+        </div>
+
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div v-if="renderedAnswer" class="search-answer" v-html="renderedAnswer" />
+
+        <div v-if="search.status === 'error' && search.error" class="search-error">
+          {{ search.error }}
+        </div>
+
+        <ol v-if="search.citations.length > 0" class="citation-list">
+          <li v-for="c in search.citations" :key="c.index">
+            <button class="citation-btn" @click="openCitation(c.sourcePath)">
+              <span class="citation-index">[{{ c.index }}]</span>
+              <span class="citation-path">{{ formatPath(c.sourcePath, c.headingPath) }}</span>
+            </button>
+          </li>
+        </ol>
+      </template>
+
+      <!-- In-session history -->
+      <div v-if="search.history.length > 0" class="history-section">
+        <div class="history-label">Previous searches this session</div>
+        <div
+          v-for="(entry, i) in search.history"
+          :key="i"
+          class="history-entry"
+        >
+          <div class="history-query">{{ entry.query }}</div>
+          <div class="history-answer">{{ entry.answer }}</div>
+          <ol v-if="entry.citations.length > 0" class="citation-list citation-list--compact">
+            <li v-for="c in entry.citations" :key="c.index">
+              <button class="citation-btn" @click="openCitation(c.sourcePath)">
+                <span class="citation-index">[{{ c.index }}]</span>
+                <span class="citation-path">{{ formatPath(c.sourcePath, c.headingPath) }}</span>
+              </button>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.search-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  overflow-y: auto;
+}
+
+.search-panel {
+  width: min(700px, 92vw);
+  background: var(--color-background-soft);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  margin-bottom: 2rem;
+}
+
+.search-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search-input {
+  flex: 1;
+  background: var(--color-background-mute);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 1rem;
+  padding: 0.55rem 0.75rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.search-input:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.search-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.5rem 0.9rem;
+}
+
+.search-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.search-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.search-status {
+  color: var(--ev-c-text-2);
+  font-size: 0.875rem;
+}
+
+.sources-section {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+
+.sources-label {
+  color: var(--ev-c-text-3);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  list-style: none;
+}
+
+.source-item {
+  color: var(--ev-c-text-2);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-answer {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.search-answer :deep(p) { margin: 0.4rem 0; }
+.search-answer :deep(ul),
+.search-answer :deep(ol) { padding-left: 1.25rem; margin: 0.4rem 0; }
+.search-answer :deep(li) { margin: 0.2rem 0; }
+.search-answer :deep(strong) { color: var(--ev-c-text-1); font-weight: 600; }
+.search-answer :deep(code) { font-size: 0.85em; background: rgba(255,255,255,0.06); border-radius: 3px; padding: 0.1em 0.3em; }
+
+.search-error {
+  color: #f87171;
+  font-size: 0.875rem;
+}
+
+.citation-list {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+}
+
+.citation-list--compact {
+  border-top: none;
+  padding-top: 0.25rem;
+  margin-top: 0.25rem;
+}
+
+.citation-btn {
+  background: none;
+  border: none;
+  color: var(--ev-c-text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  text-align: left;
+  width: 100%;
+}
+
+.citation-btn:hover {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.citation-index {
+  color: var(--ev-c-text-3);
+  flex-shrink: 0;
+}
+
+.citation-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-label {
+  color: var(--ev-c-text-3);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.history-entry {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.history-query {
+  color: var(--ev-c-text-2);
+  font-size: 0.825rem;
+  font-weight: 500;
+}
+
+.history-answer {
+  color: var(--ev-c-text-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 8rem;
+  overflow-y: auto;
+}
+</style>

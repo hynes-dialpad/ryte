@@ -15,6 +15,9 @@ export interface StoredChunkRow {
   date: string | null
 }
 
+const RRF_K = 60
+const DEFAULT_HYBRID_RESULTS = 8
+
 export class VectorStore {
   private db: DatabaseType | null = null
   private dim = 0
@@ -73,17 +76,27 @@ export class VectorStore {
   replaceFileChunks(sourcePath: string, items: ChunkWithVector[]): void {
     const db = this.database
     const txn = db.transaction((path: string, list: ChunkWithVector[]) => {
-      const oldIds = db.prepare('SELECT id FROM chunks WHERE source_path = ?').all(path) as Array<{
+      const oldRows = db
+        .prepare('SELECT id, text FROM chunks WHERE source_path = ?')
+        .all(path) as Array<{
         id: number
+        text: string
       }>
+      const deleteFts = db.prepare(
+        `INSERT INTO chunk_fts(chunk_fts, rowid, text) VALUES('delete', ?, ?)`
+      )
       const deleteVec = db.prepare('DELETE FROM chunk_vectors WHERE rowid = ?')
-      for (const { id } of oldIds) deleteVec.run(id)
+      for (const { id, text } of oldRows) {
+        deleteFts.run(id, text)
+        deleteVec.run(id)
+      }
       db.prepare('DELETE FROM chunks WHERE source_path = ?').run(path)
 
       const insertChunk = db.prepare(
         'INSERT INTO chunks (source_path, heading_path, date, frontmatter, text) VALUES (?, ?, ?, ?, ?)'
       )
       const insertVec = db.prepare('INSERT INTO chunk_vectors (rowid, embedding) VALUES (?, ?)')
+      const insertFts = db.prepare('INSERT INTO chunk_fts(rowid, text) VALUES(?, ?)')
       for (const { chunk, vector } of list) {
         if (vector.length !== this.dim) {
           throw new Error(`Vector dim ${vector.length} does not match store dim ${this.dim}`)
@@ -97,6 +110,7 @@ export class VectorStore {
         )
         const id = BigInt(info.lastInsertRowid)
         insertVec.run(id, vector)
+        insertFts.run(id, chunk.text)
       }
     })
     txn(sourcePath, items)
@@ -105,14 +119,67 @@ export class VectorStore {
   deleteFileChunks(sourcePath: string): void {
     const db = this.database
     const txn = db.transaction((path: string) => {
-      const oldIds = db.prepare('SELECT id FROM chunks WHERE source_path = ?').all(path) as Array<{
+      const oldRows = db
+        .prepare('SELECT id, text FROM chunks WHERE source_path = ?')
+        .all(path) as Array<{
         id: number
+        text: string
       }>
+      const deleteFts = db.prepare(
+        `INSERT INTO chunk_fts(chunk_fts, rowid, text) VALUES('delete', ?, ?)`
+      )
       const deleteVec = db.prepare('DELETE FROM chunk_vectors WHERE rowid = ?')
-      for (const { id } of oldIds) deleteVec.run(id)
+      for (const { id, text } of oldRows) {
+        deleteFts.run(id, text)
+        deleteVec.run(id)
+      }
       db.prepare('DELETE FROM chunks WHERE source_path = ?').run(path)
     })
     txn(sourcePath)
+  }
+
+  hybridSearch(
+    queryText: string,
+    queryVec: Float32Array,
+    k: number,
+    maxResults = DEFAULT_HYBRID_RESULTS
+  ): StoredChunkRow[] {
+    const db = this.database
+
+    const vectorRows = db
+      .prepare(`SELECT rowid AS id FROM chunk_vectors WHERE embedding MATCH ? AND k = ?`)
+      .all(queryVec, k) as Array<{ id: number }>
+
+    let ftsRows: Array<{ id: number }> = []
+    try {
+      ftsRows = db
+        .prepare(`SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? LIMIT ?`)
+        .all(queryText, k) as Array<{ id: number }>
+    } catch {
+      // Malformed FTS5 query (e.g. bare operators) — fall through to vector-only
+    }
+
+    const scores = new Map<number, number>()
+    vectorRows.forEach(({ id }, i) => {
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + i + 1))
+    })
+    ftsRows.forEach(({ id }, i) => {
+      scores.set(id, (scores.get(id) ?? 0) + 1 / (RRF_K + i + 1))
+    })
+
+    const topIds = [...scores.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, maxResults)
+      .map(([id]) => id)
+
+    return topIds.map((id) => {
+      const row = db
+        .prepare(
+          'SELECT text, source_path AS sourcePath, heading_path AS headingPath, date FROM chunks WHERE id = ?'
+        )
+        .get(id) as { text: string; sourcePath: string; headingPath: string; date: string | null }
+      return { ...row, headingPath: JSON.parse(row.headingPath) as string[] }
+    })
   }
 
   close(): void {
@@ -136,5 +203,13 @@ export class VectorStore {
     db.exec(
       `CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(embedding float[${this.dim}])`
     )
+    db.exec(
+      `CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(text, content='chunks', content_rowid='id')`
+    )
+    // One-time backfill: populate FTS index for chunks indexed before FTS was added.
+    const ftsCount = (db.prepare('SELECT COUNT(*) AS n FROM chunk_fts').get() as { n: number }).n
+    if (ftsCount === 0 && this.chunkCount() > 0) {
+      db.exec('INSERT INTO chunk_fts(rowid, text) SELECT id, text FROM chunks')
+    }
   }
 }

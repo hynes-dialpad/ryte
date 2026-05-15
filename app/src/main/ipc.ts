@@ -1,12 +1,26 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { relative } from 'node:path'
+
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
+import { SearchService } from './search/search-service'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
 import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
 import { viewerWatcher } from './viewer/viewer-watcher'
+
+let searchService: SearchService | null = null
+
+function getOrCreateSearchService(): SearchService | null {
+  const vs = indexerService.getVectorStore()
+  if (!vs) return null
+  if (!searchService) {
+    searchService = new SearchService(indexerService, vs, settingsStore)
+  }
+  return searchService
+}
 
 /**
  * Register all IPC handlers. Call once during app.whenReady() after
@@ -19,6 +33,7 @@ export function registerIpc(): void {
     const next = settingsStore.update(patch)
     // Re-init indexer and restart watcher so new notesRoot / keys take effect.
     indexerService.close()
+    searchService = null // vectorStore is replaced; recreate on next search
     const ready = indexerService.init()
     await watcher.stop()
     if (ready) {
@@ -77,5 +92,33 @@ export function registerIpc(): void {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('viewer:file-changed', path)
     }
+  })
+
+  function broadcast(channel: string, payload: Record<string, unknown>): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(channel, payload)
+    }
+  }
+
+  ipcMain.handle('search:query', (_, query: string) => {
+    const svc = getOrCreateSearchService()
+    if (!svc) {
+      broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
+      return null
+    }
+    const requestId = randomUUID()
+    void svc.search(query, requestId, {
+      onToken: (token) => broadcast('search:stream-token', { requestId, token }),
+      onSources: (sources) => broadcast('search:sources', { requestId, sources }),
+      onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
+      onDone: () => broadcast('search:done', { requestId }),
+      onError: (error) => broadcast('search:error', { requestId, error })
+    })
+    return requestId
+  })
+
+  ipcMain.handle('search:cancel', (_, requestId: string) => {
+    const svc = getOrCreateSearchService()
+    svc?.cancel(requestId)
   })
 }

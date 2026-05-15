@@ -1,0 +1,65 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('./vector-store', () => ({
+  VectorStore: vi.fn().mockImplementation(() => ({
+    init: vi.fn(),
+    close: vi.fn(),
+    database: {}
+  }))
+}))
+
+vi.mock('./index-state', () => ({
+  IndexStateStore: vi.fn().mockImplementation(() => ({
+    init: vi.fn(),
+    totals: vi.fn().mockReturnValue({ files: 0, chunks: 0 })
+  }))
+}))
+
+vi.mock('./indexer', () => ({
+  Indexer: vi.fn().mockImplementation(() => ({}))
+}))
+
+vi.mock('../settings/settings-store', () => ({
+  settingsStore: {
+    getSecret: vi.fn().mockReturnValue(null),
+    load: vi.fn().mockReturnValue({ notesRoot: '/tmp/notes', model: 'claude-haiku-4-5' })
+  }
+}))
+
+vi.mock('../paths', () => ({
+  indexDbPath: vi.fn().mockReturnValue('/tmp/test-indexer-service.db')
+}))
+
+const mockEmbed = vi.fn().mockResolvedValue([Float32Array.from([1, 0, 0])])
+
+vi.mock('./embedder', () => ({
+  OpenAIEmbeddingProvider: vi.fn().mockImplementation(() => ({
+    dim: 1536,
+    embed: mockEmbed
+  }))
+}))
+
+describe('IndexerService.embed()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEmbed.mockResolvedValue([Float32Array.from([1, 0, 0])])
+  })
+
+  it('throws when not initialized', async () => {
+    const { IndexerService } = await import('./indexer-service')
+    const svc = new IndexerService()
+    await expect(svc.embed(['hello'])).rejects.toThrow('not initialized')
+  })
+
+  it('delegates to the embedder when initialized', async () => {
+    const { settingsStore } = await import('../settings/settings-store')
+    const { IndexerService } = await import('./indexer-service')
+    vi.mocked(settingsStore.getSecret).mockReturnValue('sk-test')
+    const svc = new IndexerService()
+    svc.init()
+    const result = await svc.embed(['hello world'])
+    expect(mockEmbed).toHaveBeenCalledWith(['hello world'])
+    expect(result).toHaveLength(1)
+    expect(result[0]).toBeInstanceOf(Float32Array)
+  })
+})
