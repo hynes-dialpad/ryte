@@ -83,6 +83,7 @@ function makeCallbacks(): MockSearchCallbacks {
     onToken: vi.fn(),
     onSources: vi.fn(),
     onCitation: vi.fn(),
+    onNotice: vi.fn(),
     onDone: vi.fn(),
     onError: vi.fn()
   }
@@ -157,7 +158,24 @@ describe('SearchService', () => {
     const svc = service([row('a.md', 'body')], 'claude-haiku-4-5', null)
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
+    expect(cb.onNotice).toHaveBeenCalledWith({
+      code: 'provider-key-missing',
+      message: 'Cloud answer skipped because no Anthropic API key is saved for claude-haiku-4-5.'
+    })
     expect(cb.onError).not.toHaveBeenCalled()
+    expect(mockSynthesize).not.toHaveBeenCalled()
+    expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('reports when no local sources are found', async () => {
+    const svc = service([])
+    const cb = makeCallbacks()
+    await svc.search('q', 'req-1', cb)
+    expect(cb.onSources).toHaveBeenCalledWith([])
+    expect(cb.onNotice).toHaveBeenCalledWith({
+      code: 'no-local-sources',
+      message: 'No local sources found. Try a different query or rebuild the local index.'
+    })
     expect(mockSynthesize).not.toHaveBeenCalled()
     expect(cb.onDone).toHaveBeenCalledOnce()
   })
@@ -171,6 +189,10 @@ describe('SearchService', () => {
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
     expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
+    expect(cb.onNotice).toHaveBeenCalledWith({
+      code: 'cloud-answers-disabled',
+      message: 'Cloud answer skipped because Cloud Answers are disabled in Settings.'
+    })
     expect(mockSynthesize).not.toHaveBeenCalled()
     expect(cb.onDone).toHaveBeenCalledOnce()
   })
@@ -183,6 +205,10 @@ describe('SearchService', () => {
     )
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
+    expect(cb.onNotice).toHaveBeenCalledWith({
+      code: 'cloud-answers-not-acknowledged',
+      message: 'Cloud answer skipped until the first-use warning is accepted.'
+    })
     expect(mockSynthesize).not.toHaveBeenCalled()
     expect(cb.onDone).toHaveBeenCalledOnce()
   })
@@ -197,6 +223,16 @@ describe('SearchService', () => {
     expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
     expect(cb.onDone).toHaveBeenCalledOnce()
     expect(cb.onError).not.toHaveBeenCalled()
+  })
+
+  it('adds provider and model context to synthesis errors', async () => {
+    mockSynthesize.mockRejectedValue(new Error('bad request'))
+    const svc = service([row('a.md', 'body')], 'gpt-5.2', 'sk-openai')
+    const cb = makeCallbacks()
+    await svc.search('q', 'req-1', cb)
+    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'a.md', headingPath: [] }])
+    expect(cb.onError).toHaveBeenCalledWith('OpenAI gpt-5.2 answer failed: bad request')
+    expect(cb.onDone).not.toHaveBeenCalled()
   })
 
   it('uses AnthropicProvider for claude models', async () => {

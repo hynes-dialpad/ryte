@@ -19,10 +19,22 @@ export interface SourceResult {
   headingPath: string[]
 }
 
+export type SearchNoticeCode =
+  | 'no-local-sources'
+  | 'cloud-answers-disabled'
+  | 'cloud-answers-not-acknowledged'
+  | 'provider-key-missing'
+
+export interface SearchNotice {
+  code: SearchNoticeCode
+  message: string
+}
+
 export interface SearchCallbacks {
   onToken: (token: string) => void
   onSources: (sources: SourceResult[]) => void
   onCitation: (citation: CitationResult) => void
+  onNotice: (notice: SearchNotice) => void
   onDone: () => void
   onError: (error: string) => void
 }
@@ -54,6 +66,10 @@ interface SettingsDep {
 const RETRIEVE_K = 20
 const RETRIEVE_MAX = 15
 const CITATION_RE = /\[(\d+)\]/g
+
+function providerLabel(provider: AnswerProviderId): string {
+  return provider === 'anthropic' ? 'Anthropic' : 'OpenAI'
+}
 
 export class SearchService {
   private readonly cancelled = new Set<string>()
@@ -92,12 +108,29 @@ export class SearchService {
       )
 
       if (chunks.length === 0) {
+        callbacks.onNotice({
+          code: 'no-local-sources',
+          message: 'No local sources found. Try a different query or rebuild the local index.'
+        })
         callbacks.onDone()
         return
       }
 
       const settings = this.settings.load()
-      if (!settings.cloudAnswersEnabled || !settings.firstCloudUseAcknowledgedAt) {
+      if (!settings.cloudAnswersEnabled) {
+        callbacks.onNotice({
+          code: 'cloud-answers-disabled',
+          message: 'Cloud answer skipped because Cloud Answers are disabled in Settings.'
+        })
+        callbacks.onDone()
+        return
+      }
+
+      if (!settings.firstCloudUseAcknowledgedAt) {
+        callbacks.onNotice({
+          code: 'cloud-answers-not-acknowledged',
+          message: 'Cloud answer skipped until the first-use warning is accepted.'
+        })
         callbacks.onDone()
         return
       }
@@ -106,6 +139,10 @@ export class SearchService {
       const model = settings.answerModel
       const apiKey = this.settings.getSecret(provider)
       if (!apiKey) {
+        callbacks.onNotice({
+          code: 'provider-key-missing',
+          message: `Cloud answer skipped because no ${providerLabel(provider)} API key is saved for ${model}.`
+        })
         callbacks.onDone()
         return
       }
@@ -118,11 +155,16 @@ export class SearchService {
       if (this.cancelled.has(requestId)) return
 
       let answer = ''
-      await llm.synthesize(query, chunks, (token) => {
-        if (this.cancelled.has(requestId)) return
-        answer += token
-        callbacks.onToken(token)
-      })
+      try {
+        await llm.synthesize(query, chunks, (token) => {
+          if (this.cancelled.has(requestId)) return
+          answer += token
+          callbacks.onToken(token)
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        throw new Error(`${providerLabel(provider)} ${model} answer failed: ${message}`)
+      }
 
       if (this.cancelled.has(requestId)) return
 

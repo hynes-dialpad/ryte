@@ -8,7 +8,7 @@ import {
   SEARCH_HISTORY_LIMIT,
   type HistoryEntry
 } from './search-history'
-import type { SearchCitation, SearchSource } from '../../../preload/index'
+import type { SearchCitation, SearchNotice, SearchSource } from '../../../preload/index'
 
 export type SearchStatus = 'idle' | 'searching' | 'streaming' | 'done' | 'error'
 
@@ -17,6 +17,7 @@ export const useSearchStore = defineStore('search', () => {
   const answer = ref('')
   const sources = ref<SearchSource[]>([])
   const citations = ref<SearchCitation[]>([])
+  const notices = ref<SearchNotice[]>([])
   const status = ref<SearchStatus>('idle')
   const error = ref<string | null>(null)
   const activeRequestId = ref<string | null>(null)
@@ -26,6 +27,7 @@ export const useSearchStore = defineStore('search', () => {
     answer.value = ''
     sources.value = []
     citations.value = []
+    notices.value = []
     status.value = 'idle'
     error.value = null
     activeRequestId.value = null
@@ -79,6 +81,13 @@ export const useSearchStore = defineStore('search', () => {
     )
 
     cleanups.push(
+      window.ryte.search.onNotice((requestId, notice) => {
+        if (requestId !== activeRequestId.value) return
+        notices.value.push(notice)
+      })
+    )
+
+    cleanups.push(
       window.ryte.search.onDone((requestId) => {
         if (requestId !== activeRequestId.value) return
         history.value = [
@@ -120,6 +129,7 @@ export const useSearchStore = defineStore('search', () => {
     answer,
     sources,
     citations,
+    notices,
     status,
     error,
     activeRequestId,

@@ -27,6 +27,15 @@ export interface SearchCitation {
   headingPath: string[]
 }
 
+export interface SearchNotice {
+  code:
+    | 'no-local-sources'
+    | 'cloud-answers-disabled'
+    | 'cloud-answers-not-acknowledged'
+    | 'provider-key-missing'
+  message: string
+}
+
 export interface RyteApi {
   app: {
     getVersion(): Promise<string>
@@ -57,6 +66,7 @@ export interface RyteApi {
     onToken(cb: (requestId: string, token: string) => void): () => void
     onSources(cb: (requestId: string, sources: SearchSource[]) => void): () => void
     onCitation(cb: (requestId: string, citation: SearchCitation) => void): () => void
+    onNotice(cb: (requestId: string, notice: SearchNotice) => void): () => void
     onDone(cb: (requestId: string) => void): () => void
     onError(cb: (requestId: string, error: string) => void): () => void
   }
@@ -124,6 +134,12 @@ const api: RyteApi = {
         })
       ipcRenderer.on('search:citation', listener)
       return () => ipcRenderer.removeListener('search:citation', listener)
+    },
+    onNotice: (cb) => {
+      const listener = (_: unknown, payload: { requestId: string; notice: SearchNotice }): void =>
+        cb(payload.requestId, payload.notice)
+      ipcRenderer.on('search:notice', listener)
+      return () => ipcRenderer.removeListener('search:notice', listener)
     },
     onDone: (cb) => {
       const listener = (_: unknown, payload: { requestId: string }): void => cb(payload.requestId)

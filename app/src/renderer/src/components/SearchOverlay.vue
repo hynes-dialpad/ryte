@@ -120,6 +120,12 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
       <template v-if="search.status !== 'idle' || search.answer">
         <div v-if="search.status === 'searching'" class="search-status">Searching…</div>
 
+        <div v-if="search.notices.length > 0" class="search-notices" aria-live="polite">
+          <p v-for="notice in search.notices" :key="notice.code" class="search-notice">
+            {{ notice.message }}
+          </p>
+        </div>
+
         <!-- Sources found (appear as retrieval completes, before synthesis) -->
         <div v-if="search.sources.length > 0 && search.status !== 'idle'" class="sources-section">
           <span class="sources-label"
@@ -282,6 +288,23 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
 .search-status {
   color: var(--ev-c-text-2);
   font-size: 0.875rem;
+}
+
+.search-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.search-notice {
+  background: rgba(255, 184, 77, 0.08);
+  border: 1px solid rgba(255, 184, 77, 0.18);
+  border-radius: 6px;
+  color: #ffd9a3;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
 }
 
 .sources-section {

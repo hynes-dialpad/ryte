@@ -131,6 +131,7 @@ export function registerIpc(): void {
       onToken: (token) => broadcast('search:stream-token', { requestId, token }),
       onSources: (sources) => broadcast('search:sources', { requestId, sources }),
       onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
+      onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
       onDone: () => broadcast('search:done', { requestId }),
       onError: (error) => broadcast('search:error', { requestId, error })
     })
