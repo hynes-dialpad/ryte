@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import { buildSynthesisMessages, type SearchChunk } from './llm-provider'
 
-function chunk(index: number, sourcePath: string, headingPath: string[], text: string): SearchChunk {
+function chunk(
+  index: number,
+  sourcePath: string,
+  headingPath: string[],
+  text: string
+): SearchChunk {
   return { index, sourcePath, headingPath, text }
 }
 

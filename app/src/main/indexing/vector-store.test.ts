@@ -122,7 +122,10 @@ describe('VectorStore — FTS5 + hybridSearch (native, excluded from pnpm test)'
   })
 
   function makeChunk(sourcePath: string, text: string, vec: number[]): ChunkWithVector {
-    return { chunk: { text, sourcePath, headingPath: [], date: null, frontmatter: {} }, vector: Float32Array.from(vec) }
+    return {
+      chunk: { text, sourcePath, headingPath: [], date: null, frontmatter: {} },
+      vector: Float32Array.from(vec)
+    }
   }
 
   it('FTS5 keyword search finds matching chunk', () => {
@@ -133,7 +136,9 @@ describe('VectorStore — FTS5 + hybridSearch (native, excluded from pnpm test)'
   })
 
   it('vector search finds semantically close chunk', () => {
-    store.replaceFileChunks('close.md', [makeChunk('close.md', 'vector match text here', [1, 0, 0, 0])])
+    store.replaceFileChunks('close.md', [
+      makeChunk('close.md', 'vector match text here', [1, 0, 0, 0])
+    ])
     store.replaceFileChunks('far.md', [makeChunk('far.md', 'distant vector content', [0, 0, 0, 1])])
     // Query vector close to close.md's vector
     const results = store.hybridSearch('zzz no keywords', Float32Array.from([0.99, 0.1, 0, 0]), 5)
@@ -152,7 +157,9 @@ describe('VectorStore — FTS5 + hybridSearch (native, excluded from pnpm test)'
   })
 
   it('FTS5 is backfilled when chunks exist but FTS index is empty (reopen scenario)', () => {
-    store.replaceFileChunks('pre.md', [makeChunk('pre.md', 'backfill this content elephant', [1, 0, 0, 0])])
+    store.replaceFileChunks('pre.md', [
+      makeChunk('pre.md', 'backfill this content elephant', [1, 0, 0, 0])
+    ])
     store.close()
     // Reopen — backfill should run since FTS is not synced from old DB
     const store2 = new VectorStore(join(tempDir, 'index.db'))

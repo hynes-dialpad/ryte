@@ -15,9 +15,9 @@ function fakeChunk(index: number, text: string): SearchChunk {
   return { index, sourcePath: 'a.md', headingPath: [], text }
 }
 
-function makeStream(tokens: string[]) {
+function makeStream(tokens: string[]): AsyncIterable<unknown> {
   return {
-    async *[Symbol.asyncIterator]() {
+    async *[Symbol.asyncIterator](): AsyncGenerator<unknown, void, unknown> {
       for (const text of tokens) {
         yield { type: 'content_block_delta', delta: { type: 'text_delta', text } }
       }
@@ -52,7 +52,7 @@ describe('AnthropicProvider', () => {
   })
 
   it('propagates errors from the stream', async () => {
-    async function* failingStream() {
+    async function* failingStream(): AsyncGenerator<unknown, void, unknown> {
       yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'partial' } }
       throw new Error('stream error')
     }
@@ -65,7 +65,7 @@ describe('AnthropicProvider', () => {
 
   it('ignores non-text-delta events', async () => {
     mockStream.mockReturnValue({
-      async *[Symbol.asyncIterator]() {
+      async *[Symbol.asyncIterator](): AsyncGenerator<unknown, void, unknown> {
         yield { type: 'message_start', message: {} }
         yield { type: 'content_block_start', content_block: { type: 'text' } }
         yield { type: 'content_block_delta', delta: { type: 'text_delta', text: 'real' } }

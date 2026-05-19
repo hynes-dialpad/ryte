@@ -15,9 +15,9 @@ function fakeChunk(index: number, text: string): SearchChunk {
   return { index, sourcePath: 'a.md', headingPath: [], text }
 }
 
-function makeStream(tokens: string[]) {
+function makeStream(tokens: string[]): AsyncIterable<unknown> {
   return {
-    async *[Symbol.asyncIterator]() {
+    async *[Symbol.asyncIterator](): AsyncGenerator<unknown, void, unknown> {
       for (const content of tokens) {
         yield { choices: [{ delta: { content } }] }
       }
@@ -61,7 +61,7 @@ describe('OpenAIProvider', () => {
   })
 
   it('propagates errors from the stream', async () => {
-    async function* failingStream() {
+    async function* failingStream(): AsyncGenerator<unknown, void, unknown> {
       yield { choices: [{ delta: { content: 'partial' } }] }
       throw new Error('network error')
     }
