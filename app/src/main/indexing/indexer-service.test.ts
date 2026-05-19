@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const mocks = vi.hoisted(() => ({
+  vectorStoreInit: vi.fn(),
+  vectorStoreClose: vi.fn(),
+  indexerIndexAll: vi.fn()
+}))
+
 vi.mock('./vector-store', () => ({
   VectorStore: vi.fn().mockImplementation(() => ({
-    init: vi.fn(),
-    close: vi.fn(),
+    init: mocks.vectorStoreInit,
+    close: mocks.vectorStoreClose,
     database: {}
   }))
 }))
@@ -16,7 +22,9 @@ vi.mock('./index-state', () => ({
 }))
 
 vi.mock('./indexer', () => ({
-  Indexer: vi.fn().mockImplementation(() => ({}))
+  Indexer: vi.fn().mockImplementation(() => ({
+    indexAll: mocks.indexerIndexAll
+  }))
 }))
 
 vi.mock('../settings/settings-store', () => ({
@@ -53,6 +61,8 @@ vi.mock('./embedder', () => ({
 describe('IndexerService.embed()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.vectorStoreInit.mockReturnValue(undefined)
+    mocks.indexerIndexAll.mockResolvedValue({ filesIndexed: 0, chunksIndexed: 0 })
     mockEmbed.mockResolvedValue([Float32Array.from([1, 0, 0])])
   })
 
@@ -84,5 +94,36 @@ describe('IndexerService.embed()', () => {
     expect(mockEmbed).toHaveBeenCalledWith(['hello world'])
     expect(result).toHaveLength(1)
     expect(result[0]).toBeInstanceOf(Float32Array)
+  })
+
+  it('rebuilds the index database when initialization sees a malformed database', async () => {
+    const { IndexerService } = await import('./indexer-service')
+    mocks.vectorStoreInit
+      .mockImplementationOnce(() => {
+        throw new Error('database disk image is malformed')
+      })
+      .mockImplementation(() => undefined)
+
+    const svc = new IndexerService()
+    svc.init()
+
+    expect(mocks.vectorStoreClose).toHaveBeenCalled()
+    expect(mocks.vectorStoreInit).toHaveBeenCalledTimes(2)
+  })
+
+  it('rebuilds and retries once when reindexing sees a malformed database', async () => {
+    const { IndexerService } = await import('./indexer-service')
+    mocks.indexerIndexAll
+      .mockRejectedValueOnce(new Error('database disk image is malformed'))
+      .mockResolvedValueOnce({ filesIndexed: 0, chunksIndexed: 0 })
+
+    const svc = new IndexerService()
+    svc.init()
+    await svc.triggerReindex()
+
+    expect(mocks.indexerIndexAll).toHaveBeenCalledTimes(2)
+    expect(mocks.vectorStoreClose).toHaveBeenCalled()
+    expect(mocks.vectorStoreInit).toHaveBeenCalledTimes(2)
+    expect(svc.getStatus().phase).not.toBe('error')
   })
 })
