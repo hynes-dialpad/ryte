@@ -13,6 +13,16 @@ import { viewerWatcher } from './viewer/viewer-watcher'
 
 let searchService: SearchService | null = null
 
+function settingsPatchRequiresIndexerRestart(patch: SettingsUpdate): boolean {
+  return (
+    patch.notesRoot !== undefined ||
+    patch.openaiKey !== undefined ||
+    patch.semanticIndexEnabled !== undefined ||
+    patch.embeddingProvider !== undefined ||
+    patch.embeddingModel !== undefined
+  )
+}
+
 function getOrCreateSearchService(): SearchService | null {
   const vs = indexerService.getVectorStore()
   if (!vs) return null
@@ -31,13 +41,15 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:save', async (_, patch: SettingsUpdate) => {
     const next = settingsStore.update(patch)
-    // Re-init indexer and restart watcher so new notesRoot / keys take effect.
-    indexerService.close()
-    searchService = null // vectorStore is replaced; recreate on next search
-    const ready = indexerService.init()
-    await watcher.stop()
-    if (ready) {
-      watcher.start(settingsStore.load().notesRoot)
+    if (settingsPatchRequiresIndexerRestart(patch)) {
+      // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
+      indexerService.close()
+      searchService = null // vectorStore is replaced; recreate on next search
+      const ready = indexerService.init()
+      await watcher.stop()
+      if (ready) {
+        watcher.start(settingsStore.load().notesRoot)
+      }
     }
     return next
   })

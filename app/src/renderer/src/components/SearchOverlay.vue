@@ -3,16 +3,20 @@ import { nextTick, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useSearchStore } from '../stores/search'
+import { useSettingsStore } from '../stores/settings'
 import { useViewerStore } from '../stores/viewer'
 
 const emit = defineEmits<{ close: [] }>()
 
 const search = useSearchStore()
+const settings = useSettingsStore()
 const viewer = useViewerStore()
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const localQuery = ref('')
 const renderedAnswer = ref('')
+const pendingCloudQuery = ref('')
+const showCloudWarning = ref(false)
 
 watch(
   () => search.answer,
@@ -37,7 +41,31 @@ function onKeydown(e: KeyboardEvent): void {
 async function submit(): Promise<void> {
   if (!localQuery.value.trim() || search.status === 'searching' || search.status === 'streaming')
     return
-  await search.runQuery(localQuery.value.trim())
+  if (!settings.state) await settings.hydrate()
+  const q = localQuery.value.trim()
+  if (settings.state?.cloudAnswersEnabled && !settings.state.firstCloudUseAcknowledgedAt) {
+    pendingCloudQuery.value = q
+    showCloudWarning.value = true
+    return
+  }
+  await search.runQuery(q)
+}
+
+async function continueWithCloud(): Promise<void> {
+  const q = pendingCloudQuery.value
+  if (!q) return
+  await settings.save({ firstCloudUseAcknowledgedAt: new Date().toISOString() })
+  showCloudWarning.value = false
+  pendingCloudQuery.value = ''
+  await search.runQuery(q)
+}
+
+async function searchLocallyOnly(): Promise<void> {
+  const q = pendingCloudQuery.value
+  if (!q) return
+  showCloudWarning.value = false
+  pendingCloudQuery.value = ''
+  await search.runQuery(q)
 }
 
 function openCitation(sourcePath: string): void {
@@ -54,7 +82,6 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
 <template>
   <div class="search-backdrop" @click.self="emit('close')" @keydown="onKeydown">
     <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
-
       <!-- Input row -->
       <div class="search-input-row">
         <input
@@ -68,22 +95,38 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
         />
         <button
           class="search-btn"
-          :disabled="!localQuery.trim() || search.status === 'searching' || search.status === 'streaming'"
+          :disabled="
+            !localQuery.trim() || search.status === 'searching' || search.status === 'streaming'
+          "
           @click="submit"
         >
           {{ search.status === 'searching' || search.status === 'streaming' ? '…' : '↵' }}
         </button>
       </div>
 
+      <div v-if="showCloudWarning" class="cloud-warning" role="alertdialog" aria-live="assertive">
+        <p>
+          This is the first time Ryte will send note content outside your Mac. Ryte will send this
+          query and selected matching excerpts to your configured model provider. Local keyword
+          search remains available without sending data.
+        </p>
+        <div class="cloud-warning-actions">
+          <button type="button" @click="searchLocallyOnly">Search locally</button>
+          <button type="button" class="primary-action" @click="continueWithCloud">Continue</button>
+        </div>
+      </div>
+
       <!-- Current result -->
       <template v-if="search.status !== 'idle' || search.answer">
-        <div v-if="search.status === 'searching'" class="search-status">
-          Searching…
-        </div>
+        <div v-if="search.status === 'searching'" class="search-status">Searching…</div>
 
         <!-- Sources found (appear as retrieval completes, before synthesis) -->
         <div v-if="search.sources.length > 0 && search.status !== 'idle'" class="sources-section">
-          <span class="sources-label">Found {{ search.sources.length }} source{{ search.sources.length !== 1 ? 's' : '' }}</span>
+          <span class="sources-label"
+            >Found {{ search.sources.length }} source{{
+              search.sources.length !== 1 ? 's' : ''
+            }}</span
+          >
           <ul class="sources-list">
             <li v-for="(s, i) in search.sources" :key="i" class="source-item">
               {{ formatPath(s.sourcePath, s.headingPath) }}
@@ -111,11 +154,7 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
       <!-- In-session history -->
       <div v-if="search.history.length > 0" class="history-section">
         <div class="history-label">Previous searches this session</div>
-        <div
-          v-for="(entry, i) in search.history"
-          :key="i"
-          class="history-entry"
-        >
+        <div v-for="(entry, i) in search.history" :key="i" class="history-entry">
           <div class="history-query">{{ entry.query }}</div>
           <div class="history-answer">{{ entry.answer }}</div>
           <ol v-if="entry.citations.length > 0" class="citation-list citation-list--compact">
@@ -128,7 +167,6 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
           </ol>
         </div>
       </div>
-
     </div>
   </div>
 </template>
@@ -199,6 +237,45 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.cloud-warning {
+  background: rgba(255, 184, 77, 0.1);
+  border: 1px solid rgba(255, 184, 77, 0.24);
+  border-radius: 6px;
+  color: #ffd9a3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.cloud-warning p {
+  font-size: 0.84rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cloud-warning-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cloud-warning button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.cloud-warning .primary-action {
+  background: #2d6cdf;
+  border-color: #2d6cdf;
+}
+
 .search-status {
   color: var(--ev-c-text-2);
   font-size: 0.875rem;
@@ -243,12 +320,27 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
   overflow-y: auto;
 }
 
-.search-answer :deep(p) { margin: 0.4rem 0; }
+.search-answer :deep(p) {
+  margin: 0.4rem 0;
+}
 .search-answer :deep(ul),
-.search-answer :deep(ol) { padding-left: 1.25rem; margin: 0.4rem 0; }
-.search-answer :deep(li) { margin: 0.2rem 0; }
-.search-answer :deep(strong) { color: var(--ev-c-text-1); font-weight: 600; }
-.search-answer :deep(code) { font-size: 0.85em; background: rgba(255,255,255,0.06); border-radius: 3px; padding: 0.1em 0.3em; }
+.search-answer :deep(ol) {
+  padding-left: 1.25rem;
+  margin: 0.4rem 0;
+}
+.search-answer :deep(li) {
+  margin: 0.2rem 0;
+}
+.search-answer :deep(strong) {
+  color: var(--ev-c-text-1);
+  font-weight: 600;
+}
+.search-answer :deep(code) {
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
 
 .search-error {
   color: #f87171;

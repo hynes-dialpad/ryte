@@ -1,19 +1,21 @@
 # ryte
 
-Local macOS app for searching and browsing `~/notes/` — a personal knowledge base over your own markdown files.
+Local macOS app for searching and browsing a user-selected markdown folder — a personal knowledge base over your own files.
 
 ## What it does
 
-- **Indexes** your notes corpus using OpenAI embeddings into a local SQLite + sqlite-vec database
+- **Indexes** your notes corpus into a local SQLite database with keyword search by default
+- **Optionally adds semantic search** using OpenAI embeddings when enabled in Settings
+- **Optionally generates answers** using a configured OpenAI or Anthropic model
 - **Browses** your notes in a file tree sidebar with clean markdown rendering and syntax-highlighted code blocks
 - **Watches** for file changes and re-renders live
 
 ## Requirements
 
 - macOS
-- Node.js 22+
-- pnpm
-- OpenAI API key
+- Node.js 22.x
+- pnpm 10.12+
+- API keys are optional. Local keyword search works without network access.
 
 ## Getting started
 
@@ -23,7 +25,7 @@ pnpm install
 pnpm dev
 ```
 
-On first launch, a Settings modal opens. Enter your API keys and notes root (`~/notes/` by default). ryte will index your corpus and show the file tree once complete.
+On first launch, a Settings modal opens. Choose a notes root (`~/Documents/Ryte` by default) and optionally enter API keys for semantic search and generated answers. ryte will index your corpus and show the file tree once complete.
 
 ## Stack
 
@@ -33,20 +35,23 @@ On first launch, a Settings modal opens. Enter your API keys and notes root (`~/
 - **markdown-it + shiki** — markdown rendering with syntax highlighting (JS regex engine, no WASM)
 - **chokidar** — file watching for live re-render and incremental re-indexing
 - **OpenAI** — `text-embedding-3-small` for embeddings
+- **Anthropic** — optional generated answers
 
 ## Development
 
 ```bash
 cd app
+pnpm check:node
 pnpm dev          # start with hot-reload
 pnpm test         # unit tests (vitest)
 pnpm typecheck    # tsc + vue-tsc
 pnpm lint         # eslint
 pnpm build        # production build
+pnpm smoke:indexer # safe native SQLite/indexer smoke using synthetic notes
 ```
 
 ## Architecture
 
 All storage and native modules live in the **main process**. The renderer communicates exclusively via typed IPC channels (`window.ryte.*`) exposed through a contextBridge preload. Secrets are encrypted via macOS Keychain (`safeStorage`); plaintext keys never touch disk.
 
-Plans live in `~/notes/sessions/YYYY-MM-DD/plans/`.
+Development planning docs may be kept in dated notes folders when requested.

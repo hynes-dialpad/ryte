@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { useIndexStatusStore } from '../stores/index-status'
 import { useSettingsStore } from '../stores/settings'
-import type { ModelId } from '../../../main/settings/settings-store'
+import type {
+  AnswerModelId,
+  AnswerProviderId,
+  ProviderId
+} from '../../../main/settings/settings-store'
 
 const props = defineProps<{ dismissable: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -11,53 +15,68 @@ const emit = defineEmits<{ close: [] }>()
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
 
-const selectedModel = ref<ModelId>('claude-haiku-4-5')
-const synthesisKey = ref('') // Anthropic key for Claude; OpenAI key for GPT (covers both synthesis + embeddings)
-const embeddingsKey = ref('') // OpenAI key — only needed when Claude model is selected
 const notesRoot = ref('')
+const cloudAnswersEnabled = ref(false)
+const semanticIndexEnabled = ref(false)
+const answerProvider = ref<AnswerProviderId>('openai')
+const answerModel = ref<AnswerModelId>('gpt-5.2')
+const openaiKey = ref('')
+const anthropicKey = ref('')
 const saving = ref(false)
 const localError = ref<string | null>(null)
 
-const MODELS: { id: ModelId; label: string; provider: 'anthropic' | 'openai' }[] = [
+const ANSWER_MODELS: Array<{
+  id: AnswerModelId
+  label: string
+  provider: AnswerProviderId
+}> = [
+  { id: 'gpt-5.2', label: 'GPT-5.2', provider: 'openai' },
+  { id: 'gpt-5.1', label: 'GPT-5.1', provider: 'openai' },
+  { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o mini', provider: 'openai' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'anthropic' },
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
-  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', provider: 'anthropic' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini', provider: 'openai' },
-  { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' }
+  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', provider: 'anthropic' }
 ]
 
-const isOpenAIModel = computed(() => selectedModel.value.startsWith('gpt-'))
-
-const synthesisKeyLabel = computed(() => {
-  const provider = isOpenAIModel.value ? 'OpenAI' : 'Anthropic'
-  const hasKey = isOpenAIModel.value
-    ? (settings.state?.hasOpenAIKey ?? false)
-    : (settings.state?.hasAnthropicKey ?? false)
-  const base = `${provider} API key`
-  return hasKey ? `${base} (•••••• set — type to replace)` : base
-})
-
-const embeddingsKeyLabel = computed(() => {
-  const hasKey = settings.state?.hasOpenAIKey ?? false
-  return hasKey
-    ? 'OpenAI API key for embeddings (•••••• set — type to replace)'
-    : 'OpenAI API key for embeddings'
-})
+const answerModelsForProvider = computed(() =>
+  ANSWER_MODELS.filter((model) => model.provider === answerProvider.value)
+)
 
 const keychainOK = computed(() => settings.state?.keychainAvailable ?? false)
 
-const canSave = computed(() => {
-  if (saving.value || !keychainOK.value) return false
-  const s = settings.state
-  if (!s) return false
-  if (!notesRoot.value.trim()) return false
+const providerKeyStatus = computed<Record<ProviderId, boolean>>(() => ({
+  openai: settings.state?.hasOpenAIKey ?? false,
+  anthropic: settings.state?.hasAnthropicKey ?? false,
+  gemini: settings.state?.hasGeminiKey ?? false
+}))
 
-  if (isOpenAIModel.value) {
-    // OpenAI model: one key covers both synthesis and embeddings
-    return s.hasOpenAIKey || !!synthesisKey.value.trim()
-  } else {
-    // Claude model: embeddings key (OpenAI) is always required; synthesis key (Anthropic) is optional
-    return s.hasOpenAIKey || !!embeddingsKey.value.trim()
+const selectedAnswerProviderHasKey = computed(() => providerKeyStatus.value[answerProvider.value])
+
+const openaiKeyLabel = computed(() =>
+  providerKeyStatus.value.openai ? 'OpenAI API key (set - type to replace)' : 'OpenAI API key'
+)
+
+const anthropicKeyLabel = computed(() =>
+  providerKeyStatus.value.anthropic
+    ? 'Anthropic API key (set - type to replace)'
+    : 'Anthropic API key'
+)
+
+const canSave = computed(() => {
+  if (saving.value) return false
+  if (!settings.state) return false
+  if (!notesRoot.value.trim()) return false
+  if (!keychainOK.value && (openaiKey.value.trim() || anthropicKey.value.trim())) return false
+  return true
+})
+
+watch(answerProvider, () => {
+  const selectedStillValid = answerModelsForProvider.value.some(
+    (model) => model.id === answerModel.value
+  )
+  if (!selectedStillValid) {
+    answerModel.value = answerModelsForProvider.value[0]?.id ?? 'gpt-5.2'
   }
 })
 
@@ -65,8 +84,11 @@ onMounted(async () => {
   if (!settings.state) await settings.hydrate()
   const s = settings.state
   if (s) {
-    selectedModel.value = s.model
     notesRoot.value = s.notesRoot
+    cloudAnswersEnabled.value = s.cloudAnswersEnabled
+    semanticIndexEnabled.value = s.semanticIndexEnabled
+    answerProvider.value = s.answerProvider
+    answerModel.value = s.answerModel
   }
 })
 
@@ -81,22 +103,21 @@ async function onSave(): Promise<void> {
   localError.value = null
   try {
     const patch: Parameters<typeof settings.save>[0] = {
-      model: selectedModel.value,
-      notesRoot: notesRoot.value.trim()
+      notesRoot: notesRoot.value.trim(),
+      cloudAnswersEnabled: cloudAnswersEnabled.value,
+      semanticIndexEnabled: semanticIndexEnabled.value,
+      answerProvider: answerProvider.value,
+      answerModel: answerModel.value,
+      embeddingProvider: 'openai',
+      embeddingModel: 'text-embedding-3-small'
     }
 
-    if (isOpenAIModel.value) {
-      // OpenAI model: synthesisKey is the OpenAI key (used for embeddings + V2 synthesis)
-      if (synthesisKey.value.trim()) patch.openaiKey = synthesisKey.value.trim()
-    } else {
-      // Claude model: synthesisKey → Anthropic; embeddingsKey → OpenAI
-      if (synthesisKey.value.trim()) patch.anthropicKey = synthesisKey.value.trim()
-      if (embeddingsKey.value.trim()) patch.openaiKey = embeddingsKey.value.trim()
-    }
+    if (openaiKey.value.trim()) patch.openaiKey = openaiKey.value.trim()
+    if (anthropicKey.value.trim()) patch.anthropicKey = anthropicKey.value.trim()
 
     await settings.save(patch)
-    synthesisKey.value = ''
-    embeddingsKey.value = ''
+    openaiKey.value = ''
+    anthropicKey.value = ''
     emit('close')
     void indexStatus.triggerReindex()
   } catch (e) {
@@ -119,67 +140,101 @@ function onBackdropClick(): void {
       </header>
 
       <p v-if="!keychainOK" class="error-banner">
-        macOS Keychain unavailable — please unlock your Keychain and restart ryte.
+        macOS Keychain unavailable. Unlock Keychain and restart Ryte before saving API keys.
       </p>
 
       <form @submit.prevent="onSave">
-        <!-- Model first -->
-        <label>
-          <span>Model</span>
-          <select v-model="selectedModel" :disabled="saving">
-            <optgroup label="Anthropic">
-              <option
-                v-for="m in MODELS.filter((m) => m.provider === 'anthropic')"
-                :key="m.id"
-                :value="m.id"
-              >
-                {{ m.label }}
-              </option>
-            </optgroup>
-            <optgroup label="OpenAI">
-              <option
-                v-for="m in MODELS.filter((m) => m.provider === 'openai')"
-                :key="m.id"
-                :value="m.id"
-              >
-                {{ m.label }}
-              </option>
-            </optgroup>
-          </select>
-        </label>
+        <section class="settings-section" aria-labelledby="local-folder-title">
+          <h3 id="local-folder-title">Local Folder</h3>
+          <label>
+            <span>Notes root folder</span>
+            <div class="folder-row">
+              <input v-model="notesRoot" type="text" spellcheck="false" :disabled="saving" />
+              <button type="button" :disabled="saving" @click="pickFolder">Choose...</button>
+            </div>
+          </label>
+        </section>
 
-        <!-- Primary API key (adapts to selected provider) -->
-        <label>
-          <span>{{ synthesisKeyLabel }}</span>
-          <input
-            v-model="synthesisKey"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            :disabled="!keychainOK || saving"
-          />
-        </label>
-
-        <!-- OpenAI embeddings key — only when Claude model selected -->
-        <label v-if="!isOpenAIModel">
-          <span>{{ embeddingsKeyLabel }} <span class="hint">(required for indexing)</span></span>
-          <input
-            v-model="embeddingsKey"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            :disabled="!keychainOK || saving"
-          />
-        </label>
-
-        <!-- Notes root -->
-        <label>
-          <span>Notes root folder</span>
-          <div class="folder-row">
-            <input v-model="notesRoot" type="text" spellcheck="false" :disabled="saving" />
-            <button type="button" :disabled="saving" @click="pickFolder">Choose…</button>
+        <section class="settings-section" aria-labelledby="local-search-title">
+          <h3 id="local-search-title">Local Search</h3>
+          <div class="static-row">
+            <span>Keyword search</span>
+            <strong>On</strong>
           </div>
-        </label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="semantic-index-title">
+          <h3 id="semantic-index-title">Semantic Index</h3>
+          <label class="check-row">
+            <input v-model="semanticIndexEnabled" type="checkbox" :disabled="saving" />
+            <span>Enable OpenAI embeddings</span>
+          </label>
+          <p v-if="semanticIndexEnabled" class="warning-copy">
+            Semantic indexing sends note chunks to OpenAI to create embeddings. Leave this off for
+            keyword-only local search.
+          </p>
+          <div class="static-row">
+            <span>Embedding model</span>
+            <strong>text-embedding-3-small</strong>
+          </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="cloud-answers-title">
+          <h3 id="cloud-answers-title">Cloud Answers</h3>
+          <label class="check-row">
+            <input v-model="cloudAnswersEnabled" type="checkbox" :disabled="saving" />
+            <span>Enable generated answers</span>
+          </label>
+          <p v-if="cloudAnswersEnabled" class="warning-copy">
+            Cloud answers send your search query and selected note excerpts to the selected model
+            provider. Your full notes folder is not uploaded.
+          </p>
+          <div class="split-row">
+            <label>
+              <span>Answer provider</span>
+              <select v-model="answerProvider" :disabled="saving">
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
+            </label>
+            <label>
+              <span>Answer model</span>
+              <select v-model="answerModel" :disabled="saving">
+                <option v-for="model in answerModelsForProvider" :key="model.id" :value="model.id">
+                  {{ model.label }}
+                </option>
+              </select>
+            </label>
+          </div>
+          <p v-if="cloudAnswersEnabled && !selectedAnswerProviderHasKey" class="hint-text">
+            Add a {{ answerProvider === 'openai' ? 'OpenAI' : 'Anthropic' }} API key before cloud
+            answers can run.
+          </p>
+        </section>
+
+        <section class="settings-section" aria-labelledby="provider-keys-title">
+          <h3 id="provider-keys-title">Provider Keys</h3>
+          <label>
+            <span>{{ openaiKeyLabel }}</span>
+            <input
+              v-model="openaiKey"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              :disabled="!keychainOK || saving"
+            />
+          </label>
+          <label>
+            <span>{{ anthropicKeyLabel }}</span>
+            <input
+              v-model="anthropicKey"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              :disabled="!keychainOK || saving"
+            />
+          </label>
+        </section>
 
         <p v-if="localError" class="error-text">{{ localError }}</p>
         <p v-if="settings.error" class="error-text">{{ settings.error }}</p>
@@ -189,7 +244,7 @@ function onBackdropClick(): void {
             Cancel
           </button>
           <button type="submit" :disabled="!canSave">
-            {{ saving ? 'Saving…' : 'Save' }}
+            {{ saving ? 'Saving...' : 'Save' }}
           </button>
         </div>
       </form>
@@ -206,6 +261,7 @@ function onBackdropClick(): void {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  padding: 1.5rem;
 }
 
 .modal {
@@ -213,8 +269,9 @@ function onBackdropClick(): void {
   color: var(--color-text);
   padding: 1.5rem 1.75rem;
   border-radius: 8px;
-  min-width: 420px;
-  max-width: 520px;
+  width: min(640px, 100%);
+  max-height: min(860px, 92vh);
+  overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -223,10 +280,26 @@ h2 {
   font-size: 1.25rem;
 }
 
-form {
+h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ev-c-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+form,
+.settings-section {
   display: flex;
   flex-direction: column;
+}
+
+form {
   gap: 1rem;
+}
+
+.settings-section {
+  gap: 0.65rem;
 }
 
 label {
@@ -234,6 +307,17 @@ label {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.875rem;
+}
+
+.check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.check-row input {
+  width: 1rem;
+  height: 1rem;
 }
 
 input[type='password'],
@@ -255,20 +339,50 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.folder-row {
+.folder-row,
+.split-row,
+.static-row {
   display: flex;
   gap: 0.5rem;
 }
 
-.folder-row input {
+.folder-row input,
+.split-row label {
   flex: 1;
+}
+
+.static-row {
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ev-c-text-2);
+  font-size: 0.875rem;
+}
+
+.static-row strong {
+  color: var(--ev-c-text-1);
+  font-weight: 500;
+}
+
+.warning-copy,
+.hint-text {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.warning-copy {
+  color: #ffd7a3;
+}
+
+.hint-text {
+  color: var(--ev-c-text-3);
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 
 button {
@@ -307,9 +421,9 @@ button[type='submit']:hover:not(:disabled) {
   margin: 0;
 }
 
-.hint {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 0.8rem;
-  font-weight: normal;
+@media (max-width: 560px) {
+  .split-row {
+    flex-direction: column;
+  }
 }
 </style>
