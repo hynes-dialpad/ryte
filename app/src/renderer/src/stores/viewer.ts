@@ -9,17 +9,35 @@ export const useViewerStore = defineStore('viewer', () => {
   const sourceMode = ref(false)
   const error = ref<string | null>(null)
 
-  let unsubscribe: (() => void) | null = null
+  let unsubscribeFileChange: (() => void) | null = null
+  let unsubscribeTreeChange: (() => void) | null = null
 
-  async function hydrate(): Promise<void> {
+  function selectedPathExists(paths: string[], root: string): boolean {
+    if (!selectedPath.value) return true
+    return paths.some((relPath) => selectedPath.value === `${root}/${relPath}`)
+  }
+
+  async function refreshTree(): Promise<void> {
     const { notesRoot: root, paths } = await window.ryte.files.listTree()
     notesRoot.value = root
     tree.value = paths
 
-    if (unsubscribe) {
-      unsubscribe()
+    if (!selectedPathExists(paths, root)) {
+      await closeFile()
     }
-    unsubscribe = window.ryte.files.onChange(async (path) => {
+  }
+
+  async function hydrate(): Promise<void> {
+    await refreshTree()
+
+    if (unsubscribeFileChange) {
+      unsubscribeFileChange()
+    }
+    if (unsubscribeTreeChange) {
+      unsubscribeTreeChange()
+    }
+
+    unsubscribeFileChange = window.ryte.files.onChange(async (path) => {
       if (path === selectedPath.value) {
         try {
           content.value = await window.ryte.files.read(path)
@@ -28,6 +46,10 @@ export const useViewerStore = defineStore('viewer', () => {
           error.value = e instanceof Error ? e.message : String(e)
         }
       }
+    })
+
+    unsubscribeTreeChange = window.ryte.files.onTreeChanged(() => {
+      void refreshTree()
     })
   }
 
@@ -62,6 +84,7 @@ export const useViewerStore = defineStore('viewer', () => {
     sourceMode,
     error,
     hydrate,
+    refreshTree,
     openFile,
     closeFile,
     toggleSourceMode

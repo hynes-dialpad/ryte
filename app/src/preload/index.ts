@@ -46,6 +46,7 @@ export interface RyteApi {
     watch(absPath: string): Promise<void>
     unwatch(): Promise<void>
     onChange(cb: (path: string) => void): () => void
+    onTreeChanged(cb: () => void): () => void
   }
   search: {
     query(q: string): Promise<string | null>
@@ -84,6 +85,11 @@ const api: RyteApi = {
       const listener = (_: unknown, path: string): void => cb(path)
       ipcRenderer.on('viewer:file-changed', listener)
       return () => ipcRenderer.removeListener('viewer:file-changed', listener)
+    },
+    onTreeChanged: (cb) => {
+      const listener = (): void => cb()
+      ipcRenderer.on('files:tree-changed', listener)
+      return () => ipcRenderer.removeListener('files:tree-changed', listener)
     }
   },
   search: {

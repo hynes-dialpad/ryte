@@ -106,6 +106,12 @@ export function registerIpc(): void {
     }
   })
 
+  watcher.onTreeChanged(() => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('files:tree-changed')
+    }
+  })
+
   function broadcast(channel: string, payload: Record<string, unknown>): void {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(channel, payload)
