@@ -56,7 +56,7 @@ pnpm build        # production build
 pnpm smoke:indexer # safe native SQLite/indexer smoke using synthetic notes
 ```
 
-Branch and PR expectations are documented in [docs/branch-workflow.md](docs/branch-workflow.md).
+Branch and PR expectations are documented in [docs/branch-workflow.md](docs/branch-workflow.md). Phase 0 manual app smoke is tracked in [docs/phase-0-manual-smoke.md](docs/phase-0-manual-smoke.md).
 
 Runtime/tooling versions:
 
