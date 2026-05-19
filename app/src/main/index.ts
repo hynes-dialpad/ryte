@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification, shell } from 'electron'
+import { app, BrowserWindow, Notification } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -7,6 +7,7 @@ import icon from '../../resources/icon.png?asset'
 import { indexerService } from './indexing/indexer-service'
 import { watcher } from './indexing/watcher'
 import { registerIpc } from './ipc'
+import { installNavigationGuards, originForUrl } from './navigation'
 import { settingsStore } from './settings/settings-store'
 
 // Set early so macOS notifications show "ryte" as the source instead of
@@ -14,6 +15,10 @@ import { settingsStore } from './settings/settings-store'
 app.setName('ryte')
 
 function createWindow(): void {
+  const rendererUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
+  const rendererOrigin = rendererUrl ? originForUrl(rendererUrl) : null
+  const allowedAppOrigins = new Set(rendererOrigin ? [rendererOrigin] : [])
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -32,15 +37,12 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  installNavigationGuards(mainWindow, allowedAppOrigins)
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  if (rendererUrl) {
+    mainWindow.loadURL(rendererUrl)
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
