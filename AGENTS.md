@@ -27,6 +27,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm smoke:indexer
 ```
 
 If a validation command cannot be run, report why and what risk remains.

@@ -21,15 +21,19 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 
 ```bash
 cd app
+corepack enable
 pnpm install
+nvm use 22.14.0
 pnpm dev
 ```
 
 On first launch, a Settings modal opens. Choose a notes root (`~/Documents/Ryte` by default) and optionally enter API keys for semantic search and generated answers. ryte will index your corpus and show the file tree once complete.
 
+Search history is stored locally in the renderer process using `localStorage` and can be cleared from the search overlay. Provider keys are encrypted through Electron `safeStorage` before they are written to app settings.
+
 ## Stack
 
-- **Electron 39** — main process owns all file I/O, native modules, IPC
+- **Electron 41.6.1** — main process owns all file I/O, native modules, IPC
 - **Vue 3 + Pinia** — renderer UI and state
 - **better-sqlite3 + sqlite-vec** — local vector index
 - **markdown-it + shiki** — markdown rendering with syntax highlighting (JS regex engine, no WASM)
@@ -41,6 +45,7 @@ On first launch, a Settings modal opens. Choose a notes root (`~/Documents/Ryte`
 
 ```bash
 cd app
+nvm use 22.14.0
 pnpm check:node
 pnpm dev          # start with hot-reload
 pnpm test         # unit tests (vitest)
@@ -49,6 +54,12 @@ pnpm lint         # eslint
 pnpm build        # production build
 pnpm smoke:indexer # safe native SQLite/indexer smoke using synthetic notes
 ```
+
+Runtime/tooling versions:
+
+- Node.js: `.node-version` pins major version `22`; current validated local version is `v22.14.0`.
+- pnpm: `app/package.json` pins `pnpm@10.12.1`.
+- Electron: `41.6.1`.
 
 ## Architecture
 
