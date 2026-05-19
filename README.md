@@ -56,6 +56,8 @@ pnpm build        # production build
 pnpm smoke:indexer # safe native SQLite/indexer smoke using synthetic notes
 ```
 
+Branch and PR expectations are documented in [docs/branch-workflow.md](docs/branch-workflow.md).
+
 Runtime/tooling versions:
 
 - Node.js: `.node-version` pins major version `22`; current validated local version is `v22.14.0`.
