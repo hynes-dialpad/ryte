@@ -24,22 +24,15 @@ onMounted(async () => {
   _unbindSearch = search.bind()
   await Promise.all([settings.hydrate(), indexStatus.bind()])
 
-  const state = settings.state
-  const isClaudeModel = state && !state.model.startsWith('gpt-')
-  const needsAnthropicKey = isClaudeModel && !state?.hasAnthropicKey
-  if (!state?.hasOpenAIKey || needsAnthropicKey) {
-    showSettings.value = true
-  } else {
-    if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
-      void indexStatus.triggerReindex()
-    }
-    await viewer.hydrate()
+  if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
+    void indexStatus.triggerReindex()
   }
+  await viewer.hydrate()
 })
 
 onUnmounted(() => _unbindSearch?.())
 
-const dismissable = computed(() => settings.state?.hasOpenAIKey ?? false)
+const dismissable = computed(() => true)
 
 function openSearch(): void {
   search.$patch({ answer: '', citations: [], status: 'idle', error: null })
@@ -53,9 +46,7 @@ function openSettings(): void {
 function closeSettings(): void {
   showSettings.value = false
   // After saving settings the notesRoot may have changed — re-hydrate the tree.
-  if (settings.state?.hasOpenAIKey) {
-    void viewer.hydrate()
-  }
+  void viewer.hydrate()
 }
 </script>
 

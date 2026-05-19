@@ -24,18 +24,18 @@ export class IndexerService extends EventEmitter {
   private running = false
 
   /**
-   * Initialize the indexer using current settings. Returns true if a valid
-   * OpenAI key is configured and the indexer is ready to run.
+   * Initialize the indexer using current settings. Keyword indexing is always
+   * available; OpenAI embeddings are enabled only when a key is configured.
    */
   init(): boolean {
-    const openaiKey = settingsStore.getSecret('openai')
-    if (!openaiKey) return false
-
     const settings = settingsStore.load()
-    const embedder = new OpenAIEmbeddingProvider(openaiKey)
+    const openaiKey = settings.semanticIndexEnabled ? settingsStore.getSecret('openai') : null
+    const embedder = openaiKey
+      ? new OpenAIEmbeddingProvider(openaiKey, { model: settings.embeddingModel })
+      : null
     this.embedder = embedder
     this.vectorStore = new VectorStore(indexDbPath())
-    this.vectorStore.init(embedder.dim)
+    this.vectorStore.init(embedder?.dim ?? 1536)
     this.indexState = new IndexStateStore(this.vectorStore.database)
     this.indexState.init()
     this.indexer = new Indexer({
@@ -117,7 +117,7 @@ export class IndexerService extends EventEmitter {
   }
 
   async embed(texts: string[]): Promise<Float32Array[]> {
-    if (!this.embedder) throw new Error('IndexerService not initialized — call init() first')
+    if (!this.embedder) throw new Error('No embedding provider configured')
     return this.embedder.embed(texts)
   }
 

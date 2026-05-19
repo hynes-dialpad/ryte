@@ -74,45 +74,78 @@ export class VectorStore {
   }
 
   replaceFileChunks(sourcePath: string, items: ChunkWithVector[]): void {
-    const db = this.database
-    const txn = db.transaction((path: string, list: ChunkWithVector[]) => {
-      const oldRows = db
-        .prepare('SELECT id, text FROM chunks WHERE source_path = ?')
-        .all(path) as Array<{
-        id: number
-        text: string
-      }>
-      const deleteFts = db.prepare(
-        `INSERT INTO chunk_fts(chunk_fts, rowid, text) VALUES('delete', ?, ?)`
-      )
-      const deleteVec = db.prepare('DELETE FROM chunk_vectors WHERE rowid = ?')
-      for (const { id, text } of oldRows) {
-        deleteFts.run(id, text)
-        deleteVec.run(id)
-      }
-      db.prepare('DELETE FROM chunks WHERE source_path = ?').run(path)
+    this.replaceChunks(
+      sourcePath,
+      items.map(({ chunk, vector }) => ({ chunk, vector }))
+    )
+  }
 
-      const insertChunk = db.prepare(
-        'INSERT INTO chunks (source_path, heading_path, date, frontmatter, text) VALUES (?, ?, ?, ?, ?)'
-      )
-      const insertVec = db.prepare('INSERT INTO chunk_vectors (rowid, embedding) VALUES (?, ?)')
-      const insertFts = db.prepare('INSERT INTO chunk_fts(rowid, text) VALUES(?, ?)')
-      for (const { chunk, vector } of list) {
-        if (vector.length !== this.dim) {
-          throw new Error(`Vector dim ${vector.length} does not match store dim ${this.dim}`)
-        }
-        const info = insertChunk.run(
-          chunk.sourcePath,
-          JSON.stringify(chunk.headingPath),
-          chunk.date,
-          JSON.stringify(chunk.frontmatter),
-          chunk.text
+  replaceFileTextChunks(sourcePath: string, chunks: Chunk[]): void {
+    this.replaceChunks(
+      sourcePath,
+      chunks.map((chunk) => ({ chunk }))
+    )
+  }
+
+  keywordSearch(queryText: string, maxResults = DEFAULT_HYBRID_RESULTS): StoredChunkRow[] {
+    let ftsRows: Array<{ id: number }> = []
+    try {
+      ftsRows = this.database
+        .prepare(`SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? LIMIT ?`)
+        .all(queryText, maxResults) as Array<{ id: number }>
+    } catch {
+      return []
+    }
+    return this.chunksForIds(ftsRows.map(({ id }) => id))
+  }
+
+  private replaceChunks(
+    sourcePath: string,
+    items: Array<{ chunk: Chunk; vector?: Float32Array }>
+  ): void {
+    const db = this.database
+    const txn = db.transaction(
+      (path: string, list: Array<{ chunk: Chunk; vector?: Float32Array }>) => {
+        const oldRows = db
+          .prepare('SELECT id, text FROM chunks WHERE source_path = ?')
+          .all(path) as Array<{
+          id: number
+          text: string
+        }>
+        const deleteFts = db.prepare(
+          `INSERT INTO chunk_fts(chunk_fts, rowid, text) VALUES('delete', ?, ?)`
         )
-        const id = BigInt(info.lastInsertRowid)
-        insertVec.run(id, vector)
-        insertFts.run(id, chunk.text)
+        const deleteVec = db.prepare('DELETE FROM chunk_vectors WHERE rowid = ?')
+        for (const { id, text } of oldRows) {
+          deleteFts.run(id, text)
+          deleteVec.run(id)
+        }
+        db.prepare('DELETE FROM chunks WHERE source_path = ?').run(path)
+
+        const insertChunk = db.prepare(
+          'INSERT INTO chunks (source_path, heading_path, date, frontmatter, text) VALUES (?, ?, ?, ?, ?)'
+        )
+        const insertVec = db.prepare('INSERT INTO chunk_vectors (rowid, embedding) VALUES (?, ?)')
+        const insertFts = db.prepare('INSERT INTO chunk_fts(rowid, text) VALUES(?, ?)')
+        for (const { chunk, vector } of list) {
+          if (vector && vector.length !== this.dim) {
+            throw new Error(`Vector dim ${vector.length} does not match store dim ${this.dim}`)
+          }
+          const info = insertChunk.run(
+            chunk.sourcePath,
+            JSON.stringify(chunk.headingPath),
+            chunk.date,
+            JSON.stringify(chunk.frontmatter),
+            chunk.text
+          )
+          const id = BigInt(info.lastInsertRowid)
+          if (vector) {
+            insertVec.run(id, vector)
+          }
+          insertFts.run(id, chunk.text)
+        }
       }
-    })
+    )
     txn(sourcePath, items)
   }
 
@@ -172,7 +205,12 @@ export class VectorStore {
       .slice(0, maxResults)
       .map(([id]) => id)
 
-    return topIds.map((id) => {
+    return this.chunksForIds(topIds)
+  }
+
+  private chunksForIds(ids: number[]): StoredChunkRow[] {
+    const db = this.database
+    return ids.map((id) => {
       const row = db
         .prepare(
           'SELECT text, source_path AS sourcePath, heading_path AS headingPath, date FROM chunks WHERE id = ?'

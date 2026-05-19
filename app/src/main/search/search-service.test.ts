@@ -9,23 +9,60 @@ vi.mock('./openai-provider', () => ({
   OpenAIProvider: vi.fn().mockImplementation(() => ({ synthesize: mockSynthesize }))
 }))
 
-import { SearchService, type CitationResult } from './search-service'
+import { SearchService, type CitationResult, type SearchCallbacks } from './search-service'
 import type { StoredChunkRow } from '../indexing/vector-store'
+import { modelProvider, type ModelId } from '../settings/settings-store'
 
 // --- minimal dep stubs ---
 
-function makeEmbed(vec = Float32Array.from([1, 0, 0])) {
+type MockSearchCallbacks = {
+  [K in keyof SearchCallbacks]: ReturnType<typeof vi.fn>
+}
+
+function makeEmbed(vec = Float32Array.from([1, 0, 0])): ReturnType<typeof vi.fn> {
   return vi.fn().mockResolvedValue([vec])
 }
 
-function makeHybridSearch(rows: StoredChunkRow[] = []) {
+function makeHybridSearch(rows: StoredChunkRow[] = []): ReturnType<typeof vi.fn> {
   return vi.fn().mockReturnValue(rows)
 }
 
-function makeSettings(model = 'claude-haiku-4-5', key: string | null = 'sk-test') {
+function makeKeywordSearch(rows: StoredChunkRow[] = []): ReturnType<typeof vi.fn> {
+  return vi.fn().mockReturnValue(rows)
+}
+
+function makeRetrieve(rows: StoredChunkRow[] = []): {
+  hybridSearch: ReturnType<typeof vi.fn>
+  keywordSearch: ReturnType<typeof vi.fn>
+} {
   return {
-    load: vi.fn().mockReturnValue({ model }),
-    getSecret: vi.fn().mockReturnValue(key)
+    hybridSearch: makeHybridSearch(rows),
+    keywordSearch: makeKeywordSearch(rows)
+  }
+}
+
+function makeSettings(
+  model: ModelId = 'claude-haiku-4-5',
+  key: string | null = 'sk-test',
+  opts: {
+    cloudAnswersEnabled?: boolean
+    firstCloudUseAcknowledgedAt?: string | null
+  } = {}
+): {
+  load: ReturnType<typeof vi.fn>
+  getSecret: ReturnType<typeof vi.fn>
+} {
+  return {
+    load: vi.fn().mockReturnValue({
+      cloudAnswersEnabled: opts.cloudAnswersEnabled ?? true,
+      firstCloudUseAcknowledgedAt:
+        opts.firstCloudUseAcknowledgedAt === undefined
+          ? '2026-05-19T12:00:00.000Z'
+          : opts.firstCloudUseAcknowledgedAt,
+      answerProvider: modelProvider(model),
+      answerModel: model
+    }),
+    getSecret: vi.fn(() => key)
   }
 }
 
@@ -35,17 +72,13 @@ function row(sourcePath: string, text: string, headingPath: string[] = []): Stor
 
 function service(
   rows: StoredChunkRow[] = [],
-  model = 'claude-haiku-4-5',
+  model: ModelId = 'claude-haiku-4-5',
   key: string | null = 'sk-test'
 ): SearchService {
-  return new SearchService(
-    { embed: makeEmbed() },
-    { hybridSearch: makeHybridSearch(rows) },
-    makeSettings(model, key)
-  )
+  return new SearchService({ embed: makeEmbed() }, makeRetrieve(rows), makeSettings(model, key))
 }
 
-function makeCallbacks() {
+function makeCallbacks(): MockSearchCallbacks {
   return {
     onToken: vi.fn(),
     onSources: vi.fn(),
@@ -56,7 +89,7 @@ function makeCallbacks() {
 }
 
 // Default synthesize: stream a two-citation answer.
-function defaultSynthesize() {
+function defaultSynthesize(): void {
   mockSynthesize.mockImplementation(
     async (_q: string, _chunks: unknown, onToken: (t: string) => void) => {
       onToken('Answer referencing [1] and [2].')
@@ -79,10 +112,12 @@ describe('SearchService', () => {
   })
 
   it('streams tokens via onToken', async () => {
-    mockSynthesize.mockImplementation(async (_q: unknown, _c: unknown, onToken: (t: string) => void) => {
-      onToken('Hello ')
-      onToken('world')
-    })
+    mockSynthesize.mockImplementation(
+      async (_q: unknown, _c: unknown, onToken: (t: string) => void) => {
+        onToken('Hello ')
+        onToken('world')
+      }
+    )
     const svc = service([row('a.md', 'body')])
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
@@ -95,29 +130,73 @@ describe('SearchService', () => {
     const svc = service([row('a.md', 'chunk A'), row('b.md', 'chunk B')])
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
-    const citations: CitationResult[] = cb.onCitation.mock.calls.map((c: unknown[]) => c[0] as CitationResult)
+    const citations: CitationResult[] = cb.onCitation.mock.calls.map(
+      (c: unknown[]) => c[0] as CitationResult
+    )
     const paths = citations.map((c) => c.sourcePath)
     expect(paths).toContain('a.md')
     expect(paths).toContain('b.md')
   })
 
   it('does not emit duplicate citations for repeated [N] markers', async () => {
-    mockSynthesize.mockImplementation(async (_q: unknown, _c: unknown, onToken: (t: string) => void) => {
-      onToken('[1] repeated [1] again')
-    })
+    mockSynthesize.mockImplementation(
+      async (_q: unknown, _c: unknown, onToken: (t: string) => void) => {
+        onToken('[1] repeated [1] again')
+      }
+    )
     const svc = service([row('a.md', 'body')])
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
-    const cited = cb.onCitation.mock.calls.filter((c: unknown[]) => (c[0] as CitationResult).index === 1)
+    const cited = cb.onCitation.mock.calls.filter(
+      (c: unknown[]) => (c[0] as CitationResult).index === 1
+    )
     expect(cited).toHaveLength(1)
   })
 
-  it('calls onError and skips onDone when API key is missing', async () => {
-    const svc = service([], 'claude-haiku-4-5', null)
+  it('returns local sources without synthesis when API key is missing', async () => {
+    const svc = service([row('a.md', 'body')], 'claude-haiku-4-5', null)
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
-    expect(cb.onError).toHaveBeenCalledOnce()
-    expect(cb.onDone).not.toHaveBeenCalled()
+    expect(cb.onError).not.toHaveBeenCalled()
+    expect(mockSynthesize).not.toHaveBeenCalled()
+    expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('does not synthesize when cloud answers are disabled', async () => {
+    const svc = new SearchService(
+      { embed: makeEmbed() },
+      makeRetrieve([row('local.md', 'local result')]),
+      makeSettings('gpt-5.2', 'sk-openai', { cloudAnswersEnabled: false })
+    )
+    const cb = makeCallbacks()
+    await svc.search('q', 'req-1', cb)
+    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
+    expect(mockSynthesize).not.toHaveBeenCalled()
+    expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('does not synthesize before first cloud-use acknowledgement', async () => {
+    const svc = new SearchService(
+      { embed: makeEmbed() },
+      makeRetrieve([row('local.md', 'local result')]),
+      makeSettings('gpt-5.2', 'sk-openai', { firstCloudUseAcknowledgedAt: null })
+    )
+    const cb = makeCallbacks()
+    await svc.search('q', 'req-1', cb)
+    expect(mockSynthesize).not.toHaveBeenCalled()
+    expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('falls back to keyword search when embeddings are unavailable', async () => {
+    const embed = vi.fn().mockRejectedValue(new Error('No embedding provider configured'))
+    const retrieve = makeRetrieve([row('local.md', 'keyword result')])
+    const svc = new SearchService({ embed }, retrieve, makeSettings('claude-haiku-4-5', null))
+    const cb = makeCallbacks()
+    await svc.search('q', 'req-1', cb)
+    expect(retrieve.keywordSearch).toHaveBeenCalledWith('q', 15)
+    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
+    expect(cb.onDone).toHaveBeenCalledOnce()
+    expect(cb.onError).not.toHaveBeenCalled()
   })
 
   it('uses AnthropicProvider for claude models', async () => {
@@ -144,7 +223,7 @@ describe('SearchService', () => {
     )
     const svc = new SearchService(
       { embed: blockingEmbed },
-      { hybridSearch: makeHybridSearch([row('a.md', 'body')]) },
+      makeRetrieve([row('a.md', 'body')]),
       makeSettings()
     )
     const cb = makeCallbacks()

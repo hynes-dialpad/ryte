@@ -2,7 +2,11 @@ import { AnthropicProvider } from './anthropic-provider'
 import { type LLMProvider, type SearchChunk } from './llm-provider'
 import { OpenAIProvider } from './openai-provider'
 import { type StoredChunkRow } from '../indexing/vector-store'
-import { modelProvider, type ModelId, type ProviderId } from '../settings/settings-store'
+import {
+  type AnswerModelId,
+  type AnswerProviderId,
+  type ProviderId
+} from '../settings/settings-store'
 
 export interface CitationResult {
   index: number
@@ -28,6 +32,7 @@ interface EmbedDep {
 }
 
 interface RetrieveDep {
+  keywordSearch(queryText: string, maxResults?: number): StoredChunkRow[]
   hybridSearch(
     queryText: string,
     queryVec: Float32Array,
@@ -37,7 +42,12 @@ interface RetrieveDep {
 }
 
 interface SettingsDep {
-  load(): { model: ModelId }
+  load(): {
+    cloudAnswersEnabled: boolean
+    firstCloudUseAcknowledgedAt: string | null
+    answerProvider: AnswerProviderId
+    answerModel: AnswerModelId
+  }
   getSecret(provider: ProviderId): string | null
 }
 
@@ -58,11 +68,18 @@ export class SearchService {
     try {
       if (this.cancelled.has(requestId)) return
 
-      const [queryVec] = await this.embedDep.embed([query])
+      let rows: StoredChunkRow[]
+      try {
+        const [queryVec] = await this.embedDep.embed([query])
 
-      if (this.cancelled.has(requestId)) return
+        if (this.cancelled.has(requestId)) return
 
-      const rows = this.retrieveDep.hybridSearch(query, queryVec, RETRIEVE_K, RETRIEVE_MAX)
+        rows = this.retrieveDep.hybridSearch(query, queryVec, RETRIEVE_K, RETRIEVE_MAX)
+      } catch {
+        if (this.cancelled.has(requestId)) return
+        rows = this.retrieveDep.keywordSearch(query, RETRIEVE_MAX)
+      }
+
       const chunks: SearchChunk[] = rows.map((r, i) => ({
         index: i + 1,
         sourcePath: r.sourcePath,
@@ -74,10 +91,24 @@ export class SearchService {
         chunks.map((c) => ({ sourcePath: c.sourcePath, headingPath: c.headingPath }))
       )
 
-      const { model } = this.settings.load()
-      const provider = modelProvider(model)
+      if (chunks.length === 0) {
+        callbacks.onDone()
+        return
+      }
+
+      const settings = this.settings.load()
+      if (!settings.cloudAnswersEnabled || !settings.firstCloudUseAcknowledgedAt) {
+        callbacks.onDone()
+        return
+      }
+
+      const provider = settings.answerProvider
+      const model = settings.answerModel
       const apiKey = this.settings.getSecret(provider)
-      if (!apiKey) throw new Error(`No ${provider} API key configured`)
+      if (!apiKey) {
+        callbacks.onDone()
+        return
+      }
 
       const llm: LLMProvider =
         provider === 'anthropic'

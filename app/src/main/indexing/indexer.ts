@@ -9,7 +9,7 @@ import { walkNotes } from './walker'
 
 export interface IndexerDeps {
   notesRoot: string
-  embedder: EmbeddingProvider
+  embedder: EmbeddingProvider | null
   vectorStore: VectorStore
   indexState: IndexStateStore
 }
@@ -77,13 +77,17 @@ export class Indexer {
 
     // Phase 2: embed file-by-file (simple, predictable; can batch across files later if needed).
     for (const file of pending) {
-      const texts = file.chunks.map((c) => c.text)
-      const vectors = await embedder.embed(texts)
-      const items: ChunkWithVector[] = file.chunks.map((chunk, i) => ({
-        chunk,
-        vector: vectors[i]
-      }))
-      vectorStore.replaceFileChunks(file.relPath, items)
+      if (embedder) {
+        const texts = file.chunks.map((c) => c.text)
+        const vectors = await embedder.embed(texts)
+        const items: ChunkWithVector[] = file.chunks.map((chunk, i) => ({
+          chunk,
+          vector: vectors[i]
+        }))
+        vectorStore.replaceFileChunks(file.relPath, items)
+      } else {
+        vectorStore.replaceFileTextChunks(file.relPath, file.chunks)
+      }
       indexState.markIndexed(file.relPath, file.mtimeMs, file.chunks.length)
 
       filesDone += 1
@@ -109,11 +113,15 @@ export class Indexer {
       indexState.markIndexed(relPath, mtimeMs, 0)
       return { chunkCount: 0, skipped: false }
     }
-    const vectors = await embedder.embed(chunks.map((c) => c.text))
-    vectorStore.replaceFileChunks(
-      relPath,
-      chunks.map((chunk, i) => ({ chunk, vector: vectors[i] }))
-    )
+    if (embedder) {
+      const vectors = await embedder.embed(chunks.map((c) => c.text))
+      vectorStore.replaceFileChunks(
+        relPath,
+        chunks.map((chunk, i) => ({ chunk, vector: vectors[i] }))
+      )
+    } else {
+      vectorStore.replaceFileTextChunks(relPath, chunks)
+    }
     indexState.markIndexed(relPath, mtimeMs, chunks.length)
     return { chunkCount: chunks.length, skipped: false }
   }

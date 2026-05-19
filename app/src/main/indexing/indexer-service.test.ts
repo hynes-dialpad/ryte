@@ -22,7 +22,18 @@ vi.mock('./indexer', () => ({
 vi.mock('../settings/settings-store', () => ({
   settingsStore: {
     getSecret: vi.fn().mockReturnValue(null),
-    load: vi.fn().mockReturnValue({ notesRoot: '/tmp/notes', model: 'claude-haiku-4-5' })
+    load: vi.fn().mockReturnValue({
+      schemaVersion: 2,
+      notesRoot: '/tmp/notes',
+      cloudAnswersEnabled: false,
+      semanticIndexEnabled: false,
+      firstCloudUseAcknowledgedAt: null,
+      answerProvider: 'openai',
+      answerModel: 'gpt-5.2',
+      embeddingProvider: 'openai',
+      embeddingModel: 'text-embedding-3-small',
+      encryptedKeys: {}
+    })
   }
 }))
 
@@ -45,16 +56,28 @@ describe('IndexerService.embed()', () => {
     mockEmbed.mockResolvedValue([Float32Array.from([1, 0, 0])])
   })
 
-  it('throws when not initialized', async () => {
+  it('throws when no embedding provider is configured', async () => {
     const { IndexerService } = await import('./indexer-service')
     const svc = new IndexerService()
-    await expect(svc.embed(['hello'])).rejects.toThrow('not initialized')
+    await expect(svc.embed(['hello'])).rejects.toThrow('No embedding provider configured')
   })
 
   it('delegates to the embedder when initialized', async () => {
     const { settingsStore } = await import('../settings/settings-store')
     const { IndexerService } = await import('./indexer-service')
     vi.mocked(settingsStore.getSecret).mockReturnValue('sk-test')
+    vi.mocked(settingsStore.load).mockReturnValue({
+      schemaVersion: 2,
+      notesRoot: '/tmp/notes',
+      cloudAnswersEnabled: false,
+      semanticIndexEnabled: true,
+      firstCloudUseAcknowledgedAt: null,
+      answerProvider: 'openai',
+      answerModel: 'gpt-5.2',
+      embeddingProvider: 'openai',
+      embeddingModel: 'text-embedding-3-small',
+      encryptedKeys: {}
+    })
     const svc = new IndexerService()
     svc.init()
     const result = await svc.embed(['hello world'])

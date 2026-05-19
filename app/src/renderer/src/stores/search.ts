@@ -39,7 +39,7 @@ export const useSearchStore = defineStore('search', () => {
     activeRequestId.value = await window.ryte.search.query(q)
     if (!activeRequestId.value) {
       status.value = 'error'
-      error.value = 'Indexer not ready — configure settings and wait for indexing to complete'
+      error.value = 'Indexer not ready — wait for local indexing to initialize'
     }
   }
 
