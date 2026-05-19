@@ -1,6 +1,7 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3'
 import * as sqliteVec from 'sqlite-vec'
 
+import { buildFtsMatchQuery } from './fts-query'
 import type { Chunk } from './chunker'
 
 export interface ChunkWithVector {
@@ -88,11 +89,16 @@ export class VectorStore {
   }
 
   keywordSearch(queryText: string, maxResults = DEFAULT_HYBRID_RESULTS): StoredChunkRow[] {
+    const matchQuery = buildFtsMatchQuery(queryText)
+    if (!matchQuery) return []
+
     let ftsRows: Array<{ id: number }> = []
     try {
       ftsRows = this.database
-        .prepare(`SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? LIMIT ?`)
-        .all(queryText, maxResults) as Array<{ id: number }>
+        .prepare(
+          `SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? ORDER BY bm25(chunk_fts) LIMIT ?`
+        )
+        .all(matchQuery, maxResults) as Array<{ id: number }>
     } catch {
       return []
     }
@@ -184,12 +190,17 @@ export class VectorStore {
       .all(queryVec, k) as Array<{ id: number }>
 
     let ftsRows: Array<{ id: number }> = []
-    try {
-      ftsRows = db
-        .prepare(`SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? LIMIT ?`)
-        .all(queryText, k) as Array<{ id: number }>
-    } catch {
-      // Malformed FTS5 query (e.g. bare operators) — fall through to vector-only
+    const matchQuery = buildFtsMatchQuery(queryText)
+    if (matchQuery) {
+      try {
+        ftsRows = db
+          .prepare(
+            `SELECT rowid AS id FROM chunk_fts WHERE chunk_fts MATCH ? ORDER BY bm25(chunk_fts) LIMIT ?`
+          )
+          .all(matchQuery, k) as Array<{ id: number }>
+      } catch {
+        // Malformed FTS5 query after sanitization should be rare; fall through to vector-only.
+      }
     }
 
     const scores = new Map<number, number>()

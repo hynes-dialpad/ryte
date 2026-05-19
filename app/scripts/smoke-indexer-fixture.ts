@@ -99,6 +99,12 @@ async function main(): Promise<void> {
       'expected keyword/hybrid search to find projects/alpha.md'
     )
 
+    const naturalLanguageResults = store.keywordSearch('give me privacy / release statuses', 5)
+    assert(
+      naturalLanguageResults.length > 0,
+      'expected natural-language keyword search with punctuation to return results'
+    )
+
     const second = await indexer.indexAll()
     assert(
       second.filesIndexed === 0,
