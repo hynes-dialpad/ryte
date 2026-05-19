@@ -6,23 +6,32 @@ import { indexerService } from './indexer-service'
 
 const TREE_CHANGED_EVENT = 'tree-changed'
 
+function isMarkdownFile(path: string): boolean {
+  return path.toLowerCase().endsWith('.md')
+}
+
 export class Watcher {
   private fsw: FSWatcher | null = null
   private readonly events = new EventEmitter()
 
   start(notesRoot: string): void {
     if (this.fsw) this.stop()
-    this.fsw = chokidar.watch(`${notesRoot}/**/*.md`, {
+    this.fsw = chokidar.watch(notesRoot, {
       ignoreInitial: true,
       persistent: true,
       awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 }
     })
     this.fsw.on('add', (path) => {
+      if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
       void indexerService.notifyFileChanged(path)
     })
-    this.fsw.on('change', (path) => indexerService.notifyFileChanged(path))
+    this.fsw.on('change', (path) => {
+      if (!isMarkdownFile(path)) return
+      void indexerService.notifyFileChanged(path)
+    })
     this.fsw.on('unlink', (path) => {
+      if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
       void indexerService.notifyFileRemoved(path)
     })

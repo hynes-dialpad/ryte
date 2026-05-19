@@ -44,10 +44,30 @@ describe('Watcher', () => {
     watcher.onTreeChanged(onTreeChanged)
     watcher.start('/notes')
 
+    expect(mocks.watch).toHaveBeenCalledWith(
+      '/notes',
+      expect.objectContaining({ ignoreInitial: true, persistent: true })
+    )
+
     handlers.get('add')?.('/notes/new.md')
 
     expect(onTreeChanged).toHaveBeenCalledOnce()
     expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/new.md')
+  })
+
+  it('ignores non-markdown file events from the watched notes root', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    handlers.get('add')?.('/notes/ignored.txt')
+    handlers.get('change')?.('/notes/ignored.txt')
+    handlers.get('unlink')?.('/notes/ignored.txt')
+
+    expect(onTreeChanged).not.toHaveBeenCalled()
+    expect(mocks.notifyFileChanged).not.toHaveBeenCalled()
+    expect(mocks.notifyFileRemoved).not.toHaveBeenCalled()
   })
 
   it('notifies the indexer and file tree subscribers when markdown files are removed', () => {
