@@ -31,6 +31,7 @@ Use this checklist before merging the Phase 0 foundation PR. Do not paste real n
 | Provider/model API failure is visible and contextual                       | Not run | Use a safe invalid model/key test if needed.                |
 | Search history persists after app restart                                  | Not run |                                                             |
 | Clear removes search history                                               | Not run |                                                             |
+| Settings Rebuild Index button starts a local reindex                       | Not run |                                                             |
 | Settings save triggers reindex without database corruption                 | Not run |                                                             |
 | Settings shows app version                                                 | Not run |                                                             |
 | Normal actions do not spam Electron macOS menu warnings                    | Not run |                                                             |

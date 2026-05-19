@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { useIndexStatusStore } from '../stores/index-status'
+import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
 import type {
   AnswerModelId,
@@ -14,6 +15,7 @@ const emit = defineEmits<{ close: [] }>()
 
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
+const search = useSearchStore()
 
 const notesRoot = ref('')
 const cloudAnswersEnabled = ref(false)
@@ -53,6 +55,19 @@ const providerKeyStatus = computed<Record<ProviderId, boolean>>(() => ({
 }))
 
 const selectedAnswerProviderHasKey = computed(() => providerKeyStatus.value[answerProvider.value])
+
+const reindexRunning = computed(
+  () => indexStatus.status.phase === 'walking' || indexStatus.status.phase === 'indexing'
+)
+
+const indexStatusLabel = computed(() => {
+  const s = indexStatus.status
+  if (s.phase === 'walking') return 'Scanning files'
+  if (s.phase === 'indexing') return `Indexing ${s.filesDone}/${s.filesTotal} files`
+  if (s.phase === 'done') return `${s.filesTotal} files, ${s.chunksTotal} chunks`
+  if (s.phase === 'error') return 'Indexing error'
+  return 'Not indexed yet'
+})
 
 const openaiKeyLabel = computed(() =>
   providerKeyStatus.value.openai ? 'OpenAI API key (set - type to replace)' : 'OpenAI API key'
@@ -130,6 +145,15 @@ async function onSave(): Promise<void> {
   }
 }
 
+async function rebuildIndex(): Promise<void> {
+  localError.value = null
+  try {
+    await indexStatus.triggerReindex()
+  } catch (e) {
+    localError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
 function onBackdropClick(): void {
   if (props.dismissable) emit('close')
 }
@@ -164,6 +188,36 @@ function onBackdropClick(): void {
             <span>Keyword search</span>
             <strong>On</strong>
           </div>
+        </section>
+
+        <section class="settings-section" aria-labelledby="local-data-title">
+          <h3 id="local-data-title">Local Data</h3>
+          <div class="static-row">
+            <span>Index status</span>
+            <strong>{{ indexStatusLabel }}</strong>
+          </div>
+          <div class="button-row">
+            <button type="button" :disabled="saving || reindexRunning" @click="rebuildIndex">
+              {{ reindexRunning ? 'Rebuilding...' : 'Rebuild Index' }}
+            </button>
+            <button
+              type="button"
+              :disabled="saving || search.history.length === 0"
+              @click="search.clearHistory"
+            >
+              Clear Search History
+            </button>
+          </div>
+          <p
+            v-if="indexStatus.status.phase === 'error' && indexStatus.status.error"
+            class="error-text"
+          >
+            {{ indexStatus.status.error }}
+          </p>
+          <p class="hint-text">
+            Rebuilding the index uses local markdown files and does not require provider keys.
+            Search history is stored locally in this app.
+          </p>
         </section>
 
         <section class="settings-section" aria-labelledby="semantic-index-title">
@@ -346,9 +400,14 @@ button:disabled {
 
 .folder-row,
 .split-row,
+.button-row,
 .static-row {
   display: flex;
   gap: 0.5rem;
+}
+
+.button-row {
+  flex-wrap: wrap;
 }
 
 .folder-row input,
