@@ -127,13 +127,15 @@ export function registerIpc(): void {
       return null
     }
     const requestId = randomUUID()
-    void svc.search(query, requestId, {
-      onToken: (token) => broadcast('search:stream-token', { requestId, token }),
-      onSources: (sources) => broadcast('search:sources', { requestId, sources }),
-      onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
-      onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
-      onDone: () => broadcast('search:done', { requestId }),
-      onError: (error) => broadcast('search:error', { requestId, error })
+    setImmediate(() => {
+      void svc.search(query, requestId, {
+        onToken: (token) => broadcast('search:stream-token', { requestId, token }),
+        onSources: (sources) => broadcast('search:sources', { requestId, sources }),
+        onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
+        onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
+        onDone: () => broadcast('search:done', { requestId }),
+        onError: (error) => broadcast('search:error', { requestId, error })
+      })
     })
     return requestId
   })
