@@ -52,6 +52,24 @@ describe('OpenAIProvider', () => {
     expect(user?.content).toContain('source text')
   })
 
+  it('uses max_tokens for GPT-4o chat models', async () => {
+    mockCreate.mockResolvedValue(makeStream([]))
+    const provider = new OpenAIProvider('sk-test', 'gpt-4o')
+    await provider.synthesize('q', [fakeChunk(1, 'body')], () => {})
+    const args = mockCreate.mock.calls[0][0] as Record<string, unknown>
+    expect(args.max_tokens).toBe(1024)
+    expect(args.max_completion_tokens).toBeUndefined()
+  })
+
+  it('uses max_completion_tokens for GPT-5 chat models', async () => {
+    mockCreate.mockResolvedValue(makeStream([]))
+    const provider = new OpenAIProvider('sk-test', 'gpt-5.2')
+    await provider.synthesize('q', [fakeChunk(1, 'body')], () => {})
+    const args = mockCreate.mock.calls[0][0] as Record<string, unknown>
+    expect(args.max_completion_tokens).toBe(1024)
+    expect(args.max_tokens).toBeUndefined()
+  })
+
   it('skips delta events with no content', async () => {
     mockCreate.mockResolvedValue(makeStream(['real']))
     const provider = new OpenAIProvider('sk-test', 'gpt-4o-mini')
