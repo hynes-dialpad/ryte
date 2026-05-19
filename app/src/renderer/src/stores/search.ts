@@ -1,17 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import {
+  clearSavedSearchHistory,
+  loadSearchHistory,
+  saveSearchHistory,
+  SEARCH_HISTORY_LIMIT,
+  type HistoryEntry
+} from './search-history'
 import type { SearchCitation, SearchSource } from '../../../preload/index'
 
 export type SearchStatus = 'idle' | 'searching' | 'streaming' | 'done' | 'error'
-
-export interface HistoryEntry {
-  query: string
-  answer: string
-  sources: SearchSource[]
-  citations: SearchCitation[]
-  timestamp: number
-}
 
 export const useSearchStore = defineStore('search', () => {
   const query = ref('')
@@ -21,7 +20,7 @@ export const useSearchStore = defineStore('search', () => {
   const status = ref<SearchStatus>('idle')
   const error = ref<string | null>(null)
   const activeRequestId = ref<string | null>(null)
-  const history = ref<HistoryEntry[]>([])
+  const history = ref<HistoryEntry[]>(loadSearchHistory())
 
   function reset(): void {
     answer.value = ''
@@ -82,13 +81,17 @@ export const useSearchStore = defineStore('search', () => {
     cleanups.push(
       window.ryte.search.onDone((requestId) => {
         if (requestId !== activeRequestId.value) return
-        history.value.unshift({
-          query: query.value,
-          answer: answer.value,
-          sources: sources.value,
-          citations: citations.value,
-          timestamp: Date.now()
-        })
+        history.value = [
+          {
+            query: query.value,
+            answer: answer.value,
+            sources: sources.value,
+            citations: citations.value,
+            timestamp: Date.now()
+          },
+          ...history.value
+        ].slice(0, SEARCH_HISTORY_LIMIT)
+        saveSearchHistory(history.value)
         status.value = 'done'
         activeRequestId.value = null
       })
@@ -107,6 +110,11 @@ export const useSearchStore = defineStore('search', () => {
     return _cleanup
   }
 
+  function clearHistory(): void {
+    history.value = []
+    clearSavedSearchHistory()
+  }
+
   return {
     query,
     answer,
@@ -118,6 +126,7 @@ export const useSearchStore = defineStore('search', () => {
     history,
     runQuery,
     cancel,
-    bind
+    bind,
+    clearHistory
   }
 })

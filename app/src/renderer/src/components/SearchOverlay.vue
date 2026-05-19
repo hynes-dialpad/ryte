@@ -151,9 +151,12 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
         </ol>
       </template>
 
-      <!-- In-session history -->
+      <!-- Local search history -->
       <div v-if="search.history.length > 0" class="history-section">
-        <div class="history-label">Previous searches this session</div>
+        <div class="history-header">
+          <div class="history-label">Search history</div>
+          <button class="history-clear" type="button" @click="search.clearHistory">Clear</button>
+        </div>
         <div v-for="(entry, i) in search.history" :key="i" class="history-entry">
           <div class="history-query">{{ entry.query }}</div>
           <div class="history-answer">{{ entry.answer }}</div>
@@ -407,6 +410,29 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.history-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.history-clear {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: var(--ev-c-text-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.history-clear:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
 }
 
 .history-entry {
