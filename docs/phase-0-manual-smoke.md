@@ -8,7 +8,7 @@ Use this checklist before merging the Phase 0 foundation PR. Do not paste real n
 - Branch: `feat/ryte-foundation`
 - App version: `0.1.0`
 - Node version: `v22.14.0`
-- pnpm version: `8.15.5` local CLI; package metadata pins `pnpm@10.12.1`
+- pnpm version: `10.12.1`
 - macOS version: `26.4.1`
 
 ## Required Automated Checks
