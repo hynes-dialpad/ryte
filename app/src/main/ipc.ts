@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { relative } from 'node:path'
 
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
@@ -37,6 +37,8 @@ function getOrCreateSearchService(): SearchService | null {
  * indexer-service is initialized.
  */
 export function registerIpc(): void {
+  ipcMain.handle('app:get-version', () => app.getVersion())
+
   ipcMain.handle('settings:get-state', () => settingsStore.publicState())
 
   ipcMain.handle('settings:save', async (_, patch: SettingsUpdate) => {

@@ -62,6 +62,12 @@ Runtime/tooling versions:
 - pnpm: `app/package.json` pins `pnpm@10.12.1`.
 - Electron: `41.6.1`.
 
+## Versioning
+
+`app/package.json` is the source of truth for the app version. Phase 0 uses pre-1.0 SemVer: `0.1.x` for foundation fixes, `0.2.0` for the first security/privacy UX milestone, and `0.3.0` for the first local-first search milestone.
+
+Tagged releases should use the `v` prefix, for example `v0.1.0`. Future DMG names and macOS bundle versions should derive from the package version plus a monotonically increasing build number.
+
 ## Architecture
 
 All storage and native modules live in the **main process**. The renderer communicates exclusively via typed IPC channels (`window.ryte.*`) exposed through a contextBridge preload. Secrets are encrypted via macOS Keychain (`safeStorage`); plaintext keys never touch disk.

@@ -24,6 +24,7 @@ const openaiKey = ref('')
 const anthropicKey = ref('')
 const saving = ref(false)
 const localError = ref<string | null>(null)
+const appVersion = ref('')
 
 const ANSWER_MODELS: Array<{
   id: AnswerModelId
@@ -81,6 +82,7 @@ watch(answerProvider, () => {
 })
 
 onMounted(async () => {
+  const versionPromise = window.ryte.app.getVersion()
   if (!settings.state) await settings.hydrate()
   const s = settings.state
   if (s) {
@@ -90,6 +92,7 @@ onMounted(async () => {
     answerProvider.value = s.answerProvider
     answerModel.value = s.answerModel
   }
+  appVersion.value = await versionPromise
 })
 
 async function pickFolder(): Promise<void> {
@@ -248,6 +251,8 @@ function onBackdropClick(): void {
           </button>
         </div>
       </form>
+
+      <footer class="settings-footer">Ryte {{ appVersion }}</footer>
     </div>
   </div>
 </template>
@@ -419,6 +424,13 @@ button[type='submit']:hover:not(:disabled) {
   color: #ff9494;
   font-size: 0.825rem;
   margin: 0;
+}
+
+.settings-footer {
+  color: var(--ev-c-text-3);
+  font-size: 0.75rem;
+  margin-top: 1rem;
+  text-align: right;
 }
 
 @media (max-width: 560px) {

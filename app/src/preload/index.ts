@@ -28,6 +28,9 @@ export interface SearchCitation {
 }
 
 export interface RyteApi {
+  app: {
+    getVersion(): Promise<string>
+  }
   settings: {
     getState(): Promise<PublicSettingsState>
     save(patch: SettingsUpdate): Promise<PublicSettingsState>
@@ -60,6 +63,9 @@ export interface RyteApi {
 }
 
 const api: RyteApi = {
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:get-version')
+  },
   settings: {
     getState: () => ipcRenderer.invoke('settings:get-state'),
     save: (patch) => ipcRenderer.invoke('settings:save', patch)
