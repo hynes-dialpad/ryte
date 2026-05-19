@@ -47,6 +47,7 @@ Search history is stored locally in the renderer process using `localStorage` an
 cd app
 nvm use 22.14.0
 pnpm check:node
+pnpm validate      # full local validation: node, lint, typecheck, test, build
 pnpm dev          # start with hot-reload
 pnpm test         # unit tests (vitest)
 pnpm typecheck    # tsc + vue-tsc

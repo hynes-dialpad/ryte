@@ -23,11 +23,19 @@ Run validation from `app/` unless noted otherwise:
 
 ```bash
 pnpm guard:branch
+pnpm validate
+pnpm smoke:indexer
+```
+
+`pnpm validate` runs Node version validation, lint, typecheck, tests, and production build. `pnpm smoke:indexer` is the explicit native SQLite/indexer smoke using synthetic fixtures.
+
+The individual validation commands are:
+
+```bash
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm smoke:indexer
 ```
 
 If a validation command cannot be run, report why and what risk remains.
