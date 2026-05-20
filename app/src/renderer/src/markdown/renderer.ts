@@ -2,6 +2,8 @@ import MarkdownIt from 'markdown-it'
 import { fromHighlighter } from '@shikijs/markdown-it/core'
 import { createHighlighter, createJavaScriptRegexEngine } from 'shiki'
 
+import { isSafeLinkTarget, sanitizeRenderedHtml } from './sanitizer'
+
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/
 
 // Languages that are pre-loaded at init so they're available synchronously
@@ -40,6 +42,16 @@ async function getMd(): Promise<MarkdownIt> {
         engine: createJavaScriptRegexEngine()
       })
       const md = new MarkdownIt({ html: false, linkify: true, typographer: true })
+      md.validateLink = isSafeLinkTarget
+      const defaultLinkOpen =
+        md.renderer.rules.link_open ??
+        ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+      md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+        const token = tokens[idx]
+        token.attrSet('target', '_blank')
+        token.attrSet('rel', 'noreferrer noopener')
+        return defaultLinkOpen(tokens, idx, options, env, self)
+      }
       md.use(
         fromHighlighter(highlighter, {
           theme: 'github-dark',
@@ -60,5 +72,5 @@ async function getMd(): Promise<MarkdownIt> {
 export async function render(text: string): Promise<string> {
   const md = await getMd()
   const stripped = text.replace(FRONTMATTER_RE, '')
-  return md.render(stripped)
+  return sanitizeRenderedHtml(md.render(stripped))
 }

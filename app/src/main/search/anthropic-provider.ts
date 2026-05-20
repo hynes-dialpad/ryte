@@ -21,15 +21,19 @@ export class AnthropicProvider implements LLMProvider {
   async synthesize(
     query: string,
     chunks: SearchChunk[],
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    options: { signal?: AbortSignal } = {}
   ): Promise<void> {
     const { system, userContent } = buildSynthesisMessages(query, chunks)
-    const stream = this.client.messages.stream({
-      model: this.model,
-      max_tokens: 1024,
-      system,
-      messages: [{ role: 'user', content: userContent }]
-    })
+    const stream = this.client.messages.stream(
+      {
+        model: this.model,
+        max_tokens: 1024,
+        system,
+        messages: [{ role: 'user', content: userContent }]
+      },
+      { signal: options.signal }
+    )
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         onToken(event.delta.text)

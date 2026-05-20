@@ -2,32 +2,45 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { defaultNotesRoot, settingsFilePath } from '../paths'
+import {
+  answerModelBelongsToProvider,
+  defaultAnswerModelForProvider,
+  isAnswerModelId,
+  isAnswerProviderId,
+  isEmbeddingModelId,
+  isEmbeddingProviderId,
+  isProviderId,
+  providerForAnswerModel,
+  type AnswerModelId,
+  type AnswerProviderId,
+  type EmbeddingModelId,
+  type EmbeddingProviderId,
+  type ModelId,
+  type ProviderId
+} from '../../shared/provider-registry'
 import { keychain } from './keychain'
 
-export const SETTINGS_SCHEMA_VERSION = 2
+export const SETTINGS_SCHEMA_VERSION = 3
 
-export type ProviderId = 'anthropic' | 'openai' | 'gemini'
-export type AnswerProviderId = 'anthropic' | 'openai'
-export type EmbeddingProviderId = 'openai'
-
-export type ModelId =
-  | 'claude-haiku-4-5'
-  | 'claude-sonnet-4-6'
-  | 'claude-opus-4-7'
-  | 'gpt-5.2'
-  | 'gpt-5.1'
-  | 'gpt-4o-mini'
-  | 'gpt-4o'
-
-export type AnswerModelId = ModelId
-export type EmbeddingModelId = 'text-embedding-3-small'
-
-export function modelProvider(model: ModelId): AnswerProviderId {
-  return model.startsWith('gpt-') ? 'openai' : 'anthropic'
+export type {
+  AnswerModelId,
+  AnswerProviderId,
+  EmbeddingModelId,
+  EmbeddingProviderId,
+  ModelId,
+  ProviderId
 }
 
-export function defaultAnswerModelForProvider(provider: AnswerProviderId): AnswerModelId {
-  return provider === 'openai' ? 'gpt-5.2' : 'claude-haiku-4-5'
+export type SearchHistoryRetention = 'off' | 'session' | '7-days' | '30-days' | 'forever'
+
+export interface DataFlowAcknowledgement {
+  acknowledgedAt: string
+  provider: ProviderId
+  model: string
+}
+
+export interface ProviderKeyMetadata {
+  lastValidatedAt: string | null
 }
 
 export interface SettingsFile {
@@ -35,12 +48,16 @@ export interface SettingsFile {
   notesRoot: string
   cloudAnswersEnabled: boolean
   semanticIndexEnabled: boolean
-  firstCloudUseAcknowledgedAt: string | null
+  cloudAnswersAcknowledgement: DataFlowAcknowledgement | null
+  semanticIndexAcknowledgement: DataFlowAcknowledgement | null
   answerProvider: AnswerProviderId
   answerModel: AnswerModelId
   embeddingProvider: EmbeddingProviderId
   embeddingModel: EmbeddingModelId
+  searchHistoryRetention: SearchHistoryRetention
+  searchHistoryIncludesAnswers: boolean
   encryptedKeys: Partial<Record<ProviderId, string>>
+  providerKeyMetadata: Partial<Record<ProviderId, ProviderKeyMetadata>>
 }
 
 export interface PublicSettingsState {
@@ -49,13 +66,18 @@ export interface PublicSettingsState {
   cloudAnswersEnabled: boolean
   semanticIndexEnabled: boolean
   firstCloudUseAcknowledgedAt: string | null
+  cloudAnswersAcknowledgement: DataFlowAcknowledgement | null
+  semanticIndexAcknowledgement: DataFlowAcknowledgement | null
   answerProvider: AnswerProviderId
   answerModel: AnswerModelId
   embeddingProvider: EmbeddingProviderId
   embeddingModel: EmbeddingModelId
+  searchHistoryRetention: SearchHistoryRetention
+  searchHistoryIncludesAnswers: boolean
   hasAnthropicKey: boolean
   hasOpenAIKey: boolean
   hasGeminiKey: boolean
+  providerKeyMetadata: Partial<Record<ProviderId, ProviderKeyMetadata>>
   keychainAvailable: boolean
 }
 
@@ -65,13 +87,18 @@ export interface SettingsUpdate {
   cloudAnswersEnabled?: boolean
   semanticIndexEnabled?: boolean
   firstCloudUseAcknowledgedAt?: string | null
+  cloudAnswersAcknowledgement?: DataFlowAcknowledgement | null
+  semanticIndexAcknowledgement?: DataFlowAcknowledgement | null
   answerProvider?: AnswerProviderId
   answerModel?: AnswerModelId
   embeddingProvider?: EmbeddingProviderId
   embeddingModel?: EmbeddingModelId
+  searchHistoryRetention?: SearchHistoryRetention
+  searchHistoryIncludesAnswers?: boolean
   anthropicKey?: string
   openaiKey?: string
   geminiKey?: string
+  deleteProviderKeys?: ProviderId[]
 }
 
 function defaultSettings(): SettingsFile {
@@ -80,39 +107,65 @@ function defaultSettings(): SettingsFile {
     notesRoot: defaultNotesRoot(),
     cloudAnswersEnabled: false,
     semanticIndexEnabled: false,
-    firstCloudUseAcknowledgedAt: null,
+    cloudAnswersAcknowledgement: null,
+    semanticIndexAcknowledgement: null,
     answerProvider: 'openai',
     answerModel: 'gpt-5.2',
     embeddingProvider: 'openai',
     embeddingModel: 'text-embedding-3-small',
-    encryptedKeys: {}
+    searchHistoryRetention: '30-days',
+    searchHistoryIncludesAnswers: false,
+    encryptedKeys: {},
+    providerKeyMetadata: {}
   }
 }
 
-function isModelId(value: unknown): value is ModelId {
+export function modelProvider(model: ModelId): AnswerProviderId {
+  return providerForAnswerModel(model)
+}
+
+function isSearchHistoryRetention(value: unknown): value is SearchHistoryRetention {
   return (
-    value === 'claude-haiku-4-5' ||
-    value === 'claude-sonnet-4-6' ||
-    value === 'claude-opus-4-7' ||
-    value === 'gpt-5.2' ||
-    value === 'gpt-5.1' ||
-    value === 'gpt-4o-mini' ||
-    value === 'gpt-4o'
+    value === 'off' ||
+    value === 'session' ||
+    value === '7-days' ||
+    value === '30-days' ||
+    value === 'forever'
   )
 }
 
-function isAnswerProviderId(value: unknown): value is AnswerProviderId {
-  return value === 'anthropic' || value === 'openai'
+function isDataFlowAcknowledgement(value: unknown): value is DataFlowAcknowledgement {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<DataFlowAcknowledgement>
+  return (
+    typeof candidate.acknowledgedAt === 'string' &&
+    isProviderId(candidate.provider) &&
+    typeof candidate.model === 'string'
+  )
 }
 
-function isEmbeddingModelId(value: unknown): value is EmbeddingModelId {
-  return value === 'text-embedding-3-small'
+function providerKeyMetadata(value: unknown): Partial<Record<ProviderId, ProviderKeyMetadata>> {
+  if (!value || typeof value !== 'object') return {}
+  const result: Partial<Record<ProviderId, ProviderKeyMetadata>> = {}
+  for (const provider of ['anthropic', 'openai', 'gemini'] satisfies ProviderId[]) {
+    const item = (value as Partial<Record<ProviderId, ProviderKeyMetadata>>)[provider]
+    result[provider] = {
+      lastValidatedAt:
+        item && typeof item.lastValidatedAt === 'string' ? item.lastValidatedAt : null
+    }
+  }
+  return result
 }
 
-function migrateSettings(parsed: Partial<SettingsFile> & { model?: ModelId }): SettingsFile {
+type LegacySettingsFile = Partial<SettingsFile> & {
+  firstCloudUseAcknowledgedAt?: string | null
+  model?: ModelId
+}
+
+function migrateSettings(parsed: LegacySettingsFile): SettingsFile {
   const defaults = defaultSettings()
-  const legacyModel = isModelId(parsed.model) ? parsed.model : null
-  const answerModel = isModelId(parsed.answerModel)
+  const legacyModel = isAnswerModelId(parsed.model) ? parsed.model : null
+  const answerModel = isAnswerModelId(parsed.answerModel)
     ? parsed.answerModel
     : (legacyModel ?? defaults.answerModel)
   const answerProvider = isAnswerProviderId(parsed.answerProvider)
@@ -130,20 +183,37 @@ function migrateSettings(parsed: Partial<SettingsFile> & { model?: ModelId }): S
       typeof parsed.semanticIndexEnabled === 'boolean'
         ? parsed.semanticIndexEnabled
         : defaults.semanticIndexEnabled,
-    firstCloudUseAcknowledgedAt:
-      typeof parsed.firstCloudUseAcknowledgedAt === 'string'
-        ? parsed.firstCloudUseAcknowledgedAt
+    cloudAnswersAcknowledgement: isDataFlowAcknowledgement(parsed.cloudAnswersAcknowledgement)
+      ? parsed.cloudAnswersAcknowledgement
+      : typeof parsed.firstCloudUseAcknowledgedAt === 'string'
+        ? {
+            acknowledgedAt: parsed.firstCloudUseAcknowledgedAt,
+            provider: answerProvider,
+            model: answerModel
+          }
         : null,
+    semanticIndexAcknowledgement: isDataFlowAcknowledgement(parsed.semanticIndexAcknowledgement)
+      ? parsed.semanticIndexAcknowledgement
+      : null,
     answerProvider,
-    answerModel:
-      modelProvider(answerModel) === answerProvider
-        ? answerModel
-        : defaultAnswerModelForProvider(answerProvider),
-    embeddingProvider: 'openai',
+    answerModel: answerModelBelongsToProvider(answerModel, answerProvider)
+      ? answerModel
+      : defaultAnswerModelForProvider(answerProvider),
+    embeddingProvider: isEmbeddingProviderId(parsed.embeddingProvider)
+      ? parsed.embeddingProvider
+      : defaults.embeddingProvider,
     embeddingModel: isEmbeddingModelId(parsed.embeddingModel)
       ? parsed.embeddingModel
       : defaults.embeddingModel,
-    encryptedKeys: parsed.encryptedKeys ?? {}
+    searchHistoryRetention: isSearchHistoryRetention(parsed.searchHistoryRetention)
+      ? parsed.searchHistoryRetention
+      : defaults.searchHistoryRetention,
+    searchHistoryIncludesAnswers:
+      typeof parsed.searchHistoryIncludesAnswers === 'boolean'
+        ? parsed.searchHistoryIncludesAnswers
+        : defaults.searchHistoryIncludesAnswers,
+    encryptedKeys: parsed.encryptedKeys ?? {},
+    providerKeyMetadata: providerKeyMetadata(parsed.providerKeyMetadata)
   }
 }
 
@@ -158,7 +228,7 @@ export class SettingsStore {
       return this.cache
     }
     const raw = readFileSync(path, 'utf-8')
-    const parsed = JSON.parse(raw) as Partial<SettingsFile> & { model?: ModelId }
+    const parsed = JSON.parse(raw) as LegacySettingsFile
     this.cache = migrateSettings(parsed)
     if (parsed.schemaVersion !== SETTINGS_SCHEMA_VERSION) this.persist(this.cache)
     return this.cache
@@ -178,14 +248,19 @@ export class SettingsStore {
       model: s.answerModel,
       cloudAnswersEnabled: s.cloudAnswersEnabled,
       semanticIndexEnabled: s.semanticIndexEnabled,
-      firstCloudUseAcknowledgedAt: s.firstCloudUseAcknowledgedAt,
+      firstCloudUseAcknowledgedAt: s.cloudAnswersAcknowledgement?.acknowledgedAt ?? null,
+      cloudAnswersAcknowledgement: s.cloudAnswersAcknowledgement,
+      semanticIndexAcknowledgement: s.semanticIndexAcknowledgement,
       answerProvider: s.answerProvider,
       answerModel: s.answerModel,
       embeddingProvider: s.embeddingProvider,
       embeddingModel: s.embeddingModel,
+      searchHistoryRetention: s.searchHistoryRetention,
+      searchHistoryIncludesAnswers: s.searchHistoryIncludesAnswers,
       hasAnthropicKey: !!s.encryptedKeys.anthropic,
       hasOpenAIKey: !!s.encryptedKeys.openai,
       hasGeminiKey: !!s.encryptedKeys.gemini,
+      providerKeyMetadata: s.providerKeyMetadata,
       keychainAvailable: keychain.isAvailable()
     }
   }
@@ -201,7 +276,8 @@ export class SettingsStore {
     const current = this.load()
     const next: SettingsFile = {
       ...current,
-      encryptedKeys: { ...current.encryptedKeys }
+      encryptedKeys: { ...current.encryptedKeys },
+      providerKeyMetadata: { ...current.providerKeyMetadata }
     }
     if (patch.notesRoot !== undefined) next.notesRoot = patch.notesRoot
     if (patch.cloudAnswersEnabled !== undefined) {
@@ -211,7 +287,19 @@ export class SettingsStore {
       next.semanticIndexEnabled = patch.semanticIndexEnabled
     }
     if (patch.firstCloudUseAcknowledgedAt !== undefined) {
-      next.firstCloudUseAcknowledgedAt = patch.firstCloudUseAcknowledgedAt
+      next.cloudAnswersAcknowledgement = patch.firstCloudUseAcknowledgedAt
+        ? {
+            acknowledgedAt: patch.firstCloudUseAcknowledgedAt,
+            provider: next.answerProvider,
+            model: next.answerModel
+          }
+        : null
+    }
+    if (patch.cloudAnswersAcknowledgement !== undefined) {
+      next.cloudAnswersAcknowledgement = patch.cloudAnswersAcknowledgement
+    }
+    if (patch.semanticIndexAcknowledgement !== undefined) {
+      next.semanticIndexAcknowledgement = patch.semanticIndexAcknowledgement
     }
     if (patch.answerProvider !== undefined) next.answerProvider = patch.answerProvider
     if (patch.answerModel !== undefined) {
@@ -222,29 +310,58 @@ export class SettingsStore {
       next.answerModel = patch.model
       next.answerProvider = modelProvider(patch.model)
     }
-    if (modelProvider(next.answerModel) !== next.answerProvider) {
+    if (!answerModelBelongsToProvider(next.answerModel, next.answerProvider)) {
       next.answerModel = defaultAnswerModelForProvider(next.answerProvider)
     }
     if (patch.embeddingProvider !== undefined) next.embeddingProvider = patch.embeddingProvider
     if (patch.embeddingModel !== undefined) next.embeddingModel = patch.embeddingModel
+    if (patch.searchHistoryRetention !== undefined) {
+      next.searchHistoryRetention = patch.searchHistoryRetention
+    }
+    if (patch.searchHistoryIncludesAnswers !== undefined) {
+      next.searchHistoryIncludesAnswers = patch.searchHistoryIncludesAnswers
+    }
+
+    for (const provider of patch.deleteProviderKeys ?? []) {
+      delete next.encryptedKeys[provider]
+      next.providerKeyMetadata[provider] = { lastValidatedAt: null }
+    }
 
     if (patch.anthropicKey !== undefined) {
       const enc = keychain.encrypt(patch.anthropicKey)
       if (enc === null) throw new Error('Keychain unavailable')
       next.encryptedKeys.anthropic = enc
+      next.providerKeyMetadata.anthropic = { lastValidatedAt: null }
     }
     if (patch.openaiKey !== undefined) {
       const enc = keychain.encrypt(patch.openaiKey)
       if (enc === null) throw new Error('Keychain unavailable')
       next.encryptedKeys.openai = enc
+      next.providerKeyMetadata.openai = { lastValidatedAt: null }
     }
     if (patch.geminiKey !== undefined) {
       const enc = keychain.encrypt(patch.geminiKey)
       if (enc === null) throw new Error('Keychain unavailable')
       next.encryptedKeys.gemini = enc
+      next.providerKeyMetadata.gemini = { lastValidatedAt: null }
     }
 
     this.persist(next)
+    return this.publicState()
+  }
+
+  markKeyValidated(
+    provider: ProviderId,
+    validatedAt = new Date().toISOString()
+  ): PublicSettingsState {
+    const current = this.load()
+    this.persist({
+      ...current,
+      providerKeyMetadata: {
+        ...current.providerKeyMetadata,
+        [provider]: { lastValidatedAt: validatedAt }
+      }
+    })
     return this.publicState()
   }
 }

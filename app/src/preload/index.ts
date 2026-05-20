@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
+import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
+import type { ProviderId } from '../shared/provider-registry'
 
 export interface IndexerStatus {
   phase: 'idle' | 'walking' | 'indexing' | 'done' | 'error'
@@ -43,6 +45,7 @@ export interface RyteApi {
   settings: {
     getState(): Promise<PublicSettingsState>
     save(patch: SettingsUpdate): Promise<PublicSettingsState>
+    validateKey(provider: ProviderId): Promise<ProviderKeyValidationResult>
   }
   dialog: {
     openFolder(): Promise<string | null>
@@ -78,7 +81,8 @@ const api: RyteApi = {
   },
   settings: {
     getState: () => ipcRenderer.invoke('settings:get-state'),
-    save: (patch) => ipcRenderer.invoke('settings:save', patch)
+    save: (patch) => ipcRenderer.invoke('settings:save', patch),
+    validateKey: (provider) => ipcRenderer.invoke('settings:validate-key', provider)
   },
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:open-folder')
@@ -161,7 +165,4 @@ if (process.contextIsolated) {
   } catch (error) {
     console.error('Failed to expose ryte api:', error)
   }
-} else {
-  // @ts-ignore — fallback when context isolation is off (dev only)
-  window.ryte = api
 }

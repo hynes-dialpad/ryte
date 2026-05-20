@@ -6,8 +6,16 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
+import {
+  assertValidAbsolutePath,
+  assertValidProviderId,
+  assertValidRequestId,
+  assertValidSearchQuery,
+  assertValidSettingsPatch
+} from './ipc-validation'
 import { SearchService } from './search/search-service'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
+import { validateProviderKey } from './settings/key-validation'
 import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
 import { viewerWatcher } from './viewer/viewer-watcher'
 
@@ -41,9 +49,10 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:get-state', () => settingsStore.publicState())
 
-  ipcMain.handle('settings:save', async (_, patch: SettingsUpdate) => {
-    const next = settingsStore.update(patch)
-    if (settingsPatchRequiresIndexerRestart(patch)) {
+  ipcMain.handle('settings:save', async (_, patch: unknown) => {
+    const validatedPatch = assertValidSettingsPatch(patch)
+    const next = settingsStore.update(validatedPatch)
+    if (settingsPatchRequiresIndexerRestart(validatedPatch)) {
       // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
       indexerService.close()
       searchService = null // vectorStore is replaced; recreate on next search
@@ -54,6 +63,24 @@ export function registerIpc(): void {
       }
     }
     return next
+  })
+
+  ipcMain.handle('settings:validate-key', async (_, provider: unknown) => {
+    const validProvider = assertValidProviderId(provider)
+    const apiKey = settingsStore.getSecret(validProvider)
+    if (!apiKey) {
+      return {
+        ok: false,
+        provider: validProvider,
+        validatedAt: null,
+        error: 'No saved API key to validate.'
+      }
+    }
+    const result = await validateProviderKey(validProvider, apiKey)
+    if (result.ok && result.validatedAt) {
+      settingsStore.markKeyValidated(validProvider, result.validatedAt)
+    }
+    return result
   })
 
   ipcMain.handle('dialog:open-folder', async (event) => {
@@ -86,14 +113,14 @@ export function registerIpc(): void {
     return { notesRoot, paths }
   })
 
-  ipcMain.handle('files:read', async (_event, absPath: string) => {
+  ipcMain.handle('files:read', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
-    return readFileSafe(absPath, notesRoot)
+    return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
   })
 
-  ipcMain.handle('files:watch', async (_event, absPath: string) => {
+  ipcMain.handle('files:watch', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
-    const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+    const safePath = await resolveAndAssertUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
     await viewerWatcher.watch(safePath)
   })
 
@@ -120,7 +147,8 @@ export function registerIpc(): void {
     }
   }
 
-  ipcMain.handle('search:query', (_, query: string) => {
+  ipcMain.handle('search:query', (_, rawQuery: unknown) => {
+    const query = assertValidSearchQuery(rawQuery)
     const svc = getOrCreateSearchService()
     if (!svc) {
       broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
@@ -140,8 +168,8 @@ export function registerIpc(): void {
     return requestId
   })
 
-  ipcMain.handle('search:cancel', (_, requestId: string) => {
+  ipcMain.handle('search:cancel', (_, requestId: unknown) => {
     const svc = getOrCreateSearchService()
-    svc?.cancel(requestId)
+    svc?.cancel(assertValidRequestId(requestId))
   })
 }
