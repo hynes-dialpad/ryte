@@ -5,6 +5,7 @@ import type {
   SearchHistoryRetention,
   SettingsUpdate
 } from './settings/settings-store'
+import type { SearchOptions } from './search/search-service'
 import {
   isAnswerModelId,
   isAnswerProviderId,
@@ -64,6 +65,39 @@ export function assertValidSearchQuery(value: unknown): string {
     throw new Error('Invalid search query')
   }
   return query
+}
+
+function isSearchRetrievalMode(
+  value: unknown
+): value is NonNullable<SearchOptions['retrievalMode']> {
+  return value === 'auto' || value === 'keyword' || value === 'hybrid'
+}
+
+function isSearchAnswerMode(value: unknown): value is NonNullable<SearchOptions['answerMode']> {
+  return value === 'settings' || value === 'local-only'
+}
+
+export function assertValidSearchOptions(value: unknown): SearchOptions {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid search options')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'retrievalMode' && key !== 'answerMode') {
+      throw new Error(`Invalid search option: ${key}`)
+    }
+  }
+  const options: SearchOptions = {}
+  if ('retrievalMode' in input) {
+    if (!isSearchRetrievalMode(input.retrievalMode)) throw new Error('Invalid retrieval mode')
+    options.retrievalMode = input.retrievalMode
+  }
+  if ('answerMode' in input) {
+    if (!isSearchAnswerMode(input.answerMode)) throw new Error('Invalid answer mode')
+    options.answerMode = input.answerMode
+  }
+  return options
 }
 
 export function assertValidProviderId(value: unknown): ProviderId {

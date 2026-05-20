@@ -35,7 +35,8 @@ export class IndexerService extends EventEmitter {
     filesTotal: 0,
     filesDone: 0,
     chunksTotal: 0,
-    chunksDone: 0
+    chunksDone: 0,
+    lastIndexedAt: null
   }
   private running = false
 
@@ -87,7 +88,8 @@ export class IndexerService extends EventEmitter {
       filesTotal: totals.files,
       filesDone: totals.files,
       chunksTotal: totals.chunks,
-      chunksDone: totals.chunks
+      chunksDone: totals.chunks,
+      lastIndexedAt: null
     }
   }
 
@@ -114,6 +116,30 @@ export class IndexerService extends EventEmitter {
       } else {
         this.broadcastIndexingError(err)
       }
+    } finally {
+      this.running = false
+    }
+  }
+
+  async clearAndRebuild(): Promise<void> {
+    if (this.running) throw new Error('Index rebuild already running')
+    this.running = true
+    try {
+      this.broadcast({
+        phase: 'walking',
+        filesTotal: 0,
+        filesDone: 0,
+        chunksTotal: 0,
+        chunksDone: 0
+      })
+      const dbPath = indexDbPath()
+      this.close()
+      removeIndexDatabaseFiles(dbPath)
+      this.init()
+      await this.indexAll()
+    } catch (err) {
+      this.broadcastIndexingError(err)
+      throw err
     } finally {
       this.running = false
     }
@@ -170,8 +196,12 @@ export class IndexerService extends EventEmitter {
   }
 
   private broadcast(p: IndexerProgress): void {
-    this.lastStatus = p
-    this.emit(STATUS_EVENT, p)
+    const lastIndexedAt =
+      p.phase === 'done'
+        ? new Date().toISOString()
+        : (p.lastIndexedAt ?? this.lastStatus.lastIndexedAt ?? null)
+    this.lastStatus = { ...p, lastIndexedAt }
+    this.emit(STATUS_EVENT, this.lastStatus)
   }
 
   private async indexAll(): Promise<void> {

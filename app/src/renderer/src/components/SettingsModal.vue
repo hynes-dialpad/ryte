@@ -100,6 +100,11 @@ const indexStatusLabel = computed(() => {
   return 'Not indexed yet'
 })
 
+const lastIndexedLabel = computed(() => {
+  const lastIndexedAt = indexStatus.status.lastIndexedAt
+  return lastIndexedAt ? new Date(lastIndexedAt).toLocaleString() : 'Not yet'
+})
+
 const openaiKeyLabel = computed(() =>
   providerKeyStatus.value.openai ? 'OpenAI API key (set - type to replace)' : 'OpenAI API key'
 )
@@ -243,6 +248,18 @@ async function rebuildIndex(): Promise<void> {
   }
 }
 
+async function clearAndRebuildIndex(): Promise<void> {
+  if (!window.confirm("Clear Ryte's local search index and rebuild it from the notes folder?")) {
+    return
+  }
+  localError.value = null
+  try {
+    await indexStatus.clearAndRebuild()
+  } catch (e) {
+    localError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
 function onBackdropClick(): void {
   if (props.dismissable) emit('close')
 }
@@ -329,9 +346,20 @@ function keyMetadataLabel(provider: ProviderId): string {
             <span>Index status</span>
             <strong>{{ indexStatusLabel }}</strong>
           </div>
+          <div class="static-row">
+            <span>Last indexed</span>
+            <strong>{{ lastIndexedLabel }}</strong>
+          </div>
           <div class="button-row">
             <button type="button" :disabled="saving || reindexRunning" @click="rebuildIndex">
               {{ reindexRunning ? 'Rebuilding...' : 'Rebuild Index' }}
+            </button>
+            <button
+              type="button"
+              :disabled="saving || reindexRunning"
+              @click="clearAndRebuildIndex"
+            >
+              Clear and Rebuild Index
             </button>
             <button
               type="button"

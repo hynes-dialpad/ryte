@@ -22,6 +22,7 @@ export interface IndexerProgress {
   filesDone: number
   chunksTotal: number
   chunksDone: number
+  lastIndexedAt?: string | null
   error?: string
 }
 

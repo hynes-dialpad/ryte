@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assertValidAbsolutePath,
   assertValidRequestId,
+  assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSettingsPatch
 } from './ipc-validation'
@@ -14,12 +15,22 @@ describe('ipc validation', () => {
     )
     expect(assertValidAbsolutePath('/tmp/notes/a.md')).toBe('/tmp/notes/a.md')
     expect(assertValidSearchQuery('  project plan  ')).toBe('project plan')
+    expect(
+      assertValidSearchOptions({ retrievalMode: 'keyword', answerMode: 'local-only' })
+    ).toEqual({
+      retrievalMode: 'keyword',
+      answerMode: 'local-only'
+    })
   })
 
   it('rejects malformed primitive inputs', () => {
     expect(() => assertValidRequestId('req-1')).toThrow('Invalid request id')
     expect(() => assertValidAbsolutePath('../notes/a.md')).toThrow('Invalid file path')
     expect(() => assertValidSearchQuery('')).toThrow('Invalid search query')
+    expect(() => assertValidSearchOptions({ retrievalMode: 'remote' })).toThrow(
+      'Invalid retrieval mode'
+    )
+    expect(() => assertValidSearchOptions({ arbitrary: true })).toThrow('Invalid search option')
   })
 
   it('accepts a narrow settings patch', () => {

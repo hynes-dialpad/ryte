@@ -8,7 +8,8 @@ const DEFAULT_STATUS: IndexerStatus = {
   filesTotal: 0,
   filesDone: 0,
   chunksTotal: 0,
-  chunksDone: 0
+  chunksDone: 0,
+  lastIndexedAt: null
 }
 
 export const useIndexStatusStore = defineStore('indexStatus', () => {
@@ -27,5 +28,9 @@ export const useIndexStatusStore = defineStore('indexStatus', () => {
     await window.ryte.indexer.triggerReindex()
   }
 
-  return { status, bind, triggerReindex }
+  async function clearAndRebuild(): Promise<void> {
+    await window.ryte.indexer.clearAndRebuild()
+  }
+
+  return { status, bind, triggerReindex, clearAndRebuild }
 })

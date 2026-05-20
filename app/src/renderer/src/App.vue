@@ -33,7 +33,14 @@ onUnmounted(() => _unbindSearch?.())
 const dismissable = computed(() => true)
 
 function openSearch(): void {
-  search.$patch({ answer: '', citations: [], status: 'idle', error: null })
+  search.$patch({
+    answer: '',
+    citations: [],
+    error: null,
+    notices: [],
+    sources: [],
+    status: 'idle'
+  })
   showSearch.value = true
 }
 

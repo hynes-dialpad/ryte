@@ -9,7 +9,13 @@ vi.mock('./openai-provider', () => ({
   OpenAIProvider: vi.fn().mockImplementation(() => ({ synthesize: mockSynthesize }))
 }))
 
-import { SearchService, type CitationResult, type SearchCallbacks } from './search-service'
+import {
+  SearchService,
+  type CitationResult,
+  type SearchAppliedRetrievalMode,
+  type SearchCallbacks,
+  type SourceResult
+} from './search-service'
 import type { StoredChunkRow } from '../indexing/vector-store'
 import { modelProvider, type ModelId } from '../settings/settings-store'
 
@@ -68,6 +74,16 @@ function makeSettings(
 
 function row(sourcePath: string, text: string, headingPath: string[] = []): StoredChunkRow {
   return { text, sourcePath, headingPath, date: null }
+}
+
+function source(
+  sourcePath: string,
+  preview: string,
+  index = 1,
+  retrievalMode: SearchAppliedRetrievalMode = 'hybrid',
+  headingPath: string[] = []
+): SourceResult {
+  return { index, sourcePath, headingPath, preview, retrievalMode }
 }
 
 function service(
@@ -188,7 +204,7 @@ describe('SearchService', () => {
     )
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
-    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
+    expect(cb.onSources).toHaveBeenCalledWith([source('local.md', 'local result')])
     expect(cb.onNotice).toHaveBeenCalledWith({
       code: 'cloud-answers-disabled',
       message: 'Cloud answer skipped because Cloud Answers are disabled in Settings.'
@@ -220,9 +236,45 @@ describe('SearchService', () => {
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
     expect(retrieve.keywordSearch).toHaveBeenCalledWith('q', 15)
-    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'local.md', headingPath: [] }])
+    expect(cb.onSources).toHaveBeenCalledWith([source('local.md', 'keyword result', 1, 'keyword')])
     expect(cb.onDone).toHaveBeenCalledOnce()
     expect(cb.onError).not.toHaveBeenCalled()
+  })
+
+  it('can force keyword retrieval without embedding or cloud settings reads', async () => {
+    const embed = makeEmbed()
+    const retrieve = makeRetrieve([row('keyword.md', 'keyword body')])
+    const settings = makeSettings('gpt-5.2', 'sk-openai')
+    const svc = new SearchService({ embed }, retrieve, settings)
+    const cb = makeCallbacks()
+
+    await svc.search('q', 'req-1', cb, { retrievalMode: 'keyword', answerMode: 'local-only' })
+
+    expect(embed).not.toHaveBeenCalled()
+    expect(retrieve.hybridSearch).not.toHaveBeenCalled()
+    expect(retrieve.keywordSearch).toHaveBeenCalledWith('q', 15)
+    expect(cb.onSources).toHaveBeenCalledWith([source('keyword.md', 'keyword body', 1, 'keyword')])
+    expect(settings.load).not.toHaveBeenCalled()
+    expect(settings.getSecret).not.toHaveBeenCalled()
+    expect(mockSynthesize).not.toHaveBeenCalled()
+    expect(cb.onNotice).not.toHaveBeenCalled()
+    expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('reports semantic fallback when hybrid retrieval is explicitly requested', async () => {
+    const embed = vi.fn().mockRejectedValue(new Error('No embedding provider configured'))
+    const retrieve = makeRetrieve([row('local.md', 'keyword result')])
+    const svc = new SearchService({ embed }, retrieve, makeSettings('claude-haiku-4-5', null))
+    const cb = makeCallbacks()
+
+    await svc.search('q', 'req-1', cb, { retrievalMode: 'hybrid', answerMode: 'local-only' })
+
+    expect(cb.onNotice).toHaveBeenCalledWith({
+      code: 'semantic-unavailable',
+      message: 'Semantic retrieval unavailable; showing keyword results.'
+    })
+    expect(cb.onSources).toHaveBeenCalledWith([source('local.md', 'keyword result', 1, 'keyword')])
+    expect(cb.onDone).toHaveBeenCalledOnce()
   })
 
   it('adds provider and model context to synthesis errors', async () => {
@@ -230,7 +282,7 @@ describe('SearchService', () => {
     const svc = service([row('a.md', 'body')], 'gpt-5.2', 'sk-openai')
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
-    expect(cb.onSources).toHaveBeenCalledWith([{ sourcePath: 'a.md', headingPath: [] }])
+    expect(cb.onSources).toHaveBeenCalledWith([source('a.md', 'body')])
     expect(cb.onError).toHaveBeenCalledWith('OpenAI gpt-5.2 answer failed: bad request')
     expect(cb.onDone).not.toHaveBeenCalled()
   })
