@@ -224,8 +224,7 @@ function applySearchHistorySettings(): void {
 
 <style scoped>
 .app {
-  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 48%);
-  --app-header-tint: oklch(14.205% 0.00468 308.445 / 68%);
+  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 80%);
 
   display: flex;
   flex-direction: column;
@@ -242,7 +241,7 @@ function applySearchHistorySettings(): void {
   justify-content: space-between;
   align-items: center;
   padding: 0.625rem 1rem 0.625rem 5.75rem;
-  background: var(--app-header-tint);
+  background: transparent;
   border-bottom: 1px solid oklch(100% 0 0 / 8%);
   flex-shrink: 0;
   -webkit-app-region: drag;

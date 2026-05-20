@@ -13,7 +13,7 @@ import { workspaceStore } from './workspace/workspace-store'
 import { safeWindowBounds, workAreasFromDisplays } from './window-state'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '../shared/workspace'
 
-const macOSVibrancyMaterial = 'under-window' as const
+const macOSVibrancyMaterial = 'hud' as const
 
 // Set early so macOS notifications show "ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
