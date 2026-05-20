@@ -35,6 +35,12 @@ export class Watcher {
       this.emitTreeChanged()
       void indexerService.notifyFileRemoved(path)
     })
+    this.fsw.on('addDir', () => {
+      this.emitTreeChanged()
+    })
+    this.fsw.on('unlinkDir', () => {
+      this.emitTreeChanged()
+    })
   }
 
   async stop(): Promise<void> {

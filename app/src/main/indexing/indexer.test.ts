@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -73,6 +73,23 @@ describe('Indexer', () => {
     // Re-run — should skip (mtime unchanged)
     await indexer.indexAll()
     expect(embedder.embed).toHaveBeenCalledTimes(1)
+  })
+
+  it('indexAll removes stale rows for files deleted while the watcher was offline', async () => {
+    const filePath = join(notesRoot, 'a.md')
+    writeFileSync(filePath, '# A\n\nbody A\n')
+
+    const indexer = makeIndexer()
+    await indexer.indexAll()
+    expect(store.fileCount()).toBe(1)
+    expect(state.totals()).toEqual({ files: 1, chunks: 1 })
+
+    unlinkSync(filePath)
+    const summary = await indexer.indexAll()
+    expect(summary).toEqual({ filesIndexed: 0, chunksIndexed: 0 })
+    expect(store.fileCount()).toBe(0)
+    expect(store.chunkCount()).toBe(0)
+    expect(state.totals()).toEqual({ files: 0, chunks: 0 })
   })
 
   it('indexAll re-indexes a file when its mtime advances', async () => {
