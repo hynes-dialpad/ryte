@@ -13,6 +13,8 @@ import { workspaceStore } from './workspace/workspace-store'
 import { safeWindowBounds, workAreasFromDisplays } from './window-state'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '../shared/workspace'
 
+const macOSVibrancyMaterial = 'under-window' as const
+
 // Set early so macOS notifications show "ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
 app.setName('ryte')
@@ -41,7 +43,7 @@ function createWindow(): void {
           titleBarStyle: 'hidden' as const,
           trafficLightPosition: { x: 20, y: 22 },
           transparent: true,
-          vibrancy: 'under-window' as const,
+          vibrancy: macOSVibrancyMaterial,
           visualEffectState: 'active' as const
         }
       : {}),
@@ -57,6 +59,10 @@ function createWindow(): void {
   installWindowStatePersistence(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
+    if (process.platform === 'darwin') {
+      mainWindow.setBackgroundColor('#00000000')
+      mainWindow.setVibrancy(macOSVibrancyMaterial)
+    }
     const state = workspaceStore.publicState().window
     if (state.maximized) mainWindow.maximize()
     if (state.fullscreen) mainWindow.setFullScreen(true)
