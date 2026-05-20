@@ -237,15 +237,18 @@ function applySearchHistorySettings(): void {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.625rem 1rem;
+  padding: 0.625rem 1rem 0.625rem 5.75rem;
   border-bottom: 1px solid oklch(100% 0 0 / 8%);
   flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 .header-actions {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .search-trigger-btn,
@@ -259,6 +262,7 @@ function applySearchHistorySettings(): void {
   font-size: 0.825rem;
   cursor: pointer;
   font-family: inherit;
+  -webkit-app-region: no-drag;
 }
 
 .search-trigger-btn:hover,
