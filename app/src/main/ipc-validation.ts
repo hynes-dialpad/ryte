@@ -6,6 +6,7 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
+import type { WorkspaceShellUpdate, WorkspaceWindowUpdate } from '../shared/workspace'
 import {
   isAnswerModelId,
   isAnswerProviderId,
@@ -17,6 +18,8 @@ import {
 
 const MAX_PATH_LENGTH = 4096
 const MAX_QUERY_LENGTH = 2000
+const MAX_WINDOW_DIMENSION = 10000
+const MAX_SIDEBAR_WIDTH = 4000
 const REQUEST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const SETTINGS_KEYS = new Set([
@@ -227,5 +230,72 @@ export function assertValidSettingsPatch(value: unknown): SettingsUpdate {
     patch.deleteProviderKeys = input.deleteProviderKeys.map(assertValidProviderId)
   }
 
+  return patch
+}
+
+function assertFiniteNumber(value: unknown, key: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Invalid ${key}`)
+  }
+  return value
+}
+
+function assertValidWindowBounds(value: unknown): NonNullable<WorkspaceWindowUpdate['bounds']> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid window bounds')
+  }
+  const input = value as Record<string, unknown>
+  const x = assertFiniteNumber(input.x, 'window x')
+  const y = assertFiniteNumber(input.y, 'window y')
+  const width = assertFiniteNumber(input.width, 'window width')
+  const height = assertFiniteNumber(input.height, 'window height')
+  if (width <= 0 || width > MAX_WINDOW_DIMENSION || height <= 0 || height > MAX_WINDOW_DIMENSION) {
+    throw new Error('Invalid window bounds')
+  }
+  return { x, y, width, height }
+}
+
+export function assertValidWorkspaceShellPatch(value: unknown): WorkspaceShellUpdate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace shell patch')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'sidebarCollapsed' && key !== 'sidebarWidth') {
+      throw new Error(`Invalid workspace shell key: ${key}`)
+    }
+  }
+  const patch: WorkspaceShellUpdate = {}
+  if ('sidebarCollapsed' in input) {
+    patch.sidebarCollapsed = assertOptionalBoolean(input.sidebarCollapsed, 'sidebarCollapsed')
+  }
+  if ('sidebarWidth' in input) {
+    const width = assertFiniteNumber(input.sidebarWidth, 'sidebarWidth')
+    if (width <= 0 || width > MAX_SIDEBAR_WIDTH) throw new Error('Invalid sidebarWidth')
+    patch.sidebarWidth = width
+  }
+  return patch
+}
+
+export function assertValidWorkspaceWindowPatch(value: unknown): WorkspaceWindowUpdate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace window patch')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'bounds' && key !== 'maximized' && key !== 'fullscreen') {
+      throw new Error(`Invalid workspace window key: ${key}`)
+    }
+  }
+  const patch: WorkspaceWindowUpdate = {}
+  if ('bounds' in input) {
+    patch.bounds = input.bounds === null ? null : assertValidWindowBounds(input.bounds)
+  }
+  if ('maximized' in input) {
+    patch.maximized = assertOptionalBoolean(input.maximized, 'maximized')
+  }
+  if ('fullscreen' in input) {
+    patch.fullscreen = assertOptionalBoolean(input.fullscreen, 'fullscreen')
+  }
   return patch
 }

@@ -9,6 +9,10 @@ export function settingsFilePath(): string {
   return join(userDataDir(), 'settings.json')
 }
 
+export function workspaceFilePath(): string {
+  return join(userDataDir(), 'workspace.json')
+}
+
 export function indexDbPath(): string {
   return join(userDataDir(), 'index.db')
 }

@@ -3,6 +3,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
 import type {
+  WorkspaceShellUpdate,
+  WorkspaceState,
+  WorkspaceWindowUpdate
+} from '../shared/workspace'
+import type {
   SearchAnswerMode as MainSearchAnswerMode,
   SearchRetrievalMode as MainSearchRetrievalMode
 } from '../main/search/search-service'
@@ -64,6 +69,11 @@ export interface RyteApi {
     save(patch: SettingsUpdate): Promise<PublicSettingsState>
     validateKey(provider: ProviderId): Promise<ProviderKeyValidationResult>
   }
+  workspace: {
+    getState(): Promise<WorkspaceState>
+    updateShell(patch: WorkspaceShellUpdate): Promise<WorkspaceState>
+    updateWindow(patch: WorkspaceWindowUpdate): Promise<WorkspaceState>
+  }
   dialog: {
     openFolder(): Promise<string | null>
   }
@@ -101,6 +111,11 @@ const api: RyteApi = {
     getState: () => ipcRenderer.invoke('settings:get-state'),
     save: (patch) => ipcRenderer.invoke('settings:save', patch),
     validateKey: (provider) => ipcRenderer.invoke('settings:validate-key', provider)
+  },
+  workspace: {
+    getState: () => ipcRenderer.invoke('workspace:get-state'),
+    updateShell: (patch) => ipcRenderer.invoke('workspace:update-shell', patch),
+    updateWindow: (patch) => ipcRenderer.invoke('workspace:update-window', patch)
   },
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:open-folder')

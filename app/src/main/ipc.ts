@@ -12,13 +12,16 @@ import {
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
-  assertValidSettingsPatch
+  assertValidSettingsPatch,
+  assertValidWorkspaceShellPatch,
+  assertValidWorkspaceWindowPatch
 } from './ipc-validation'
 import { SearchService } from './search/search-service'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
 import { validateProviderKey } from './settings/key-validation'
 import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
 import { viewerWatcher } from './viewer/viewer-watcher'
+import { workspaceStore } from './workspace/workspace-store'
 
 let searchService: SearchService | null = null
 
@@ -49,6 +52,16 @@ export function registerIpc(): void {
   ipcMain.handle('app:get-version', () => app.getVersion())
 
   ipcMain.handle('settings:get-state', () => settingsStore.publicState())
+
+  ipcMain.handle('workspace:get-state', () => workspaceStore.publicState())
+
+  ipcMain.handle('workspace:update-shell', (_event, patch: unknown) => {
+    return workspaceStore.updateShell(assertValidWorkspaceShellPatch(patch))
+  })
+
+  ipcMain.handle('workspace:update-window', (_event, patch: unknown) => {
+    return workspaceStore.updateWindow(assertValidWorkspaceWindowPatch(patch))
+  })
 
   ipcMain.handle('settings:save', async (_, patch: unknown) => {
     const validatedPatch = assertValidSettingsPatch(patch)

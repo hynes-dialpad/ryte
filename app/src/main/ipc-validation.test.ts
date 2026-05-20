@@ -5,7 +5,9 @@ import {
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
-  assertValidSettingsPatch
+  assertValidSettingsPatch,
+  assertValidWorkspaceShellPatch,
+  assertValidWorkspaceWindowPatch
 } from './ipc-validation'
 
 describe('ipc validation', () => {
@@ -61,5 +63,38 @@ describe('ipc validation', () => {
     expect(() => assertValidSettingsPatch({ answerModel: 'not-a-model' })).toThrow(
       'Invalid answer model'
     )
+  })
+
+  it('accepts narrow workspace shell and window patches', () => {
+    expect(assertValidWorkspaceShellPatch({ sidebarCollapsed: true, sidebarWidth: 360 })).toEqual({
+      sidebarCollapsed: true,
+      sidebarWidth: 360
+    })
+    expect(
+      assertValidWorkspaceWindowPatch({
+        bounds: { x: 10, y: 20, width: 1460, height: 980 },
+        maximized: false,
+        fullscreen: false
+      })
+    ).toEqual({
+      bounds: { x: 10, y: 20, width: 1460, height: 980 },
+      maximized: false,
+      fullscreen: false
+    })
+  })
+
+  it('rejects unexpected workspace keys and invalid dimensions', () => {
+    expect(() => assertValidWorkspaceShellPatch({ arbitrary: true })).toThrow(
+      'Invalid workspace shell key'
+    )
+    expect(() => assertValidWorkspaceShellPatch({ sidebarWidth: -1 })).toThrow(
+      'Invalid sidebarWidth'
+    )
+    expect(() => assertValidWorkspaceWindowPatch({ arbitrary: true })).toThrow(
+      'Invalid workspace window key'
+    )
+    expect(() =>
+      assertValidWorkspaceWindowPatch({ bounds: { x: 0, y: 0, width: 0, height: 100 } })
+    ).toThrow('Invalid window bounds')
   })
 })
