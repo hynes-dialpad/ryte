@@ -40,6 +40,7 @@ function createWindow(): void {
       ? {
           titleBarStyle: 'hidden' as const,
           trafficLightPosition: { x: 20, y: 22 },
+          transparent: true,
           vibrancy: 'under-window' as const,
           visualEffectState: 'active' as const
         }
