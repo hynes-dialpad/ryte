@@ -227,6 +227,7 @@ function applySearchHistorySettings(): void {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  background: oklch(21% 0.006 286);
   font-family:
     system-ui,
     -apple-system,
@@ -238,6 +239,7 @@ function applySearchHistorySettings(): void {
   justify-content: space-between;
   align-items: center;
   padding: 0.625rem 1rem 0.625rem 5.75rem;
+  background: oklch(21% 0.006 286);
   border-bottom: 1px solid oklch(100% 0 0 / 8%);
   flex-shrink: 0;
   -webkit-app-region: drag;

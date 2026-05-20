@@ -34,6 +34,7 @@ function createWindow(): void {
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
+    backgroundColor: '#1b1b1f',
     title: 'ryte',
     ...(process.platform === 'darwin'
       ? {
