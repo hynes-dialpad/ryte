@@ -1,5 +1,5 @@
 ---
-name: ryte-shaping
+name: shaping
 description: Shape Ryte features, product phases, UX redesigns, or architecture changes before implementation. Use when the user wants to plan a Ryte effort, compare solution approaches, turn rough designs into requirements, create Phase docs, decide scope, identify unknowns/spikes, or produce a ready-to-breadboard shaping artifact.
 ---
 
@@ -119,7 +119,7 @@ Notes:
 
 ## Breadboarding Input
 
-[Parts and constraints to pass to ryte-breadboarding.]
+[Parts and constraints to pass to breadboard.]
 ```
 
 ## Spike Template

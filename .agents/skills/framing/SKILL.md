@@ -1,5 +1,5 @@
 ---
-name: ryte-framing
+name: framing
 description: Create a Ryte framing document before shaping a feature, phase, UX redesign, or architecture change. Use when the user provides rough ideas, design screenshots, product goals, prior decisions, or tradeoffs and wants the problem, outcome, appetite, boundaries, source material, and deferred work captured before solution shaping.
 ---
 

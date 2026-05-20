@@ -1,5 +1,5 @@
 ---
-name: ryte-breadboard-reflection
+name: breadboard-reflection
 description: Review and harden Ryte breadboards, shaping docs, slices, or implementation plans before build work starts. Use when the user asks for a critique, reflection, hardened pass, gap analysis, ripple check, resilience review, or consistency check across Ryte framing, shaping, breadboarding, and slice artifacts.
 ---
 
