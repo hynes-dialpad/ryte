@@ -43,6 +43,13 @@ export class IndexStateStore {
     this.db.prepare('DELETE FROM file_state WHERE source_path = ?').run(sourcePath)
   }
 
+  allSourcePaths(): string[] {
+    const rows = this.db
+      .prepare('SELECT source_path AS sourcePath FROM file_state ORDER BY source_path')
+      .all() as Array<{ sourcePath: string }>
+    return rows.map((row) => row.sourcePath)
+  }
+
   totals(): IndexTotals {
     const row = this.db
       .prepare('SELECT COUNT(*) AS files, COALESCE(SUM(chunk_count), 0) AS chunks FROM file_state')

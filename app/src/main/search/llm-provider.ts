@@ -8,7 +8,12 @@ export interface SearchChunk {
 }
 
 export interface LLMProvider {
-  synthesize(query: string, chunks: SearchChunk[], onToken: (token: string) => void): Promise<void>
+  synthesize(
+    query: string,
+    chunks: SearchChunk[],
+    onToken: (token: string) => void,
+    options?: { signal?: AbortSignal }
+  ): Promise<void>
 }
 
 export function buildSynthesisMessages(

@@ -82,6 +82,18 @@ describe('Watcher', () => {
     expect(mocks.notifyFileRemoved).toHaveBeenCalledWith('/notes/old.md')
   })
 
+  it('notifies file tree subscribers when folders are added or removed', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    handlers.get('addDir')?.('/notes/new-folder')
+    handlers.get('unlinkDir')?.('/notes/old-folder')
+
+    expect(onTreeChanged).toHaveBeenCalledTimes(2)
+  })
+
   it('does not emit file tree changes for content-only changes', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()

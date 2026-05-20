@@ -38,5 +38,25 @@ describe('render', () => {
   it('should linkify URLs', async () => {
     const html = await render('See https://example.com')
     expect(html).toContain('<a href="https://example.com"')
+    expect(html).toContain('target="_blank"')
+    expect(html).toContain('rel="noreferrer noopener"')
+  })
+
+  it('should not render raw HTML as executable markup', async () => {
+    const html = await render('<img src=x onerror="alert(1)">')
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&lt;img')
+  })
+
+  it('should strip unsafe markdown link targets', async () => {
+    const html = await render('[bad](javascript:alert(1)) [file](file:///tmp/private.md)')
+    expect(html).not.toContain('href="javascript:')
+    expect(html).not.toContain('href="file:')
+  })
+
+  it('should preserve Shiki highlighting after sanitization', async () => {
+    const html = await render('```ts\nconst x = 1\n```')
+    expect(html).toContain('shiki')
+    expect(html).toMatch(/<span style="color:/)
   })
 })

@@ -31,16 +31,20 @@ vi.mock('../settings/settings-store', () => ({
   settingsStore: {
     getSecret: vi.fn().mockReturnValue(null),
     load: vi.fn().mockReturnValue({
-      schemaVersion: 2,
+      schemaVersion: 3,
       notesRoot: '/tmp/notes',
       cloudAnswersEnabled: false,
       semanticIndexEnabled: false,
-      firstCloudUseAcknowledgedAt: null,
+      cloudAnswersAcknowledgement: null,
+      semanticIndexAcknowledgement: null,
       answerProvider: 'openai',
       answerModel: 'gpt-5.2',
       embeddingProvider: 'openai',
       embeddingModel: 'text-embedding-3-small',
-      encryptedKeys: {}
+      searchHistoryRetention: '30-days',
+      searchHistoryIncludesAnswers: false,
+      encryptedKeys: {},
+      providerKeyMetadata: {}
     })
   }
 }))
@@ -77,16 +81,20 @@ describe('IndexerService.embed()', () => {
     const { IndexerService } = await import('./indexer-service')
     vi.mocked(settingsStore.getSecret).mockReturnValue('sk-test')
     vi.mocked(settingsStore.load).mockReturnValue({
-      schemaVersion: 2,
+      schemaVersion: 3,
       notesRoot: '/tmp/notes',
       cloudAnswersEnabled: false,
       semanticIndexEnabled: true,
-      firstCloudUseAcknowledgedAt: null,
+      cloudAnswersAcknowledgement: null,
+      semanticIndexAcknowledgement: null,
       answerProvider: 'openai',
       answerModel: 'gpt-5.2',
       embeddingProvider: 'openai',
       embeddingModel: 'text-embedding-3-small',
-      encryptedKeys: {}
+      searchHistoryRetention: '30-days',
+      searchHistoryIncludesAnswers: false,
+      encryptedKeys: {},
+      providerKeyMetadata: {}
     })
     const svc = new IndexerService()
     svc.init()

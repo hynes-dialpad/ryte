@@ -53,6 +53,12 @@ describe('IndexStateStore', () => {
     expect(store.totals()).toEqual({ files: 1, chunks: 3 })
   })
 
+  it('lists tracked source paths in stable order', () => {
+    store.markIndexed('b.md', 100, 1)
+    store.markIndexed('a.md', 100, 1)
+    expect(store.allSourcePaths()).toEqual(['a.md', 'b.md'])
+  })
+
   it('markIndexed on existing path updates mtime and chunk count', () => {
     store.markIndexed('a.md', 100, 5)
     store.markIndexed('a.md', 200, 7)

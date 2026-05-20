@@ -46,7 +46,7 @@ function makeSettings(
   key: string | null = 'sk-test',
   opts: {
     cloudAnswersEnabled?: boolean
-    firstCloudUseAcknowledgedAt?: string | null
+    cloudAnswersAcknowledgement?: { acknowledgedAt: string } | null
   } = {}
 ): {
   load: ReturnType<typeof vi.fn>
@@ -55,10 +55,10 @@ function makeSettings(
   return {
     load: vi.fn().mockReturnValue({
       cloudAnswersEnabled: opts.cloudAnswersEnabled ?? true,
-      firstCloudUseAcknowledgedAt:
-        opts.firstCloudUseAcknowledgedAt === undefined
-          ? '2026-05-19T12:00:00.000Z'
-          : opts.firstCloudUseAcknowledgedAt,
+      cloudAnswersAcknowledgement:
+        opts.cloudAnswersAcknowledgement === undefined
+          ? { acknowledgedAt: '2026-05-19T12:00:00.000Z' }
+          : opts.cloudAnswersAcknowledgement,
       answerProvider: modelProvider(model),
       answerModel: model
     }),
@@ -201,7 +201,7 @@ describe('SearchService', () => {
     const svc = new SearchService(
       { embed: makeEmbed() },
       makeRetrieve([row('local.md', 'local result')]),
-      makeSettings('gpt-5.2', 'sk-openai', { firstCloudUseAcknowledgedAt: null })
+      makeSettings('gpt-5.2', 'sk-openai', { cloudAnswersAcknowledgement: null })
     )
     const cb = makeCallbacks()
     await svc.search('q', 'req-1', cb)
@@ -247,6 +247,33 @@ describe('SearchService', () => {
     const svc = service([row('a.md', 'body')], 'gpt-4o-mini', 'sk-openai')
     await svc.search('q', 'req-1', makeCallbacks())
     expect(OpenAIProvider).toHaveBeenCalledWith('sk-openai', 'gpt-4o-mini')
+  })
+
+  it('passes an abort signal to provider synthesis', async () => {
+    const svc = service([row('a.md', 'body')], 'gpt-5.2', 'sk-openai')
+    await svc.search('q', 'req-1', makeCallbacks())
+    const options = mockSynthesize.mock.calls[0][3] as { signal?: AbortSignal }
+    expect(options.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('cancel() aborts an active provider stream', async () => {
+    let signal: AbortSignal | undefined
+    mockSynthesize.mockImplementation(
+      async (_q: unknown, _c: unknown, _onToken: unknown, options: { signal?: AbortSignal }) => {
+        signal = options.signal
+        await new Promise<void>((resolve) => {
+          options.signal?.addEventListener('abort', () => resolve(), { once: true })
+        })
+      }
+    )
+    const svc = service([row('a.md', 'body')], 'gpt-5.2', 'sk-openai')
+    const cb = makeCallbacks()
+    const searchPromise = svc.search('q', 'req-stream-cancel', cb)
+    await vi.waitFor(() => expect(signal).toBeDefined())
+    svc.cancel('req-stream-cancel')
+    await searchPromise
+    expect(signal?.aborted).toBe(true)
+    expect(cb.onDone).not.toHaveBeenCalled()
   })
 
   it('cancel() prevents onToken/onDone from being called for that requestId', async () => {

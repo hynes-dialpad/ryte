@@ -56,7 +56,7 @@ interface RetrieveDep {
 interface SettingsDep {
   load(): {
     cloudAnswersEnabled: boolean
-    firstCloudUseAcknowledgedAt: string | null
+    cloudAnswersAcknowledgement: { acknowledgedAt: string } | null
     answerProvider: AnswerProviderId
     answerModel: AnswerModelId
   }
@@ -73,6 +73,7 @@ function providerLabel(provider: AnswerProviderId): string {
 
 export class SearchService {
   private readonly cancelled = new Set<string>()
+  private readonly controllers = new Map<string, AbortController>()
 
   constructor(
     private readonly embedDep: EmbedDep,
@@ -81,6 +82,8 @@ export class SearchService {
   ) {}
 
   async search(query: string, requestId: string, callbacks: SearchCallbacks): Promise<void> {
+    const controller = new AbortController()
+    this.controllers.set(requestId, controller)
     try {
       if (this.cancelled.has(requestId)) return
 
@@ -88,13 +91,15 @@ export class SearchService {
       try {
         const [queryVec] = await this.embedDep.embed([query])
 
-        if (this.cancelled.has(requestId)) return
+        if (this.cancelled.has(requestId) || controller.signal.aborted) return
 
         rows = this.retrieveDep.hybridSearch(query, queryVec, RETRIEVE_K, RETRIEVE_MAX)
       } catch {
-        if (this.cancelled.has(requestId)) return
+        if (this.cancelled.has(requestId) || controller.signal.aborted) return
         rows = this.retrieveDep.keywordSearch(query, RETRIEVE_MAX)
       }
+
+      if (this.cancelled.has(requestId) || controller.signal.aborted) return
 
       const chunks: SearchChunk[] = rows.map((r, i) => ({
         index: i + 1,
@@ -126,7 +131,7 @@ export class SearchService {
         return
       }
 
-      if (!settings.firstCloudUseAcknowledgedAt) {
+      if (!settings.cloudAnswersAcknowledgement) {
         callbacks.onNotice({
           code: 'cloud-answers-not-acknowledged',
           message: 'Cloud answer skipped until the first-use warning is accepted.'
@@ -152,21 +157,27 @@ export class SearchService {
           ? new AnthropicProvider(apiKey, model)
           : new OpenAIProvider(apiKey, model)
 
-      if (this.cancelled.has(requestId)) return
+      if (this.cancelled.has(requestId) || controller.signal.aborted) return
 
       let answer = ''
       try {
-        await llm.synthesize(query, chunks, (token) => {
-          if (this.cancelled.has(requestId)) return
-          answer += token
-          callbacks.onToken(token)
-        })
+        await llm.synthesize(
+          query,
+          chunks,
+          (token) => {
+            if (this.cancelled.has(requestId) || controller.signal.aborted) return
+            answer += token
+            callbacks.onToken(token)
+          },
+          { signal: controller.signal }
+        )
       } catch (err) {
+        if (this.cancelled.has(requestId) || controller.signal.aborted) return
         const message = err instanceof Error ? err.message : String(err)
         throw new Error(`${providerLabel(provider)} ${model} answer failed: ${message}`)
       }
 
-      if (this.cancelled.has(requestId)) return
+      if (this.cancelled.has(requestId) || controller.signal.aborted) return
 
       const cited = new Set<number>()
       for (const match of answer.matchAll(CITATION_RE)) {
@@ -185,10 +196,12 @@ export class SearchService {
       }
     } finally {
       this.cancelled.delete(requestId)
+      this.controllers.delete(requestId)
     }
   }
 
   cancel(requestId: string): void {
     this.cancelled.add(requestId)
+    this.controllers.get(requestId)?.abort()
   }
 }

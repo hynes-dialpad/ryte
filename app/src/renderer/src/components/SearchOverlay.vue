@@ -35,7 +35,7 @@ watch(
 )
 
 function onKeydown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape') void closeOverlay()
 }
 
 async function submit(): Promise<void> {
@@ -43,7 +43,7 @@ async function submit(): Promise<void> {
     return
   if (!settings.state) await settings.hydrate()
   const q = localQuery.value.trim()
-  if (settings.state?.cloudAnswersEnabled && !settings.state.firstCloudUseAcknowledgedAt) {
+  if (settings.state?.cloudAnswersEnabled && !hasCurrentCloudAcknowledgement()) {
     pendingCloudQuery.value = q
     showCloudWarning.value = true
     return
@@ -54,7 +54,14 @@ async function submit(): Promise<void> {
 async function continueWithCloud(): Promise<void> {
   const q = pendingCloudQuery.value
   if (!q) return
-  await settings.save({ firstCloudUseAcknowledgedAt: new Date().toISOString() })
+  if (!settings.state) return
+  await settings.save({
+    cloudAnswersAcknowledgement: {
+      acknowledgedAt: new Date().toISOString(),
+      provider: settings.state.answerProvider,
+      model: settings.state.answerModel
+    }
+  })
   showCloudWarning.value = false
   pendingCloudQuery.value = ''
   await search.runQuery(q)
@@ -71,16 +78,32 @@ async function searchLocallyOnly(): Promise<void> {
 function openCitation(sourcePath: string): void {
   if (!viewer.notesRoot) return
   void viewer.openFile(`${viewer.notesRoot}/${sourcePath}`)
-  emit('close')
+  void closeOverlay()
 }
 
 function formatPath(sourcePath: string, headingPath: string[]): string {
   return headingPath.length ? `${sourcePath} › ${headingPath.join(' › ')}` : sourcePath
 }
+
+function hasCurrentCloudAcknowledgement(): boolean {
+  const s = settings.state
+  return (
+    !!s?.cloudAnswersAcknowledgement &&
+    s.cloudAnswersAcknowledgement.provider === s.answerProvider &&
+    s.cloudAnswersAcknowledgement.model === s.answerModel
+  )
+}
+
+async function closeOverlay(): Promise<void> {
+  if (search.status === 'searching' || search.status === 'streaming') {
+    await search.cancel()
+  }
+  emit('close')
+}
 </script>
 
 <template>
-  <div class="search-backdrop" @click.self="emit('close')" @keydown="onKeydown">
+  <div class="search-backdrop" @click.self="closeOverlay" @keydown="onKeydown">
     <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
       <!-- Input row -->
       <div class="search-input-row">
@@ -91,7 +114,7 @@ function formatPath(sourcePath: string, headingPath: string[]): string {
           type="text"
           placeholder="Ask anything about your notes…"
           @keydown.enter="submit"
-          @keydown.esc="emit('close')"
+          @keydown.esc="closeOverlay"
         />
         <button
           class="search-btn"

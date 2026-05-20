@@ -25,18 +25,22 @@ export class OpenAIProvider implements LLMProvider {
   async synthesize(
     query: string,
     chunks: SearchChunk[],
-    onToken: (token: string) => void
+    onToken: (token: string) => void,
+    options: { signal?: AbortSignal } = {}
   ): Promise<void> {
     const { system, userContent } = buildSynthesisMessages(query, chunks)
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      ...completionTokenLimit(this.model),
-      stream: true,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userContent }
-      ]
-    })
+    const stream = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        ...completionTokenLimit(this.model),
+        stream: true,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: userContent }
+        ]
+      },
+      { signal: options.signal }
+    )
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content
       if (content) onToken(content)

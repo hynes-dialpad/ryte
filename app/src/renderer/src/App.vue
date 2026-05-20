@@ -23,10 +23,8 @@ let _unbindSearch: (() => void) | undefined
 onMounted(async () => {
   _unbindSearch = search.bind()
   await Promise.all([settings.hydrate(), indexStatus.bind()])
+  applySearchHistorySettings()
 
-  if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
-    void indexStatus.triggerReindex()
-  }
   await viewer.hydrate()
 })
 
@@ -45,8 +43,17 @@ function openSettings(): void {
 
 function closeSettings(): void {
   showSettings.value = false
+  applySearchHistorySettings()
   // After saving settings the notesRoot may have changed — re-hydrate the tree.
   void viewer.hydrate()
+}
+
+function applySearchHistorySettings(): void {
+  if (!settings.state) return
+  search.configureHistory({
+    retention: settings.state.searchHistoryRetention,
+    includeAnswers: settings.state.searchHistoryIncludesAnswers
+  })
 }
 </script>
 

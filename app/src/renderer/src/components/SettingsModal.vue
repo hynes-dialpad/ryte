@@ -4,10 +4,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useIndexStatusStore } from '../stores/index-status'
 import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
+import { answerModels } from '../../../shared/provider-registry'
 import type {
   AnswerModelId,
   AnswerProviderId,
-  ProviderId
+  DataFlowAcknowledgement,
+  ProviderId,
+  SearchHistoryRetention
 } from '../../../main/settings/settings-store'
 
 const props = defineProps<{ dismissable: boolean }>()
@@ -22,39 +25,67 @@ const cloudAnswersEnabled = ref(false)
 const semanticIndexEnabled = ref(false)
 const answerProvider = ref<AnswerProviderId>('openai')
 const answerModel = ref<AnswerModelId>('gpt-5.2')
+const cloudDataAcknowledged = ref(false)
+const semanticDataAcknowledged = ref(false)
+const searchHistoryRetention = ref<SearchHistoryRetention>('30-days')
+const searchHistoryIncludesAnswers = ref(false)
 const openaiKey = ref('')
 const anthropicKey = ref('')
+const deletedProviderKeys = ref<Set<ProviderId>>(new Set())
+const validatingProvider = ref<ProviderId | null>(null)
+const keyValidationMessage = ref<Partial<Record<ProviderId, string>>>({})
 const saving = ref(false)
 const localError = ref<string | null>(null)
 const appVersion = ref('')
 
-const ANSWER_MODELS: Array<{
-  id: AnswerModelId
-  label: string
-  provider: AnswerProviderId
-}> = [
-  { id: 'gpt-5.2', label: 'GPT-5.2', provider: 'openai' },
-  { id: 'gpt-5.1', label: 'GPT-5.1', provider: 'openai' },
-  { id: 'gpt-4o', label: 'GPT-4o', provider: 'openai' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o mini', provider: 'openai' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', provider: 'anthropic' },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
-  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', provider: 'anthropic' }
-]
+const ANSWER_MODELS = answerModels()
 
 const answerModelsForProvider = computed(() =>
-  ANSWER_MODELS.filter((model) => model.provider === answerProvider.value)
+  ANSWER_MODELS.filter((model) => model.providerId === answerProvider.value)
 )
 
 const keychainOK = computed(() => settings.state?.keychainAvailable ?? false)
 
 const providerKeyStatus = computed<Record<ProviderId, boolean>>(() => ({
-  openai: settings.state?.hasOpenAIKey ?? false,
-  anthropic: settings.state?.hasAnthropicKey ?? false,
-  gemini: settings.state?.hasGeminiKey ?? false
+  openai: (settings.state?.hasOpenAIKey ?? false) && !deletedProviderKeys.value.has('openai'),
+  anthropic:
+    (settings.state?.hasAnthropicKey ?? false) && !deletedProviderKeys.value.has('anthropic'),
+  gemini: (settings.state?.hasGeminiKey ?? false) && !deletedProviderKeys.value.has('gemini')
 }))
 
-const selectedAnswerProviderHasKey = computed(() => providerKeyStatus.value[answerProvider.value])
+const pendingProviderKeyStatus = computed<Record<ProviderId, boolean>>(() => ({
+  openai: providerKeyStatus.value.openai || !!openaiKey.value.trim(),
+  anthropic: providerKeyStatus.value.anthropic || !!anthropicKey.value.trim(),
+  gemini: providerKeyStatus.value.gemini
+}))
+
+const selectedAnswerProviderHasKey = computed(
+  () => pendingProviderKeyStatus.value[answerProvider.value]
+)
+
+const cloudAcknowledgementCurrent = computed(() =>
+  acknowledgementMatches(
+    settings.state?.cloudAnswersAcknowledgement ?? null,
+    answerProvider.value,
+    answerModel.value
+  )
+)
+
+const semanticAcknowledgementCurrent = computed(() =>
+  acknowledgementMatches(
+    settings.state?.semanticIndexAcknowledgement ?? null,
+    'openai',
+    'text-embedding-3-small'
+  )
+)
+
+const requiresCloudAcknowledgement = computed(
+  () => cloudAnswersEnabled.value && !cloudDataAcknowledged.value
+)
+
+const requiresSemanticAcknowledgement = computed(
+  () => semanticIndexEnabled.value && !semanticDataAcknowledged.value
+)
 
 const reindexRunning = computed(
   () => indexStatus.status.phase === 'walking' || indexStatus.status.phase === 'indexing'
@@ -84,6 +115,8 @@ const canSave = computed(() => {
   if (!settings.state) return false
   if (!notesRoot.value.trim()) return false
   if (!keychainOK.value && (openaiKey.value.trim() || anthropicKey.value.trim())) return false
+  if (requiresCloudAcknowledgement.value) return false
+  if (requiresSemanticAcknowledgement.value) return false
   return true
 })
 
@@ -96,6 +129,10 @@ watch(answerProvider, () => {
   }
 })
 
+watch([answerProvider, answerModel], () => {
+  cloudDataAcknowledged.value = cloudAcknowledgementCurrent.value
+})
+
 onMounted(async () => {
   const versionPromise = window.ryte.app.getVersion()
   if (!settings.state) await settings.hydrate()
@@ -106,9 +143,32 @@ onMounted(async () => {
     semanticIndexEnabled.value = s.semanticIndexEnabled
     answerProvider.value = s.answerProvider
     answerModel.value = s.answerModel
+    cloudDataAcknowledged.value = cloudAcknowledgementCurrent.value
+    semanticDataAcknowledged.value = semanticAcknowledgementCurrent.value
+    searchHistoryRetention.value = s.searchHistoryRetention
+    searchHistoryIncludesAnswers.value = s.searchHistoryIncludesAnswers
   }
   appVersion.value = await versionPromise
 })
+
+function acknowledgementMatches(
+  acknowledgement: DataFlowAcknowledgement | null,
+  provider: ProviderId,
+  model: string
+): boolean {
+  return acknowledgement?.provider === provider && acknowledgement.model === model
+}
+
+function nextAcknowledgement(
+  acknowledgement: DataFlowAcknowledgement | null,
+  provider: ProviderId,
+  model: string
+): DataFlowAcknowledgement {
+  if (acknowledgement && acknowledgementMatches(acknowledgement, provider, model)) {
+    return acknowledgement
+  }
+  return { acknowledgedAt: new Date().toISOString(), provider, model }
+}
 
 async function pickFolder(): Promise<void> {
   const picked = await window.ryte.dialog.openFolder()
@@ -117,6 +177,8 @@ async function pickFolder(): Promise<void> {
 
 async function onSave(): Promise<void> {
   if (!canSave.value) return
+  const current = settings.state
+  if (!current) return
   saving.value = true
   localError.value = null
   try {
@@ -127,15 +189,42 @@ async function onSave(): Promise<void> {
       answerProvider: answerProvider.value,
       answerModel: answerModel.value,
       embeddingProvider: 'openai',
-      embeddingModel: 'text-embedding-3-small'
+      embeddingModel: 'text-embedding-3-small',
+      cloudAnswersAcknowledgement:
+        cloudAnswersEnabled.value && cloudDataAcknowledged.value
+          ? nextAcknowledgement(
+              current.cloudAnswersAcknowledgement,
+              answerProvider.value,
+              answerModel.value
+            )
+          : null,
+      semanticIndexAcknowledgement:
+        semanticIndexEnabled.value && semanticDataAcknowledged.value
+          ? nextAcknowledgement(
+              current.semanticIndexAcknowledgement,
+              'openai',
+              'text-embedding-3-small'
+            )
+          : null,
+      searchHistoryRetention: searchHistoryRetention.value,
+      searchHistoryIncludesAnswers:
+        searchHistoryRetention.value !== 'off' && searchHistoryIncludesAnswers.value
     }
 
     if (openaiKey.value.trim()) patch.openaiKey = openaiKey.value.trim()
     if (anthropicKey.value.trim()) patch.anthropicKey = anthropicKey.value.trim()
+    const deleteProviderKeys = [...deletedProviderKeys.value].filter((provider) => {
+      if (provider === 'openai') return !openaiKey.value.trim()
+      if (provider === 'anthropic') return !anthropicKey.value.trim()
+      return true
+    })
+    if (deleteProviderKeys.length > 0) patch.deleteProviderKeys = deleteProviderKeys
 
     await settings.save(patch)
     openaiKey.value = ''
     anthropicKey.value = ''
+    deletedProviderKeys.value = new Set()
+    keyValidationMessage.value = {}
     emit('close')
     void indexStatus.triggerReindex()
   } catch (e) {
@@ -156,6 +245,50 @@ async function rebuildIndex(): Promise<void> {
 
 function onBackdropClick(): void {
   if (props.dismissable) emit('close')
+}
+
+function resetCloudAcknowledgement(): void {
+  cloudDataAcknowledged.value = false
+}
+
+function resetSemanticAcknowledgement(): void {
+  semanticDataAcknowledged.value = false
+}
+
+function deleteProviderKey(provider: ProviderId): void {
+  deletedProviderKeys.value = new Set([...deletedProviderKeys.value, provider])
+  if (provider === 'openai') openaiKey.value = ''
+  if (provider === 'anthropic') anthropicKey.value = ''
+  keyValidationMessage.value = {
+    ...keyValidationMessage.value,
+    [provider]: 'Key will be deleted when settings are saved.'
+  }
+}
+
+async function validateKey(provider: ProviderId): Promise<void> {
+  validatingProvider.value = provider
+  localError.value = null
+  try {
+    const result = await window.ryte.settings.validateKey(provider)
+    const message =
+      result.ok && result.validatedAt
+        ? `Validated ${new Date(result.validatedAt).toLocaleString()}`
+        : (result.error ?? 'Validation failed.')
+    keyValidationMessage.value = {
+      ...keyValidationMessage.value,
+      [provider]: message
+    }
+    if (result.ok) await settings.hydrate()
+  } catch (e) {
+    localError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    validatingProvider.value = null
+  }
+}
+
+function keyMetadataLabel(provider: ProviderId): string {
+  const validatedAt = settings.state?.providerKeyMetadata[provider]?.lastValidatedAt
+  return validatedAt ? `Last validated ${new Date(validatedAt).toLocaleString()}` : 'Not validated'
 }
 </script>
 
@@ -208,6 +341,24 @@ function onBackdropClick(): void {
               Clear Search History
             </button>
           </div>
+          <label>
+            <span>Search history</span>
+            <select v-model="searchHistoryRetention" :disabled="saving">
+              <option value="off">Off</option>
+              <option value="session">This session only</option>
+              <option value="7-days">7 days</option>
+              <option value="30-days">30 days</option>
+              <option value="forever">Forever</option>
+            </select>
+          </label>
+          <label class="check-row">
+            <input
+              v-model="searchHistoryIncludesAnswers"
+              type="checkbox"
+              :disabled="saving || searchHistoryRetention === 'off'"
+            />
+            <span>Include generated answers and citations in history</span>
+          </label>
           <p
             v-if="indexStatus.status.phase === 'error' && indexStatus.status.error"
             class="error-text"
@@ -215,8 +366,8 @@ function onBackdropClick(): void {
             {{ indexStatus.status.error }}
           </p>
           <p class="hint-text">
-            Rebuilding the index uses local markdown files and does not require provider keys.
-            Search history is stored locally in this app.
+            Rebuilding the index uses local markdown files and does not require provider keys. By
+            default, saved search history keeps queries only.
           </p>
         </section>
 
@@ -230,6 +381,18 @@ function onBackdropClick(): void {
             Semantic indexing sends note chunks to OpenAI to create embeddings. Leave this off for
             keyword-only local search.
           </p>
+          <label v-if="semanticIndexEnabled" class="check-row">
+            <input v-model="semanticDataAcknowledged" type="checkbox" :disabled="saving" />
+            <span>I understand note chunks will be sent to OpenAI for embeddings.</span>
+          </label>
+          <div
+            v-if="settings.state?.semanticIndexAcknowledgement"
+            class="button-row button-row--inline"
+          >
+            <button type="button" :disabled="saving" @click="resetSemanticAcknowledgement">
+              Reset Semantic Consent
+            </button>
+          </div>
           <div class="static-row">
             <span>Embedding model</span>
             <strong>text-embedding-3-small</strong>
@@ -246,6 +409,13 @@ function onBackdropClick(): void {
             Cloud answers send your search query and selected note excerpts to the selected model
             provider. Your full notes folder is not uploaded.
           </p>
+          <label v-if="cloudAnswersEnabled" class="check-row">
+            <input v-model="cloudDataAcknowledged" type="checkbox" :disabled="saving" />
+            <span>
+              I understand my query and selected note excerpts will be sent to
+              {{ answerProvider === 'openai' ? 'OpenAI' : 'Anthropic' }}.
+            </span>
+          </label>
           <div class="split-row">
             <label>
               <span>Answer provider</span>
@@ -267,6 +437,14 @@ function onBackdropClick(): void {
             Add a {{ answerProvider === 'openai' ? 'OpenAI' : 'Anthropic' }} API key before cloud
             answers can run.
           </p>
+          <div
+            v-if="settings.state?.cloudAnswersAcknowledgement"
+            class="button-row button-row--inline"
+          >
+            <button type="button" :disabled="saving" @click="resetCloudAcknowledgement">
+              Reset Cloud Consent
+            </button>
+          </div>
         </section>
 
         <section class="settings-section" aria-labelledby="provider-keys-title">
@@ -281,6 +459,28 @@ function onBackdropClick(): void {
               :disabled="!keychainOK || saving"
             />
           </label>
+          <div class="key-actions">
+            <span class="hint-text">{{ keyMetadataLabel('openai') }}</span>
+            <div class="button-row button-row--inline">
+              <button
+                type="button"
+                :disabled="saving || validatingProvider !== null || !providerKeyStatus.openai"
+                @click="validateKey('openai')"
+              >
+                {{ validatingProvider === 'openai' ? 'Validating...' : 'Validate Saved Key' }}
+              </button>
+              <button
+                type="button"
+                :disabled="saving || !providerKeyStatus.openai"
+                @click="deleteProviderKey('openai')"
+              >
+                Delete Key
+              </button>
+            </div>
+            <p v-if="keyValidationMessage.openai" class="hint-text">
+              {{ keyValidationMessage.openai }}
+            </p>
+          </div>
           <label>
             <span>{{ anthropicKeyLabel }}</span>
             <input
@@ -291,6 +491,32 @@ function onBackdropClick(): void {
               :disabled="!keychainOK || saving"
             />
           </label>
+          <div class="key-actions">
+            <span class="hint-text">{{ keyMetadataLabel('anthropic') }}</span>
+            <div class="button-row button-row--inline">
+              <button
+                type="button"
+                :disabled="saving || validatingProvider !== null || !providerKeyStatus.anthropic"
+                @click="validateKey('anthropic')"
+              >
+                {{ validatingProvider === 'anthropic' ? 'Validating...' : 'Validate Saved Key' }}
+              </button>
+              <button
+                type="button"
+                :disabled="saving || !providerKeyStatus.anthropic"
+                @click="deleteProviderKey('anthropic')"
+              >
+                Delete Key
+              </button>
+            </div>
+            <p v-if="keyValidationMessage.anthropic" class="hint-text">
+              {{ keyValidationMessage.anthropic }}
+            </p>
+          </div>
+          <div class="static-row">
+            <span>Gemini</span>
+            <strong>Planned</strong>
+          </div>
         </section>
 
         <p v-if="localError" class="error-text">{{ localError }}</p>
@@ -408,6 +634,16 @@ button:disabled {
 
 .button-row {
   flex-wrap: wrap;
+}
+
+.button-row--inline {
+  align-items: center;
+}
+
+.key-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .folder-row input,

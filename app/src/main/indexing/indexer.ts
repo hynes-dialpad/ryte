@@ -50,6 +50,13 @@ export class Indexer {
 
     emit({ phase: 'walking', filesTotal: 0, filesDone: 0, chunksTotal: 0, chunksDone: 0 })
     const allPaths = await walkNotes(notesRoot)
+    const currentRelPaths = new Set(allPaths.map((absPath) => relative(notesRoot, absPath)))
+
+    for (const sourcePath of indexState.allSourcePaths()) {
+      if (currentRelPaths.has(sourcePath)) continue
+      vectorStore.deleteFileChunks(sourcePath)
+      indexState.markRemoved(sourcePath)
+    }
 
     // Phase 1: stat + chunk all files needing re-index.
     const pending: PendingFile[] = []
@@ -69,7 +76,14 @@ export class Indexer {
     let filesDone = 0
 
     if (filesTotal === 0) {
-      emit({ phase: 'done', filesTotal: 0, filesDone: 0, chunksTotal: 0, chunksDone: 0 })
+      const totals = indexState.totals()
+      emit({
+        phase: 'done',
+        filesTotal: totals.files,
+        filesDone: totals.files,
+        chunksTotal: totals.chunks,
+        chunksDone: totals.chunks
+      })
       return { filesIndexed: 0, chunksIndexed: 0 }
     }
 

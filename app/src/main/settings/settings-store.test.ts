@@ -44,9 +44,14 @@ describe('SettingsStore', () => {
     expect(state.cloudAnswersEnabled).toBe(false)
     expect(state.semanticIndexEnabled).toBe(false)
     expect(state.firstCloudUseAcknowledgedAt).toBeNull()
+    expect(state.cloudAnswersAcknowledgement).toBeNull()
+    expect(state.semanticIndexAcknowledgement).toBeNull()
+    expect(state.searchHistoryRetention).toBe('30-days')
+    expect(state.searchHistoryIncludesAnswers).toBe(false)
     expect(state.hasAnthropicKey).toBe(false)
     expect(state.hasOpenAIKey).toBe(false)
     expect(state.hasGeminiKey).toBe(false)
+    expect(state.providerKeyMetadata).toEqual({})
     expect(state.keychainAvailable).toBe(true)
   })
 
@@ -87,7 +92,18 @@ describe('SettingsStore', () => {
     settingsStore.update({
       cloudAnswersEnabled: true,
       semanticIndexEnabled: true,
-      firstCloudUseAcknowledgedAt: '2026-05-19T12:00:00.000Z'
+      cloudAnswersAcknowledgement: {
+        acknowledgedAt: '2026-05-19T12:00:00.000Z',
+        provider: 'openai',
+        model: 'gpt-5.2'
+      },
+      semanticIndexAcknowledgement: {
+        acknowledgedAt: '2026-05-19T12:01:00.000Z',
+        provider: 'openai',
+        model: 'text-embedding-3-small'
+      },
+      searchHistoryRetention: '7-days',
+      searchHistoryIncludesAnswers: true
     })
 
     const fresh = new SettingsStore()
@@ -95,6 +111,18 @@ describe('SettingsStore', () => {
     expect(state.cloudAnswersEnabled).toBe(true)
     expect(state.semanticIndexEnabled).toBe(true)
     expect(state.firstCloudUseAcknowledgedAt).toBe('2026-05-19T12:00:00.000Z')
+    expect(state.cloudAnswersAcknowledgement).toEqual({
+      acknowledgedAt: '2026-05-19T12:00:00.000Z',
+      provider: 'openai',
+      model: 'gpt-5.2'
+    })
+    expect(state.semanticIndexAcknowledgement).toEqual({
+      acknowledgedAt: '2026-05-19T12:01:00.000Z',
+      provider: 'openai',
+      model: 'text-embedding-3-small'
+    })
+    expect(state.searchHistoryRetention).toBe('7-days')
+    expect(state.searchHistoryIncludesAnswers).toBe(true)
   })
 
   it('migrates the legacy single-model settings file', async () => {
@@ -118,6 +146,8 @@ describe('SettingsStore', () => {
     expect(state.cloudAnswersEnabled).toBe(false)
     expect(state.semanticIndexEnabled).toBe(false)
     expect(fresh.getSecret('anthropic')).toBe('sk-ant-legacy')
+    expect(state.searchHistoryRetention).toBe('30-days')
+    expect(state.searchHistoryIncludesAnswers).toBe(false)
 
     const saved = JSON.parse(readFileSync(join(tempDir, 'settings.json'), 'utf-8')) as {
       schemaVersion: number
@@ -130,6 +160,49 @@ describe('SettingsStore', () => {
     settingsStore.update({ anthropicKey: 'sk-ant-secret-value' })
     const serialized = JSON.stringify(settingsStore.publicState())
     expect(serialized).not.toContain('sk-ant-secret-value')
+  })
+
+  it('migrates the legacy first cloud-use acknowledgement into provider-aware consent', async () => {
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        notesRoot: '/tmp/legacy-notes',
+        answerProvider: 'anthropic',
+        answerModel: 'claude-haiku-4-5',
+        firstCloudUseAcknowledgedAt: '2026-05-19T12:00:00.000Z'
+      }),
+      'utf-8'
+    )
+
+    const { SettingsStore } = await import('./settings-store')
+    const state = new SettingsStore().publicState()
+    expect(state.cloudAnswersAcknowledgement).toEqual({
+      acknowledgedAt: '2026-05-19T12:00:00.000Z',
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5'
+    })
+  })
+
+  it('deletes provider keys and clears validation metadata', async () => {
+    const { settingsStore } = await import('./settings-store')
+    settingsStore.update({ openaiKey: 'sk-openai-abc' })
+    settingsStore.markKeyValidated('openai', '2026-05-19T12:00:00.000Z')
+
+    const state = settingsStore.update({ deleteProviderKeys: ['openai'] })
+    expect(state.hasOpenAIKey).toBe(false)
+    expect(settingsStore.getSecret('openai')).toBeNull()
+    expect(state.providerKeyMetadata.openai?.lastValidatedAt).toBeNull()
+  })
+
+  it('resets key validation metadata when a key is replaced', async () => {
+    const { settingsStore } = await import('./settings-store')
+    settingsStore.update({ openaiKey: 'sk-openai-abc' })
+    settingsStore.markKeyValidated('openai', '2026-05-19T12:00:00.000Z')
+
+    const state = settingsStore.update({ openaiKey: 'sk-openai-next' })
+    expect(state.providerKeyMetadata.openai?.lastValidatedAt).toBeNull()
+    expect(settingsStore.getSecret('openai')).toBe('sk-openai-next')
   })
 
   it('throws when keychain is unavailable', async () => {

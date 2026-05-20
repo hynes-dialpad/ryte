@@ -29,7 +29,9 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false
     }
   })
 
@@ -78,6 +80,9 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+  if (ready) {
+    void indexerService.triggerReindex()
+  }
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
