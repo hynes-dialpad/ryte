@@ -14,5 +14,5 @@ export function indexDbPath(): string {
 }
 
 export function defaultNotesRoot(): string {
-  return join(app.getPath('home'), 'notes')
+  return join(app.getPath('documents'), 'Ryte')
 }

@@ -1,28 +1,57 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { relative } from 'node:path'
+
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
+import { SearchService } from './search/search-service'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
 import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
 import { viewerWatcher } from './viewer/viewer-watcher'
+
+let searchService: SearchService | null = null
+
+function settingsPatchRequiresIndexerRestart(patch: SettingsUpdate): boolean {
+  return (
+    patch.notesRoot !== undefined ||
+    patch.openaiKey !== undefined ||
+    patch.semanticIndexEnabled !== undefined ||
+    patch.embeddingProvider !== undefined ||
+    patch.embeddingModel !== undefined
+  )
+}
+
+function getOrCreateSearchService(): SearchService | null {
+  const vs = indexerService.getVectorStore()
+  if (!vs) return null
+  if (!searchService) {
+    searchService = new SearchService(indexerService, vs, settingsStore)
+  }
+  return searchService
+}
 
 /**
  * Register all IPC handlers. Call once during app.whenReady() after
  * indexer-service is initialized.
  */
 export function registerIpc(): void {
+  ipcMain.handle('app:get-version', () => app.getVersion())
+
   ipcMain.handle('settings:get-state', () => settingsStore.publicState())
 
   ipcMain.handle('settings:save', async (_, patch: SettingsUpdate) => {
     const next = settingsStore.update(patch)
-    // Re-init indexer and restart watcher so new notesRoot / keys take effect.
-    indexerService.close()
-    const ready = indexerService.init()
-    await watcher.stop()
-    if (ready) {
-      watcher.start(settingsStore.load().notesRoot)
+    if (settingsPatchRequiresIndexerRestart(patch)) {
+      // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
+      indexerService.close()
+      searchService = null // vectorStore is replaced; recreate on next search
+      const ready = indexerService.init()
+      await watcher.stop()
+      if (ready) {
+        watcher.start(settingsStore.load().notesRoot)
+      }
     }
     return next
   })
@@ -77,5 +106,42 @@ export function registerIpc(): void {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('viewer:file-changed', path)
     }
+  })
+
+  watcher.onTreeChanged(() => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('files:tree-changed')
+    }
+  })
+
+  function broadcast(channel: string, payload: Record<string, unknown>): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(channel, payload)
+    }
+  }
+
+  ipcMain.handle('search:query', (_, query: string) => {
+    const svc = getOrCreateSearchService()
+    if (!svc) {
+      broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
+      return null
+    }
+    const requestId = randomUUID()
+    setImmediate(() => {
+      void svc.search(query, requestId, {
+        onToken: (token) => broadcast('search:stream-token', { requestId, token }),
+        onSources: (sources) => broadcast('search:sources', { requestId, sources }),
+        onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
+        onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
+        onDone: () => broadcast('search:done', { requestId }),
+        onError: (error) => broadcast('search:error', { requestId, error })
+      })
+    })
+    return requestId
+  })
+
+  ipcMain.handle('search:cancel', (_, requestId: string) => {
+    const svc = getOrCreateSearchService()
+    svc?.cancel(requestId)
   })
 }

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { rmSync } from 'node:fs'
 
 import { Indexer, type IndexerProgress } from './indexer'
 import { IndexStateStore } from './index-state'
@@ -9,10 +10,26 @@ import { indexDbPath } from '../paths'
 
 const STATUS_EVENT = 'status'
 
+export function isRecoverableIndexStoreError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('database disk image is malformed') ||
+    message.includes('file is not a database')
+  )
+}
+
+function removeIndexDatabaseFiles(dbPath: string): void {
+  for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    rmSync(path, { force: true })
+  }
+}
+
 export class IndexerService extends EventEmitter {
   private vectorStore: VectorStore | null = null
   private indexState: IndexStateStore | null = null
   private indexer: Indexer | null = null
+  private embedder: OpenAIEmbeddingProvider | null = null
   private lastStatus: IndexerProgress = {
     phase: 'idle',
     filesTotal: 0,
@@ -23,21 +40,41 @@ export class IndexerService extends EventEmitter {
   private running = false
 
   /**
-   * Initialize the indexer using current settings. Returns true if a valid
-   * OpenAI key is configured and the indexer is ready to run.
+   * Initialize the indexer using current settings. Keyword indexing is always
+   * available; OpenAI embeddings are enabled only when a key is configured.
    */
   init(): boolean {
-    const openaiKey = settingsStore.getSecret('openai')
-    if (!openaiKey) return false
-
     const settings = settingsStore.load()
-    const embedder = new OpenAIEmbeddingProvider(openaiKey)
-    this.vectorStore = new VectorStore(indexDbPath())
-    this.vectorStore.init(embedder.dim)
+    const openaiKey = settings.semanticIndexEnabled ? settingsStore.getSecret('openai') : null
+    const embedder = openaiKey
+      ? new OpenAIEmbeddingProvider(openaiKey, { model: settings.embeddingModel })
+      : null
+    const dbPath = indexDbPath()
+
+    try {
+      this.initializeStores(dbPath, settings.notesRoot, embedder)
+    } catch (error) {
+      this.close()
+      if (!isRecoverableIndexStoreError(error)) throw error
+      removeIndexDatabaseFiles(dbPath)
+      this.initializeStores(dbPath, settings.notesRoot, embedder)
+    }
+
+    return true
+  }
+
+  private initializeStores(
+    dbPath: string,
+    notesRoot: string,
+    embedder: OpenAIEmbeddingProvider | null
+  ): void {
+    this.embedder = embedder
+    this.vectorStore = new VectorStore(dbPath)
+    this.vectorStore.init(embedder?.dim ?? 1536)
     this.indexState = new IndexStateStore(this.vectorStore.database)
     this.indexState.init()
     this.indexer = new Indexer({
-      notesRoot: settings.notesRoot,
+      notesRoot,
       embedder,
       vectorStore: this.vectorStore,
       indexState: this.indexState
@@ -52,7 +89,6 @@ export class IndexerService extends EventEmitter {
       chunksTotal: totals.chunks,
       chunksDone: totals.chunks
     }
-    return true
   }
 
   getStatus(): IndexerProgress {
@@ -67,15 +103,17 @@ export class IndexerService extends EventEmitter {
     }
     this.running = true
     try {
-      await this.indexer!.indexAll({
-        onProgress: (p) => this.broadcast(p)
-      })
+      await this.indexAll()
     } catch (err) {
-      this.broadcast({
-        ...this.lastStatus,
-        phase: 'error',
-        error: err instanceof Error ? err.message : String(err)
-      })
+      if (this.recoverIndexStore(err)) {
+        try {
+          await this.indexAll()
+        } catch (retryErr) {
+          this.broadcastIndexingError(retryErr)
+        }
+      } else {
+        this.broadcastIndexingError(err)
+      }
     } finally {
       this.running = false
     }
@@ -114,16 +152,49 @@ export class IndexerService extends EventEmitter {
     return () => this.off(STATUS_EVENT, cb)
   }
 
+  async embed(texts: string[]): Promise<Float32Array[]> {
+    if (!this.embedder) throw new Error('No embedding provider configured')
+    return this.embedder.embed(texts)
+  }
+
+  getVectorStore(): VectorStore | null {
+    return this.vectorStore
+  }
+
   close(): void {
     this.vectorStore?.close()
     this.vectorStore = null
     this.indexState = null
     this.indexer = null
+    this.embedder = null
   }
 
   private broadcast(p: IndexerProgress): void {
     this.lastStatus = p
     this.emit(STATUS_EVENT, p)
+  }
+
+  private async indexAll(): Promise<void> {
+    await this.indexer!.indexAll({
+      onProgress: (p) => this.broadcast(p)
+    })
+  }
+
+  private recoverIndexStore(error: unknown): boolean {
+    if (!isRecoverableIndexStoreError(error)) return false
+    const dbPath = indexDbPath()
+    this.close()
+    removeIndexDatabaseFiles(dbPath)
+    this.init()
+    return true
+  }
+
+  private broadcastIndexingError(error: unknown): void {
+    this.broadcast({
+      ...this.lastStatus,
+      phase: 'error',
+      error: error instanceof Error ? error.message : String(error)
+    })
   }
 }
 

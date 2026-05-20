@@ -1,0 +1,96 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  watch: vi.fn(),
+  close: vi.fn(),
+  notifyFileChanged: vi.fn(),
+  notifyFileRemoved: vi.fn()
+}))
+
+vi.mock('chokidar', () => ({
+  default: { watch: mocks.watch }
+}))
+
+vi.mock('./indexer-service', () => ({
+  indexerService: {
+    notifyFileChanged: mocks.notifyFileChanged,
+    notifyFileRemoved: mocks.notifyFileRemoved
+  }
+}))
+
+import { Watcher } from './watcher'
+
+type Handler = (path: string) => void
+
+describe('Watcher', () => {
+  let handlers: Map<string, Handler>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    handlers = new Map()
+    const fsw = {
+      on: vi.fn((event: string, handler: Handler) => {
+        handlers.set(event, handler)
+        return fsw
+      }),
+      close: mocks.close.mockResolvedValue(undefined)
+    }
+    mocks.watch.mockReturnValue(fsw)
+  })
+
+  it('notifies the indexer and file tree subscribers when markdown files are added', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    expect(mocks.watch).toHaveBeenCalledWith(
+      '/notes',
+      expect.objectContaining({ ignoreInitial: true, persistent: true })
+    )
+
+    handlers.get('add')?.('/notes/new.md')
+
+    expect(onTreeChanged).toHaveBeenCalledOnce()
+    expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/new.md')
+  })
+
+  it('ignores non-markdown file events from the watched notes root', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    handlers.get('add')?.('/notes/ignored.txt')
+    handlers.get('change')?.('/notes/ignored.txt')
+    handlers.get('unlink')?.('/notes/ignored.txt')
+
+    expect(onTreeChanged).not.toHaveBeenCalled()
+    expect(mocks.notifyFileChanged).not.toHaveBeenCalled()
+    expect(mocks.notifyFileRemoved).not.toHaveBeenCalled()
+  })
+
+  it('notifies the indexer and file tree subscribers when markdown files are removed', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    handlers.get('unlink')?.('/notes/old.md')
+
+    expect(onTreeChanged).toHaveBeenCalledOnce()
+    expect(mocks.notifyFileRemoved).toHaveBeenCalledWith('/notes/old.md')
+  })
+
+  it('does not emit file tree changes for content-only changes', () => {
+    const watcher = new Watcher()
+    const onTreeChanged = vi.fn()
+    watcher.onTreeChanged(onTreeChanged)
+    watcher.start('/notes')
+
+    handlers.get('change')?.('/notes/existing.md')
+
+    expect(onTreeChanged).not.toHaveBeenCalled()
+    expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/existing.md')
+  })
+})
