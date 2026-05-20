@@ -10,6 +10,7 @@ import {
   assertValidAbsolutePath,
   assertValidProviderId,
   assertValidRequestId,
+  assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSettingsPatch
 } from './ipc-validation'
@@ -99,6 +100,11 @@ export function registerIpc(): void {
     void indexerService.triggerReindex()
   })
 
+  ipcMain.handle('indexer:clear-and-rebuild', async () => {
+    searchService = null
+    await indexerService.clearAndRebuild()
+  })
+
   // Push status events to all renderer windows.
   indexerService.subscribe((status) => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -147,8 +153,9 @@ export function registerIpc(): void {
     }
   }
 
-  ipcMain.handle('search:query', (_, rawQuery: unknown) => {
+  ipcMain.handle('search:query', (_, rawQuery: unknown, rawOptions: unknown) => {
     const query = assertValidSearchQuery(rawQuery)
+    const options = assertValidSearchOptions(rawOptions)
     const svc = getOrCreateSearchService()
     if (!svc) {
       broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
@@ -156,14 +163,19 @@ export function registerIpc(): void {
     }
     const requestId = randomUUID()
     setImmediate(() => {
-      void svc.search(query, requestId, {
-        onToken: (token) => broadcast('search:stream-token', { requestId, token }),
-        onSources: (sources) => broadcast('search:sources', { requestId, sources }),
-        onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
-        onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
-        onDone: () => broadcast('search:done', { requestId }),
-        onError: (error) => broadcast('search:error', { requestId, error })
-      })
+      void svc.search(
+        query,
+        requestId,
+        {
+          onToken: (token) => broadcast('search:stream-token', { requestId, token }),
+          onSources: (sources) => broadcast('search:sources', { requestId, sources }),
+          onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
+          onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
+          onDone: () => broadcast('search:done', { requestId }),
+          onError: (error) => broadcast('search:error', { requestId, error })
+        },
+        options
+      )
     })
     return requestId
   })

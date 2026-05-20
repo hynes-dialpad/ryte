@@ -30,6 +30,6 @@ pnpm smoke:indexer
 - Keep local keyword search working without provider keys.
 - Record manual app smoke results when UI, search, settings, indexing, provider, or restart behavior changes.
 
-## Phase 0 PR Scope
+## PR Scope Guidance
 
-The Phase 0 foundation PR should stay as one PR unless the GitHub diff becomes too hard to review. The commit history is already structured by concern, so review can happen commit-by-commit inside one branch.
+Keep PRs focused by milestone or user-visible capability unless the GitHub diff becomes too hard to review. Structure commits by concern so a single PR can still be reviewed commit-by-commit.

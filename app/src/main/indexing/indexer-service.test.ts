@@ -134,4 +134,16 @@ describe('IndexerService.embed()', () => {
     expect(mocks.vectorStoreInit).toHaveBeenCalledTimes(2)
     expect(svc.getStatus().phase).not.toBe('error')
   })
+
+  it('clears the local index store and rebuilds on request', async () => {
+    const { IndexerService } = await import('./indexer-service')
+
+    const svc = new IndexerService()
+    svc.init()
+    await svc.clearAndRebuild()
+
+    expect(mocks.vectorStoreClose).toHaveBeenCalled()
+    expect(mocks.vectorStoreInit).toHaveBeenCalledTimes(2)
+    expect(mocks.indexerIndexAll).toHaveBeenCalledOnce()
+  })
 })

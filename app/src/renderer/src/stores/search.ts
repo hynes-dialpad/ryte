@@ -9,7 +9,12 @@ import {
   type HistoryEntry,
   type SearchHistoryOptions
 } from './search-history'
-import type { SearchCitation, SearchNotice, SearchSource } from '../../../preload/index'
+import type {
+  SearchCitation,
+  SearchNotice,
+  SearchQueryOptions,
+  SearchSource
+} from '../../../preload/index'
 
 export type SearchStatus = 'idle' | 'searching' | 'streaming' | 'done' | 'error'
 
@@ -38,11 +43,11 @@ export const useSearchStore = defineStore('search', () => {
     activeRequestId.value = null
   }
 
-  async function runQuery(q: string): Promise<void> {
+  async function runQuery(q: string, options: SearchQueryOptions = {}): Promise<void> {
     reset()
     query.value = q
     status.value = 'searching'
-    activeRequestId.value = await window.ryte.search.query(q)
+    activeRequestId.value = await window.ryte.search.query(q, options)
     if (!activeRequestId.value) {
       status.value = 'error'
       error.value = 'Indexer not ready — wait for local indexing to initialize'

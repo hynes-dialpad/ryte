@@ -2,7 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
+import type {
+  SearchAnswerMode as MainSearchAnswerMode,
+  SearchRetrievalMode as MainSearchRetrievalMode
+} from '../main/search/search-service'
 import type { ProviderId } from '../shared/provider-registry'
+
+export type SearchRetrievalMode = MainSearchRetrievalMode
+export type SearchAnswerMode = MainSearchAnswerMode
 
 export interface IndexerStatus {
   phase: 'idle' | 'walking' | 'indexing' | 'done' | 'error'
@@ -10,6 +17,7 @@ export interface IndexerStatus {
   filesDone: number
   chunksTotal: number
   chunksDone: number
+  lastIndexedAt: string | null
   error?: string
 }
 
@@ -19,8 +27,11 @@ export interface FileTreeResponse {
 }
 
 export interface SearchSource {
+  index: number
   sourcePath: string
   headingPath: string[]
+  preview: string
+  retrievalMode: 'keyword' | 'hybrid'
 }
 
 export interface SearchCitation {
@@ -32,10 +43,16 @@ export interface SearchCitation {
 export interface SearchNotice {
   code:
     | 'no-local-sources'
+    | 'semantic-unavailable'
     | 'cloud-answers-disabled'
     | 'cloud-answers-not-acknowledged'
     | 'provider-key-missing'
   message: string
+}
+
+export interface SearchQueryOptions {
+  retrievalMode?: SearchRetrievalMode
+  answerMode?: SearchAnswerMode
 }
 
 export interface RyteApi {
@@ -52,6 +69,7 @@ export interface RyteApi {
   }
   indexer: {
     triggerReindex(): Promise<void>
+    clearAndRebuild(): Promise<void>
     getStatus(): Promise<IndexerStatus>
     onStatus(cb: (status: IndexerStatus) => void): () => void
   }
@@ -64,7 +82,7 @@ export interface RyteApi {
     onTreeChanged(cb: () => void): () => void
   }
   search: {
-    query(q: string): Promise<string | null>
+    query(q: string, options?: SearchQueryOptions): Promise<string | null>
     cancel(requestId: string): Promise<void>
     onToken(cb: (requestId: string, token: string) => void): () => void
     onSources(cb: (requestId: string, sources: SearchSource[]) => void): () => void
@@ -89,6 +107,7 @@ const api: RyteApi = {
   },
   indexer: {
     triggerReindex: () => ipcRenderer.invoke('indexer:trigger-reindex'),
+    clearAndRebuild: () => ipcRenderer.invoke('indexer:clear-and-rebuild'),
     getStatus: () => ipcRenderer.invoke('indexer:get-status'),
     onStatus: (cb) => {
       const listener = (_: unknown, status: IndexerStatus): void => cb(status)
@@ -113,7 +132,7 @@ const api: RyteApi = {
     }
   },
   search: {
-    query: (q) => ipcRenderer.invoke('search:query', q),
+    query: (q, options) => ipcRenderer.invoke('search:query', q, options),
     cancel: (requestId) => ipcRenderer.invoke('search:cancel', requestId),
     onToken: (cb) => {
       const listener = (_: unknown, payload: { requestId: string; token: string }): void =>

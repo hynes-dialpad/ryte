@@ -1,22 +1,33 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
 import { useViewerStore } from '../stores/viewer'
+import type { SearchQueryOptions, SearchRetrievalMode } from '../../../preload/index'
 
 const emit = defineEmits<{ close: [] }>()
 
 const search = useSearchStore()
 const settings = useSettingsStore()
 const viewer = useViewerStore()
+const RETRIEVAL_MODES: SearchRetrievalMode[] = ['auto', 'keyword', 'hybrid']
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const localQuery = ref('')
 const renderedAnswer = ref('')
 const pendingCloudQuery = ref('')
 const showCloudWarning = ref(false)
+const retrievalMode = ref<SearchRetrievalMode>('auto')
+const generatedAnswersEnabled = ref(true)
+
+const retrievalLabel = computed(() => {
+  const mode = search.sources[0]?.retrievalMode ?? retrievalMode.value
+  if (mode === 'hybrid') return 'Hybrid'
+  if (mode === 'keyword') return 'Keyword'
+  return 'Auto'
+})
 
 watch(
   () => search.answer,
@@ -43,12 +54,16 @@ async function submit(): Promise<void> {
     return
   if (!settings.state) await settings.hydrate()
   const q = localQuery.value.trim()
-  if (settings.state?.cloudAnswersEnabled && !hasCurrentCloudAcknowledgement()) {
+  if (
+    generatedAnswersEnabled.value &&
+    settings.state?.cloudAnswersEnabled &&
+    !hasCurrentCloudAcknowledgement()
+  ) {
     pendingCloudQuery.value = q
     showCloudWarning.value = true
     return
   }
-  await search.runQuery(q)
+  await search.runQuery(q, searchOptions())
 }
 
 async function continueWithCloud(): Promise<void> {
@@ -64,7 +79,7 @@ async function continueWithCloud(): Promise<void> {
   })
   showCloudWarning.value = false
   pendingCloudQuery.value = ''
-  await search.runQuery(q)
+  await search.runQuery(q, searchOptions())
 }
 
 async function searchLocallyOnly(): Promise<void> {
@@ -72,7 +87,8 @@ async function searchLocallyOnly(): Promise<void> {
   if (!q) return
   showCloudWarning.value = false
   pendingCloudQuery.value = ''
-  await search.runQuery(q)
+  generatedAnswersEnabled.value = false
+  await search.runQuery(q, searchOptions('local-only'))
 }
 
 function openCitation(sourcePath: string): void {
@@ -83,6 +99,13 @@ function openCitation(sourcePath: string): void {
 
 function formatPath(sourcePath: string, headingPath: string[]): string {
   return headingPath.length ? `${sourcePath} › ${headingPath.join(' › ')}` : sourcePath
+}
+
+function searchOptions(answerMode?: SearchQueryOptions['answerMode']): SearchQueryOptions {
+  return {
+    retrievalMode: retrievalMode.value,
+    answerMode: answerMode ?? (generatedAnswersEnabled.value ? 'settings' : 'local-only')
+  }
 }
 
 function hasCurrentCloudAcknowledgement(): boolean {
@@ -127,6 +150,25 @@ async function closeOverlay(): Promise<void> {
         </button>
       </div>
 
+      <div class="search-controls" aria-label="Search controls">
+        <div class="segmented-control" role="radiogroup" aria-label="Retrieval mode">
+          <button
+            v-for="mode in RETRIEVAL_MODES"
+            :key="mode"
+            type="button"
+            :class="{ active: retrievalMode === mode }"
+            :aria-pressed="retrievalMode === mode"
+            @click="retrievalMode = mode"
+          >
+            {{ mode === 'auto' ? 'Auto' : mode === 'keyword' ? 'Keyword' : 'Hybrid' }}
+          </button>
+        </div>
+        <label class="answer-toggle">
+          <input v-model="generatedAnswersEnabled" type="checkbox" />
+          <span>Generated answer</span>
+        </label>
+      </div>
+
       <div v-if="showCloudWarning" class="cloud-warning" role="alertdialog" aria-live="assertive">
         <p>
           This is the first time Ryte will send note content outside your Mac. Ryte will send this
@@ -152,13 +194,20 @@ async function closeOverlay(): Promise<void> {
         <!-- Sources found (appear as retrieval completes, before synthesis) -->
         <div v-if="search.sources.length > 0 && search.status !== 'idle'" class="sources-section">
           <span class="sources-label"
-            >Found {{ search.sources.length }} source{{
+            >Found {{ search.sources.length }} local source{{
               search.sources.length !== 1 ? 's' : ''
-            }}</span
+            }}
+            · {{ retrievalLabel }}</span
           >
           <ul class="sources-list">
             <li v-for="(s, i) in search.sources" :key="i" class="source-item">
-              {{ formatPath(s.sourcePath, s.headingPath) }}
+              <button type="button" class="source-btn" @click="openCitation(s.sourcePath)">
+                <span class="source-index">[{{ s.index }}]</span>
+                <span class="source-content">
+                  <span class="source-path">{{ formatPath(s.sourcePath, s.headingPath) }}</span>
+                  <span v-if="s.preview" class="source-preview">{{ s.preview }}</span>
+                </span>
+              </button>
             </li>
           </ul>
         </div>
@@ -269,6 +318,56 @@ async function closeOverlay(): Promise<void> {
   background: rgba(255, 255, 255, 0.14);
 }
 
+.search-controls {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.segmented-control {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.segmented-control button {
+  background: transparent;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--ev-c-text-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  min-width: 4.6rem;
+  padding: 0.38rem 0.55rem;
+}
+
+.segmented-control button:last-child {
+  border-right: none;
+}
+
+.segmented-control button.active {
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--color-text);
+}
+
+.answer-toggle {
+  align-items: center;
+  color: var(--ev-c-text-2);
+  display: inline-flex;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.answer-toggle input {
+  height: 0.9rem;
+  width: 0.9rem;
+}
+
 .cloud-warning {
   background: rgba(255, 184, 77, 0.1);
   border: 1px solid rgba(255, 184, 77, 0.24);
@@ -349,16 +448,62 @@ async function closeOverlay(): Promise<void> {
 .sources-list {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.4rem;
   list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .source-item {
+  margin: 0;
+}
+
+.source-btn {
+  align-items: flex-start;
+  background: transparent;
+  border: none;
   color: var(--ev-c-text-2);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
   font-size: 0.78rem;
+  gap: 0.45rem;
+  padding: 0.25rem 0.3rem;
+  text-align: left;
+  width: 100%;
+}
+
+.source-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text);
+}
+
+.source-index {
+  color: var(--ev-c-text-3);
+  flex-shrink: 0;
+}
+
+.source-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.source-path {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-preview {
+  color: var(--ev-c-text-3);
+  display: -webkit-box;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .search-answer {
@@ -504,5 +649,21 @@ async function closeOverlay(): Promise<void> {
   white-space: pre-wrap;
   max-height: 8rem;
   overflow-y: auto;
+}
+
+@media (max-width: 560px) {
+  .search-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .segmented-control {
+    width: 100%;
+  }
+
+  .segmented-control button {
+    flex: 1;
+    min-width: 0;
+  }
 }
 </style>

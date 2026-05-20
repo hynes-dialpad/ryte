@@ -15,12 +15,25 @@ export interface CitationResult {
 }
 
 export interface SourceResult {
+  index: number
   sourcePath: string
   headingPath: string[]
+  preview: string
+  retrievalMode: SearchAppliedRetrievalMode
+}
+
+export type SearchRetrievalMode = 'auto' | 'keyword' | 'hybrid'
+export type SearchAppliedRetrievalMode = 'keyword' | 'hybrid'
+export type SearchAnswerMode = 'settings' | 'local-only'
+
+export interface SearchOptions {
+  retrievalMode?: SearchRetrievalMode
+  answerMode?: SearchAnswerMode
 }
 
 export type SearchNoticeCode =
   | 'no-local-sources'
+  | 'semantic-unavailable'
   | 'cloud-answers-disabled'
   | 'cloud-answers-not-acknowledged'
   | 'provider-key-missing'
@@ -66,9 +79,16 @@ interface SettingsDep {
 const RETRIEVE_K = 20
 const RETRIEVE_MAX = 15
 const CITATION_RE = /\[(\d+)\]/g
+const PREVIEW_MAX_CHARS = 240
 
 function providerLabel(provider: AnswerProviderId): string {
   return provider === 'anthropic' ? 'Anthropic' : 'OpenAI'
+}
+
+function previewText(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= PREVIEW_MAX_CHARS) return normalized
+  return `${normalized.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}...`
 }
 
 export class SearchService {
@@ -81,22 +101,40 @@ export class SearchService {
     private readonly settings: SettingsDep
   ) {}
 
-  async search(query: string, requestId: string, callbacks: SearchCallbacks): Promise<void> {
+  async search(
+    query: string,
+    requestId: string,
+    callbacks: SearchCallbacks,
+    options: SearchOptions = {}
+  ): Promise<void> {
     const controller = new AbortController()
     this.controllers.set(requestId, controller)
     try {
       if (this.cancelled.has(requestId)) return
 
       let rows: StoredChunkRow[]
-      try {
-        const [queryVec] = await this.embedDep.embed([query])
+      let retrievalMode: SearchAppliedRetrievalMode = 'keyword'
 
-        if (this.cancelled.has(requestId) || controller.signal.aborted) return
-
-        rows = this.retrieveDep.hybridSearch(query, queryVec, RETRIEVE_K, RETRIEVE_MAX)
-      } catch {
-        if (this.cancelled.has(requestId) || controller.signal.aborted) return
+      if (options.retrievalMode === 'keyword') {
         rows = this.retrieveDep.keywordSearch(query, RETRIEVE_MAX)
+      } else {
+        try {
+          const [queryVec] = await this.embedDep.embed([query])
+
+          if (this.cancelled.has(requestId) || controller.signal.aborted) return
+
+          rows = this.retrieveDep.hybridSearch(query, queryVec, RETRIEVE_K, RETRIEVE_MAX)
+          retrievalMode = 'hybrid'
+        } catch {
+          if (this.cancelled.has(requestId) || controller.signal.aborted) return
+          if (options.retrievalMode === 'hybrid') {
+            callbacks.onNotice({
+              code: 'semantic-unavailable',
+              message: 'Semantic retrieval unavailable; showing keyword results.'
+            })
+          }
+          rows = this.retrieveDep.keywordSearch(query, RETRIEVE_MAX)
+        }
       }
 
       if (this.cancelled.has(requestId) || controller.signal.aborted) return
@@ -109,7 +147,13 @@ export class SearchService {
       }))
 
       callbacks.onSources(
-        chunks.map((c) => ({ sourcePath: c.sourcePath, headingPath: c.headingPath }))
+        chunks.map((c) => ({
+          index: c.index,
+          sourcePath: c.sourcePath,
+          headingPath: c.headingPath,
+          preview: previewText(c.text),
+          retrievalMode
+        }))
       )
 
       if (chunks.length === 0) {
@@ -117,6 +161,11 @@ export class SearchService {
           code: 'no-local-sources',
           message: 'No local sources found. Try a different query or rebuild the local index.'
         })
+        callbacks.onDone()
+        return
+      }
+
+      if (options.answerMode === 'local-only') {
         callbacks.onDone()
         return
       }

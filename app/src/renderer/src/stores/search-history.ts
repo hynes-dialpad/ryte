@@ -37,7 +37,14 @@ function retentionCutoff(options: SearchHistoryOptions): number | null {
 }
 
 function sanitizeHistoryEntry(entry: HistoryEntry, options: SearchHistoryOptions): HistoryEntry {
-  if (options.includeAnswers) return entry
+  const sources = entry.sources.map((source) => ({
+    ...source,
+    preview: '',
+    retrievalMode: source.retrievalMode ?? 'keyword',
+    index: source.index ?? 0
+  }))
+
+  if (options.includeAnswers) return { ...entry, sources }
   return {
     ...entry,
     answer: '',
@@ -53,7 +60,15 @@ function isStringArray(value: unknown): value is string[] {
 function isSource(value: unknown): value is SearchSource {
   if (!value || typeof value !== 'object') return false
   const source = value as Partial<SearchSource>
-  return typeof source.sourcePath === 'string' && isStringArray(source.headingPath)
+  return (
+    typeof source.sourcePath === 'string' &&
+    isStringArray(source.headingPath) &&
+    (source.index === undefined || typeof source.index === 'number') &&
+    (source.preview === undefined || typeof source.preview === 'string') &&
+    (source.retrievalMode === undefined ||
+      source.retrievalMode === 'keyword' ||
+      source.retrievalMode === 'hybrid')
+  )
 }
 
 function isCitation(value: unknown): value is SearchCitation {

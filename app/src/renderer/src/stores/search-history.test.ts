@@ -30,9 +30,24 @@ function entry(index: number): HistoryEntry {
   return {
     query: `query ${index}`,
     answer: `answer ${index}`,
-    sources: [{ sourcePath: `source-${index}.md`, headingPath: ['Heading'] }],
+    sources: [
+      {
+        index: 1,
+        sourcePath: `source-${index}.md`,
+        headingPath: ['Heading'],
+        preview: `preview ${index}`,
+        retrievalMode: 'keyword'
+      }
+    ],
     citations: [{ index: 1, sourcePath: `source-${index}.md`, headingPath: ['Heading'] }],
     timestamp: index
+  }
+}
+
+function entryWithoutSourcePreviews(index: number): HistoryEntry {
+  return {
+    ...entry(index),
+    sources: entry(index).sources.map((source) => ({ ...source, preview: '' }))
   }
 }
 
@@ -50,7 +65,7 @@ describe('search history persistence', () => {
     const storage = new MemoryStorage()
     const options = { retention: '30-days' as const, includeAnswers: true, now: 100 }
     saveSearchHistory([entry(1)], storage, options)
-    expect(loadSearchHistory(storage, options)).toEqual([entry(1)])
+    expect(loadSearchHistory(storage, options)).toEqual([entryWithoutSourcePreviews(1)])
   })
 
   it('caps persisted history to the retention limit', () => {
@@ -104,6 +119,6 @@ describe('search history persistence', () => {
         includeAnswers: true,
         now: 10 * day
       })
-    ).toEqual([entry(10 * day)])
+    ).toEqual([entryWithoutSourcePreviews(10 * day)])
   })
 })
