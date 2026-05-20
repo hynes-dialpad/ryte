@@ -317,15 +317,24 @@ h1 {
 .sidebar-resize-handle {
   position: absolute;
   top: 0;
-  right: -2px;
-  width: 4px;
+  right: -10px;
+  width: 20px;
   height: 100%;
   cursor: col-resize;
   touch-action: none;
   z-index: 3;
 }
 
-.sidebar-resize-handle:hover {
+.sidebar-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 6px;
+}
+
+.sidebar-resize-handle:hover::before {
   background: oklch(66.267% 0.18645 249.972 / 80%);
 }
 
