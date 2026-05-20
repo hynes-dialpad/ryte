@@ -5,10 +5,11 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 ## What it does
 
 - **Indexes** your notes corpus into a local SQLite database with keyword search by default
-- **Optionally adds semantic search** using OpenAI embeddings when enabled in Settings
+- **Searches locally** in Auto, Keyword, or Hybrid retrieval modes; keyword mode works offline
+- **Optionally adds semantic search** using OpenAI embeddings when explicitly enabled in Settings
 - **Optionally generates answers** using a configured OpenAI or Anthropic model
 - **Browses** your notes in a file tree sidebar with clean markdown rendering and syntax-highlighted code blocks
-- **Watches** for file changes and re-renders live
+- **Watches** for file changes and updates the file tree, viewer, and local index incrementally
 
 ## Requirements
 
@@ -29,7 +30,7 @@ pnpm dev
 
 On first launch, a Settings modal opens. Choose a notes root (`~/Documents/Ryte` by default) and optionally enter API keys for semantic search and generated answers. ryte will index your corpus and show the file tree once complete.
 
-Search history is stored locally in the renderer process using `localStorage` and can be cleared from the search overlay. Provider keys are encrypted through Electron `safeStorage` before they are written to app settings.
+Search history is stored locally in the renderer process using `localStorage` and can be cleared from the search overlay or Settings. It stores queries only by default. Generated answers and citations are retained only when explicitly enabled, and source previews are not persisted. Provider keys are encrypted through Electron `safeStorage` before they are written to app settings.
 
 ## Stack
 
@@ -66,7 +67,7 @@ Runtime/tooling versions:
 
 ## Versioning
 
-`app/package.json` is the source of truth for the app version. Phase 0 uses pre-1.0 SemVer: `0.1.x` for foundation fixes, `0.2.0` for the first security/privacy UX milestone, and `0.3.0` for the first local-first search milestone.
+`app/package.json` is the source of truth for the app version. Ryte uses pre-1.0 SemVer: `0.1.x` for foundation fixes, `0.2.x` for the first security/privacy UX milestone, and `0.3.x` for the first local-first search milestone.
 
 Tagged releases should use the `v` prefix, for example `v0.1.0`. Future DMG names and macOS bundle versions should derive from the package version plus a monotonically increasing build number.
 
