@@ -317,15 +317,16 @@ h1 {
 .sidebar-resize-handle {
   position: absolute;
   top: 0;
-  right: 0;
-  width: 6px;
+  right: -2px;
+  width: 4px;
   height: 100%;
   cursor: col-resize;
   touch-action: none;
+  z-index: 3;
 }
 
 .sidebar-resize-handle:hover {
-  background: oklch(80% 0.12 245 / 22%);
+  background: oklch(66.267% 0.18645 249.972 / 80%);
 }
 
 .sidebar-restore-btn {
