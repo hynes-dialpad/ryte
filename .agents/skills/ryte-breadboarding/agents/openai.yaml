@@ -1,4 +1,0 @@
-interface:
-  display_name: "Ryte Breadboarding"
-  short_description: "Map Ryte UI and code affordances"
-  default_prompt: "Use $ryte-breadboarding to map Ryte UI/code affordances and slice the work."

@@ -1,6 +1,6 @@
 ---
-name: ryte-breadboarding
-description: Breadboard and slice Ryte feature work after shaping or when mapping an existing Ryte workflow. Use when the user wants UI affordance tables, code affordance tables, wiring diagrams, vertical implementation slices, shell/viewer/search flow maps, or a meticulous implementation plan for a selected Ryte shape.
+name: breadboard
+description: Breadboard and slice Ryte feature work after shaping or when mapping an existing Ryte workflow. Use when the user invokes $breadboard, or wants UI affordance tables, code affordance tables, wiring diagrams, vertical implementation slices, shell/viewer/search flow maps, or a meticulous implementation plan for a selected Ryte shape.
 ---
 
 # Ryte Breadboarding
@@ -23,7 +23,7 @@ Use this skill to map a selected Ryte shape into concrete affordances, wiring, a
 
 Start from one of:
 
-- A selected shape from `ryte-shaping`
+- A selected shape from `shaping`
 - A rough design with enough decisions to map
 - An existing workflow that needs to be understood before changing it
 
