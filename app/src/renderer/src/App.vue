@@ -25,9 +25,6 @@ onMounted(async () => {
   await Promise.all([settings.hydrate(), indexStatus.bind()])
   applySearchHistorySettings()
 
-  if (indexStatus.status.phase === 'idle' && indexStatus.status.chunksTotal === 0) {
-    void indexStatus.triggerReindex()
-  }
   await viewer.hydrate()
 })
 
