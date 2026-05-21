@@ -63,6 +63,9 @@ const sidebarPopoverStyle = computed(() => ({
 const edgeTargetStyle = computed(() => ({
   width: `${SIDEBAR_EDGE_TARGET_WIDTH}px`
 }))
+const sidebarHeaderStyle = computed(() => ({
+  width: `${sidebarWidth.value}px`
+}))
 
 function openSearch(): void {
   search.$patch({
@@ -157,11 +160,35 @@ function applySearchHistorySettings(): void {
 <template>
   <div class="app" tabindex="0" @keydown.meta.k.prevent="openSearch">
     <header class="app-header">
-      <h1>ryte</h1>
-      <div class="header-actions">
-        <button type="button" class="sidebar-header-btn" @click="toggleSidebar">
-          {{ workspace.shell.sidebarCollapsed ? 'Show Sidebar' : 'Hide Sidebar' }}
+      <div class="header-sidebar-zone" :style="sidebarHeaderStyle">
+        <h1>ryte</h1>
+        <button
+          type="button"
+          class="sidebar-chrome-btn"
+          :aria-label="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+          :title="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+          @click="toggleSidebar"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            fill="none"
+            viewBox="0 0 18 18"
+            aria-hidden="true"
+          >
+            <path
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-opacity=".75"
+              stroke-width="1.5"
+              d="M6.75 2.25v13.5m-3-13.5h10.5a1.5 1.5 0 0 1 1.5 1.5v10.5a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5V3.75a1.5 1.5 0 0 1 1.5-1.5"
+            />
+          </svg>
         </button>
+      </div>
+      <div class="header-actions">
         <button type="button" class="search-trigger-btn" @click="openSearch">Search</button>
         <button type="button" class="settings-btn" @click="openSettings">Settings</button>
       </div>
@@ -169,9 +196,6 @@ function applySearchHistorySettings(): void {
 
     <main class="app-main" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
       <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
-        <button type="button" class="sidebar-toggle-btn" @click="toggleSidebar">
-          Hide sidebar
-        </button>
         <Sidebar />
         <div
           class="sidebar-resize-handle"
@@ -240,12 +264,24 @@ function applySearchHistorySettings(): void {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.625rem 1rem 0.625rem 5.75rem;
+  min-height: 3.5rem;
+  padding: 0 1rem 0 0;
   background: transparent;
   border-bottom: 1px solid oklch(100% 0 0 / 8%);
   flex-shrink: 0;
   -webkit-app-region: drag;
   user-select: none;
+}
+
+.header-sidebar-zone {
+  height: 100%;
+  min-width: 164px;
+  max-width: 50vw;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 0.875rem 0 5.75rem;
+  flex: 0 0 auto;
 }
 
 .header-actions {
@@ -256,8 +292,7 @@ function applySearchHistorySettings(): void {
 }
 
 .search-trigger-btn,
-.settings-btn,
-.sidebar-header-btn {
+.settings-btn {
   background: transparent;
   color: var(--color-text);
   border: 1px solid oklch(100% 0 0 / 18%);
@@ -270,8 +305,7 @@ function applySearchHistorySettings(): void {
 }
 
 .search-trigger-btn:hover,
-.settings-btn:hover,
-.sidebar-header-btn:hover {
+.settings-btn:hover {
   background: oklch(100% 0 0 / 6%);
 }
 
@@ -280,6 +314,33 @@ h1 {
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-chrome-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-chrome-btn:hover {
+  background: oklch(100% 0 0 / 6%);
+  border-color: oklch(100% 0 0 / 6%);
+}
+
+.sidebar-chrome-btn svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  display: block;
 }
 
 .app-main {
@@ -299,21 +360,6 @@ h1 {
   height: 100%;
   display: flex;
   overflow: hidden;
-}
-
-.sidebar-toggle-btn {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
-  z-index: 2;
-  background: oklch(8% 0.006 300 / 72%);
-  color: oklch(100% 0 0 / 76%);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  border-radius: 4px;
-  padding: 0.2rem 0.45rem;
-  font: inherit;
-  font-size: 0.7rem;
-  cursor: pointer;
 }
 
 .sidebar-resize-handle {
