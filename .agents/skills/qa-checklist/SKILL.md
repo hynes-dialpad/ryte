@@ -1,6 +1,6 @@
 ---
-name: ryte-qa-checklist
-description: Create visual-first Ryte QA checklists. Use when the user invokes $ryte-qa-checklist or asks what to test, needs a PR QA checklist, wants manual visual testing guidance, or wants Codex to derive QA from a Ryte diff.
+name: qa-checklist
+description: Create visual-first Ryte QA checklists. Use when the user invokes $qa-checklist or asks what to test, needs a PR QA checklist, wants manual visual testing guidance, or wants Codex to derive QA from a Ryte diff.
 ---
 
 # Ryte QA Checklist

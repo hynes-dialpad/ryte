@@ -1,6 +1,6 @@
 ---
-name: ryte-pr-create
-description: Create or update Ryte pull requests. Use when the user invokes $ryte-pr-create or asks to create a PR, open a PR, publish a Ryte branch, prepare work for review, or update an existing Ryte PR.
+name: pr-create
+description: Create or update Ryte pull requests. Use when the user invokes $pr-create or asks to create a PR, open a PR, publish a Ryte branch, prepare work for review, or update an existing Ryte PR.
 ---
 
 # Ryte PR Create
@@ -21,7 +21,7 @@ Use this skill to publish a Ryte branch without duplicate PRs.
    - Run `git status -sb`.
    - Confirm current branch is not `main` or `master`.
    - Inspect staged/uncommitted changes; do not stage unrelated files silently.
-   - Confirm validation has run or run `$ryte-validate`.
+   - Confirm validation has run or run `$validate`.
 
 2. **Commit And Push**
    - Commit logically scoped changes if not already committed.

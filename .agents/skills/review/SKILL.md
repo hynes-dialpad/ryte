@@ -1,6 +1,6 @@
 ---
-name: ryte-review
-description: Review Ryte work as a Staff Software Engineer. Use when the user invokes $ryte-review or asks for a counter-review, hardening pass, PR readiness review, gap analysis, resilience review, performance review, or implementation critique.
+name: review
+description: Review Ryte work as a Staff Software Engineer. Use when the user invokes $review or asks for a counter-review, hardening pass, PR readiness review, gap analysis, resilience review, performance review, or implementation critique.
 ---
 
 # Ryte Review

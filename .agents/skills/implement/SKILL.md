@@ -1,6 +1,6 @@
 ---
-name: ryte-implement
-description: Execute approved Ryte work. Use when the user invokes $ryte-implement or asks Codex to implement a Ryte slice, bug fix, tooling update, docs change, validation fix, PR hardening pass, or any already-planned Ryte task.
+name: implement
+description: Execute approved Ryte work. Use when the user invokes $implement or asks Codex to implement a Ryte slice, bug fix, tooling update, docs change, validation fix, PR hardening pass, or any already-planned Ryte task.
 ---
 
 # Ryte Implement
@@ -42,7 +42,7 @@ Use this skill to turn an approved Ryte plan into scoped repo changes, validatio
    - If implementation changes the plan, update the relevant plan/shaping/breadboard doc in the same turn.
 
 5. **Validate**
-   - Run the relevant local checks or invoke `$ryte-validate` behavior.
+   - Run the relevant local checks or invoke `$validate` behavior.
    - Report commands, pass/fail status, and residual risk.
 
 6. **Finish With QA**

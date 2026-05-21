@@ -1,6 +1,6 @@
 ---
-name: ryte-project-start
-description: Start a Ryte effort safely. Use when the user invokes $ryte-project-start or asks to start a new Ryte task, phase, slice, spike, tooling update, bug fix, release/tag task, PR cleanup, or post-merge next effort.
+name: project-start
+description: Start a Ryte effort safely. Use when the user invokes $project-start or asks to start a new Ryte task, phase, slice, spike, tooling update, bug fix, release/tag task, PR cleanup, or post-merge next effort.
 ---
 
 # Ryte Project Start

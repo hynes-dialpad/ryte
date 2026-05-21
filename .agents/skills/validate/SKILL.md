@@ -1,6 +1,6 @@
 ---
-name: ryte-validate
-description: Validate Ryte work safely. Use when the user invokes $ryte-validate or asks to run validation, smoke tests, pre-PR checks, readiness checks, branch guards, or synthetic indexer smoke for Ryte.
+name: validate
+description: Validate Ryte work safely. Use when the user invokes $validate or asks to run validation, smoke tests, pre-PR checks, readiness checks, branch guards, or synthetic indexer smoke for Ryte.
 ---
 
 # Ryte Validate

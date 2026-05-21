@@ -1,6 +1,6 @@
 ---
-name: ryte-pr-complete
-description: Complete merged Ryte PRs and reset for the next effort. Use when the user invokes $ryte-pr-complete or says a Ryte PR merged, asks to get back to main, prune/delete branches, sync local main, close out a branch, or prepare for the next phase.
+name: pr-complete
+description: Complete merged Ryte PRs and reset for the next effort. Use when the user invokes $pr-complete or says a Ryte PR merged, asks to get back to main, prune/delete branches, sync local main, close out a branch, or prepare for the next phase.
 ---
 
 # Ryte PR Complete

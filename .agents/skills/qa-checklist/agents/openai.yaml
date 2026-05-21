@@ -1,4 +1,4 @@
 interface:
   display_name: "Ryte QA Checklist"
   short_description: "Create visual-first Ryte QA checklists."
-  default_prompt: "Use $ryte-qa-checklist to create a Ryte QA checklist."
+  default_prompt: "Use $qa-checklist to create a Ryte QA checklist."
