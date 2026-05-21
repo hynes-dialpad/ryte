@@ -10,6 +10,9 @@ export const DEFAULT_WINDOW_WIDTH = 1460
 export const DEFAULT_WINDOW_HEIGHT = 980
 export const MIN_WINDOW_WIDTH = 480
 export const MIN_WINDOW_HEIGHT = 680
+export const WORKSPACE_RECENTS_LIMIT = 25
+
+export type WorkspaceViewMode = 'preview' | 'source'
 
 export interface WindowBounds {
   x: number
@@ -33,7 +36,7 @@ export interface WorkspaceFileTab {
   id: string
   sourcePath: string
   title: string
-  viewMode: 'preview' | 'source'
+  viewMode: WorkspaceViewMode
 }
 
 export interface WorkspaceRecentFile {
@@ -61,6 +64,32 @@ export interface WorkspaceWindowUpdate {
   bounds?: WindowBounds | null
   maximized?: boolean
   fullscreen?: boolean
+}
+
+export interface WorkspaceOpenFileInput {
+  sourcePath: string
+}
+
+export interface WorkspaceFocusTabInput {
+  tabId: string
+}
+
+export interface WorkspaceCloseTabInput {
+  tabId: string
+}
+
+export interface WorkspaceUpdateTabViewModeInput {
+  tabId: string
+  viewMode: WorkspaceViewMode
+}
+
+export interface WorkspaceRecordRecentInput {
+  sourcePath: string
+}
+
+export interface WorkspaceSetOutlineCollapsedInput {
+  sourcePath: string
+  collapsed: boolean
 }
 
 export function clampSidebarWidth(width: number, viewportWidth: number): number {

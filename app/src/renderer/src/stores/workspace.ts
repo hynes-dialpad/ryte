@@ -4,12 +4,22 @@ import { computed, ref } from 'vue'
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  WORKSPACE_RECENTS_LIMIT,
   WORKSPACE_SCHEMA_VERSION,
   clampSidebarWidth,
   shouldAutoCollapseSidebar,
+  type WorkspaceCloseTabInput,
+  type WorkspaceFileTab,
+  type WorkspaceFocusTabInput,
+  type WorkspaceOpenFileInput,
+  type WorkspaceRecordRecentInput,
+  type WorkspaceSetOutlineCollapsedInput,
   type WorkspaceShellUpdate,
-  type WorkspaceState
+  type WorkspaceState,
+  type WorkspaceUpdateTabViewModeInput
 } from '../../../shared/workspace'
+
+let optimisticTabId = 0
 
 function defaultRendererWorkspaceState(): WorkspaceState {
   return {
@@ -52,6 +62,42 @@ function applyOptimisticShellPatch(
   }
 }
 
+function titleFromSourcePath(sourcePath: string): string {
+  const parts = sourcePath.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) ?? sourcePath
+}
+
+function recordRecentInState(state: WorkspaceState, sourcePath: string): WorkspaceState {
+  return {
+    ...state,
+    recents: [
+      {
+        sourcePath,
+        title: titleFromSourcePath(sourcePath),
+        openedAt: new Date().toISOString()
+      },
+      ...state.recents.filter((recent) => recent.sourcePath !== sourcePath)
+    ].slice(0, WORKSPACE_RECENTS_LIMIT)
+  }
+}
+
+function closeTabInState(state: WorkspaceState, tabId: string): WorkspaceState {
+  const closedIndex = state.tabs.findIndex((tab) => tab.id === tabId)
+  if (closedIndex === -1) return state
+
+  const tabs = state.tabs.filter((tab) => tab.id !== tabId)
+  const activeTabId =
+    state.activeTabId === tabId
+      ? (tabs[closedIndex]?.id ?? tabs[closedIndex - 1]?.id ?? null)
+      : state.activeTabId
+
+  return {
+    ...state,
+    tabs,
+    activeTabId
+  }
+}
+
 export const useWorkspaceStore = defineStore('workspace', () => {
   const state = ref<WorkspaceState | null>(null)
   const loading = ref(false)
@@ -64,6 +110,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         sidebarWidth: SIDEBAR_DEFAULT_WIDTH
       }
   )
+  const tabs = computed(() => state.value?.tabs ?? [])
+  const activeTabId = computed(() => state.value?.activeTabId ?? null)
+  const recents = computed(() => state.value?.recents ?? [])
+  const outlineCollapsedByPath = computed(() => state.value?.outlineCollapsedByPath ?? {})
 
   async function hydrate(): Promise<void> {
     loading.value = true
@@ -93,6 +143,114 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  async function runOptimisticWorkspaceOperation(
+    applyLocal: (base: WorkspaceState) => WorkspaceState,
+    runRemote: () => Promise<WorkspaceState>
+  ): Promise<void> {
+    const previousState = state.value
+    state.value = applyLocal(state.value ?? defaultRendererWorkspaceState())
+    loading.value = true
+    error.value = null
+    try {
+      state.value = await runRemote()
+    } catch (e) {
+      state.value = previousState
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function openFile(input: WorkspaceOpenFileInput): Promise<void> {
+    const temporaryTabId = `optimistic-workspace-tab-${++optimisticTabId}`
+    await runOptimisticWorkspaceOperation(
+      (base) => {
+        const tab: WorkspaceFileTab = {
+          id: temporaryTabId,
+          sourcePath: input.sourcePath,
+          title: titleFromSourcePath(input.sourcePath),
+          viewMode: 'preview'
+        }
+        return recordRecentInState(
+          {
+            ...base,
+            tabs: [...base.tabs, tab],
+            activeTabId: tab.id
+          },
+          input.sourcePath
+        )
+      },
+      () => window.ryte.workspace.openFile(input)
+    )
+  }
+
+  async function focusTab(input: WorkspaceFocusTabInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => ({
+        ...base,
+        activeTabId: base.tabs.some((tab) => tab.id === input.tabId)
+          ? input.tabId
+          : base.activeTabId
+      }),
+      () => window.ryte.workspace.focusTab(input)
+    )
+  }
+
+  async function closeTab(input: WorkspaceCloseTabInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => closeTabInState(base, input.tabId),
+      () => window.ryte.workspace.closeTab(input)
+    )
+  }
+
+  async function updateTabViewMode(input: WorkspaceUpdateTabViewModeInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => ({
+        ...base,
+        tabs: base.tabs.map((tab) =>
+          tab.id === input.tabId ? { ...tab, viewMode: input.viewMode } : tab
+        )
+      }),
+      () => window.ryte.workspace.updateTabViewMode(input)
+    )
+  }
+
+  async function recordRecent(input: WorkspaceRecordRecentInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => recordRecentInState(base, input.sourcePath),
+      () => window.ryte.workspace.recordRecent(input)
+    )
+  }
+
+  async function setOutlineCollapsed(input: WorkspaceSetOutlineCollapsedInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => ({
+        ...base,
+        outlineCollapsedByPath: {
+          ...base.outlineCollapsedByPath,
+          [input.sourcePath]: input.collapsed
+        }
+      }),
+      () => window.ryte.workspace.setOutlineCollapsed(input)
+    )
+  }
+
+  async function pruneMissingFileRefs(): Promise<void> {
+    const previousState = state.value
+    loading.value = true
+    error.value = null
+    try {
+      state.value = await window.ryte.workspace.pruneMissingFileRefs()
+    } catch (e) {
+      state.value = previousState
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
     await updateShell({ sidebarCollapsed: collapsed })
   }
@@ -112,10 +270,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     state,
     shell,
+    tabs,
+    activeTabId,
+    recents,
+    outlineCollapsedByPath,
     loading,
     error,
     hydrate,
     updateShell,
+    openFile,
+    focusTab,
+    closeTab,
+    updateTabViewMode,
+    recordRecent,
+    setOutlineCollapsed,
+    pruneMissingFileRefs,
     setSidebarCollapsed,
     setSidebarWidth,
     sidebarAutoCollapsed,
