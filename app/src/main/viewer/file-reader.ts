@@ -25,3 +25,15 @@ export async function readFileSafe(absPath: string, notesRoot: string): Promise<
   const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
   return readFile(safePath, 'utf8')
 }
+
+export async function resolveSourcePathUnderRoot(
+  sourcePath: string,
+  notesRoot: string
+): Promise<string> {
+  return resolveAndAssertUnderRoot(resolve(notesRoot, sourcePath), notesRoot)
+}
+
+export async function readSourceFileSafe(sourcePath: string, notesRoot: string): Promise<string> {
+  const safePath = await resolveSourcePathUnderRoot(sourcePath, notesRoot)
+  return readFile(safePath, 'utf8')
+}

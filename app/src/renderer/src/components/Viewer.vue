@@ -12,11 +12,7 @@ const proseEl = ref<HTMLElement | null>(null)
 const sourceEl = ref<HTMLElement | null>(null)
 
 const filenameDisplay = computed(() => {
-  if (!viewer.selectedPath) return ''
-  if (viewer.notesRoot && viewer.selectedPath.startsWith(viewer.notesRoot)) {
-    return viewer.selectedPath.slice(viewer.notesRoot.length).replace(/^\//, '')
-  }
-  return viewer.selectedPath
+  return viewer.sourcePath ?? ''
 })
 
 async function updateRender(text: string): Promise<void> {
@@ -59,7 +55,7 @@ async function togglePreservingScroll(): Promise<void> {
   const fromEl = viewer.sourceMode ? sourceEl.value : proseEl.value
   const scrollPct = fromEl && fromEl.scrollHeight > 0 ? fromEl.scrollTop / fromEl.scrollHeight : 0
 
-  viewer.toggleSourceMode()
+  await viewer.toggleSourceMode()
 
   // Wait for Vue to swap the element, then restore position.
   await nextTick()
@@ -87,8 +83,8 @@ onUnmounted(() => {
 
 <template>
   <section class="viewer" aria-label="Markdown viewer">
-    <header v-if="viewer.selectedPath" class="viewer-toolbar">
-      <span class="filename" :title="viewer.selectedPath">{{ filenameDisplay }}</span>
+    <header v-if="viewer.sourcePath" class="viewer-toolbar">
+      <span class="filename" :title="viewer.sourcePath">{{ filenameDisplay }}</span>
       <button type="button" class="toggle" @click="togglePreservingScroll()">
         {{ viewer.sourceMode ? 'Rendered' : 'Source' }}
         <span class="shortcut">⌘E</span>
@@ -105,7 +101,8 @@ onUnmounted(() => {
       <p>Render failed</p>
       <p class="error-detail">{{ renderError }}</p>
     </div>
-    <p v-else-if="!viewer.selectedPath" class="empty">Select a file to view</p>
+    <p v-else-if="!viewer.sourcePath" class="empty">Select a file to view</p>
+    <p v-else-if="viewer.loading" class="empty">Loading…</p>
     <pre
       v-else-if="viewer.sourceMode"
       ref="sourceEl"

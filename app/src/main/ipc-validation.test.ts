@@ -5,6 +5,7 @@ import {
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
+  assertValidSourceFileInput,
   assertValidSettingsPatch,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
@@ -119,6 +120,9 @@ describe('ipc validation', () => {
     expect(assertValidWorkspaceRecordRecentInput({ sourcePath: './folder/a.md' })).toEqual({
       sourcePath: 'folder/a.md'
     })
+    expect(assertValidSourceFileInput({ sourcePath: './folder/a.md' })).toEqual({
+      sourcePath: 'folder/a.md'
+    })
     expect(
       assertValidWorkspaceSetOutlineCollapsedInput({
         sourcePath: 'folder/a.md',
@@ -142,6 +146,15 @@ describe('ipc validation', () => {
     ).toThrow('Invalid workspace open file input key')
     expect(() => assertValidWorkspaceRecordRecentInput({ sourcePath: 'a\0.md' })).toThrow(
       'Invalid workspace source path'
+    )
+    expect(() => assertValidSourceFileInput({ sourcePath: '/tmp/a.md' })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() => assertValidSourceFileInput({ sourcePath: '../a.md' })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() => assertValidSourceFileInput({ sourcePath: 'a.md', arbitrary: true })).toThrow(
+      'Invalid source file input key'
     )
   })
 

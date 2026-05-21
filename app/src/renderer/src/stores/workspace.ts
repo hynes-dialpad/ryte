@@ -112,6 +112,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   )
   const tabs = computed(() => state.value?.tabs ?? [])
   const activeTabId = computed(() => state.value?.activeTabId ?? null)
+  const activeTab = computed(() => tabs.value.find((tab) => tab.id === activeTabId.value) ?? null)
   const recents = computed(() => state.value?.recents ?? [])
   const outlineCollapsedByPath = computed(() => state.value?.outlineCollapsedByPath ?? {})
 
@@ -272,6 +273,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     shell,
     tabs,
     activeTabId,
+    activeTab,
     recents,
     outlineCollapsedByPath,
     loading,

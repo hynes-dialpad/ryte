@@ -12,6 +12,7 @@ import {
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
+  assertValidSourceFileInput,
   assertValidSettingsPatch,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
@@ -25,11 +26,18 @@ import {
 import { SearchService } from './search/search-service'
 import { settingsStore, type SettingsUpdate } from './settings/settings-store'
 import { validateProviderKey } from './settings/key-validation'
-import { readFileSafe, resolveAndAssertUnderRoot } from './viewer/file-reader'
+import {
+  readFileSafe,
+  readSourceFileSafe,
+  resolveAndAssertUnderRoot,
+  resolveSourcePathUnderRoot
+} from './viewer/file-reader'
+import { sourcePathForViewerChange } from './viewer/source-change-path'
 import { viewerWatcher } from './viewer/viewer-watcher'
 import { workspaceStore } from './workspace/workspace-store'
 
 let searchService: SearchService | null = null
+let watchedViewerSourcePath: string | null = null
 
 function settingsPatchRequiresIndexerRestart(patch: SettingsUpdate): boolean {
   return (
@@ -171,18 +179,42 @@ export function registerIpc(): void {
     return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
   })
 
+  ipcMain.handle('files:read-source', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { sourcePath } = assertValidSourceFileInput(input)
+    return readSourceFileSafe(sourcePath, notesRoot)
+  })
+
   ipcMain.handle('files:watch', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     const safePath = await resolveAndAssertUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
+    watchedViewerSourcePath = null
     await viewerWatcher.watch(safePath)
   })
 
+  ipcMain.handle('files:watch-source', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { sourcePath } = assertValidSourceFileInput(input)
+    const safePath = await resolveSourcePathUnderRoot(sourcePath, notesRoot)
+    watchedViewerSourcePath = null
+    await viewerWatcher.watch(safePath)
+    watchedViewerSourcePath = sourcePath
+  })
+
   ipcMain.handle('files:unwatch', async () => {
+    watchedViewerSourcePath = null
     await viewerWatcher.stop()
   })
 
   // Push viewer-watcher change events to all renderer windows.
   viewerWatcher.onChange((path) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const sourcePath = sourcePathForViewerChange(path, notesRoot, watchedViewerSourcePath)
+    if (sourcePath) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('viewer:source-changed', sourcePath)
+      }
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('viewer:file-changed', path)
     }
