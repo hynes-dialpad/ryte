@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification } from 'electron'
+import { app, BrowserWindow, Notification, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -9,6 +9,11 @@ import { watcher } from './indexing/watcher'
 import { registerIpc } from './ipc'
 import { installNavigationGuards, originForUrl } from './navigation'
 import { settingsStore } from './settings/settings-store'
+import { workspaceStore } from './workspace/workspace-store'
+import { safeWindowBounds, workAreasFromDisplays } from './window-state'
+import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '../shared/workspace'
+
+const macOSVibrancyMaterial = 'hud' as const
 
 // Set early so macOS notifications show "ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
@@ -18,14 +23,30 @@ function createWindow(): void {
   const rendererUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
   const rendererOrigin = rendererUrl ? originForUrl(rendererUrl) : null
   const allowedAppOrigins = new Set(rendererOrigin ? [rendererOrigin] : [])
+  const workspace = workspaceStore.publicState()
+  const bounds = safeWindowBounds(
+    workspace.window.bounds,
+    workAreasFromDisplays(screen.getAllDisplays())
+  )
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    ...bounds,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
+    backgroundColor: process.platform === 'darwin' ? '#00000000' : '#CC0A090B',
     title: 'ryte',
+    ...(process.platform === 'darwin'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          trafficLightPosition: { x: 20, y: 22 },
+          transparent: true,
+          vibrancy: macOSVibrancyMaterial,
+          visualEffectState: 'active' as const
+        }
+      : {}),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -35,7 +56,16 @@ function createWindow(): void {
     }
   })
 
+  installWindowStatePersistence(mainWindow)
+
   mainWindow.on('ready-to-show', () => {
+    if (process.platform === 'darwin') {
+      mainWindow.setBackgroundColor('#00000000')
+      mainWindow.setVibrancy(macOSVibrancyMaterial)
+    }
+    const state = workspaceStore.publicState().window
+    if (state.maximized) mainWindow.maximize()
+    if (state.fullscreen) mainWindow.setFullScreen(true)
     mainWindow.show()
   })
 
@@ -48,6 +78,34 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function installWindowStatePersistence(window: BrowserWindow): void {
+  let pending: ReturnType<typeof setTimeout> | null = null
+
+  const persistNow = (): void => {
+    if (pending) clearTimeout(pending)
+    workspaceStore.updateWindow({
+      bounds: window.getNormalBounds(),
+      maximized: window.isMaximized(),
+      fullscreen: window.isFullScreen()
+    })
+    workspaceStore.flushSync()
+    pending = null
+  }
+
+  const persist = (): void => {
+    if (pending) clearTimeout(pending)
+    pending = setTimeout(persistNow, 250)
+  }
+
+  window.on('resized', persist)
+  window.on('moved', persist)
+  window.on('maximize', persist)
+  window.on('unmaximize', persist)
+  window.on('enter-full-screen', persist)
+  window.on('leave-full-screen', persist)
+  window.on('close', persistNow)
 }
 
 // This method will be called when Electron has finished
