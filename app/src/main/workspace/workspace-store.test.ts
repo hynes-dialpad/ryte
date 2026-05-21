@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -29,14 +29,35 @@ describe('WorkspaceStore', () => {
   it('persists shell state updates', () => {
     const workspace = store()
     workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420 })
+    workspace.flushSync()
 
     const state = store().publicState()
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
   })
 
+  it('updates the in-memory shell state before debounced persistence flushes', () => {
+    const workspace = store()
+    const state = workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420 })
+
+    expect(state.shell.sidebarCollapsed).toBe(true)
+    expect(state.shell.sidebarWidth).toBe(420)
+    expect(workspace.publicState().shell.sidebarCollapsed).toBe(true)
+    expect(readdirSync(tempDir)).toEqual([])
+
+    workspace.flushSync()
+    expect(JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8'))).toMatchObject({
+      shell: {
+        sidebarCollapsed: true,
+        sidebarWidth: 420
+      }
+    })
+  })
+
   it('clamps invalid sidebar widths to the minimum', () => {
-    const state = store().updateShell({ sidebarWidth: 12 })
+    const workspace = store()
+    const state = workspace.updateShell({ sidebarWidth: 12 })
+    workspace.flushSync()
     expect(state.shell.sidebarWidth).toBe(SIDEBAR_MIN_WIDTH)
   })
 
@@ -47,6 +68,7 @@ describe('WorkspaceStore', () => {
       maximized: true,
       fullscreen: false
     })
+    workspace.flushSync()
 
     const state = store().publicState()
     expect(state.window).toEqual({
@@ -100,5 +122,19 @@ describe('WorkspaceStore', () => {
 
   it('keeps a sensible default sidebar width for fresh state', () => {
     expect(store().publicState().shell.sidebarWidth).toBe(SIDEBAR_DEFAULT_WIDTH)
+  })
+
+  it('flushes debounced writes asynchronously', async () => {
+    const workspace = store()
+    workspace.updateShell({ sidebarCollapsed: true })
+
+    await workspace.flush()
+
+    expect(JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8'))).toMatchObject({
+      shell: {
+        sidebarCollapsed: true
+      }
+    })
+    expect(readdirSync(tempDir)).toEqual(['workspace.json'])
   })
 })

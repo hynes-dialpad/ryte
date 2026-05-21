@@ -26,6 +26,7 @@ const showSettings = ref(false)
 const showSearch = ref(false)
 const viewportWidth = ref(window.innerWidth)
 const dragSidebarWidth = ref<number | null>(null)
+const dragSidebarCollapsed = ref(false)
 const sidebarPopoverOpen = ref(false)
 
 let _unbindSearch: (() => void) | undefined
@@ -49,7 +50,10 @@ onUnmounted(() => {
 const dismissable = computed(() => true)
 const sidebarAutoCollapsed = computed(() => workspace.sidebarAutoCollapsed(viewportWidth.value))
 const sidebarCollapsed = computed(
-  () => workspace.shell.sidebarCollapsed || sidebarAutoCollapsed.value
+  () => workspace.shell.sidebarCollapsed || sidebarAutoCollapsed.value || dragSidebarCollapsed.value
+)
+const sidebarToggleLabel = computed(() =>
+  sidebarCollapsed.value ? 'Show sidebar' : 'Hide sidebar'
 )
 const sidebarWidth = computed(
   () => dragSidebarWidth.value ?? workspace.sidebarWidthForViewport(viewportWidth.value)
@@ -98,7 +102,11 @@ function onWindowResize(): void {
 }
 
 function toggleSidebar(): void {
-  void workspace.setSidebarCollapsed(!workspace.shell.sidebarCollapsed)
+  if (sidebarAutoCollapsed.value) {
+    showSidebarPopover()
+    return
+  }
+  void workspace.setSidebarCollapsed(!sidebarCollapsed.value)
 }
 
 function showSidebarPopover(): void {
@@ -115,20 +123,33 @@ function startSidebarResize(event: PointerEvent): void {
   event.preventDefault()
   const startX = event.clientX
   const startWidth = sidebarWidth.value
+  let latestClientX = startX
+  let resizeFrame: number | null = null
   dragSidebarWidth.value = startWidth
+  dragSidebarCollapsed.value = false
+
+  const applyMove = (): void => {
+    resizeFrame = null
+    const rawWidth = startWidth + latestClientX - startX
+    const shouldCollapse = rawWidth < SIDEBAR_MIN_WIDTH
+    dragSidebarCollapsed.value = shouldCollapse
+    dragSidebarWidth.value = shouldCollapse
+      ? SIDEBAR_MIN_WIDTH
+      : clampSidebarWidth(rawWidth, viewportWidth.value)
+  }
 
   const onMove = (moveEvent: PointerEvent): void => {
-    const rawWidth = startWidth + moveEvent.clientX - startX
-    dragSidebarWidth.value =
-      rawWidth < SIDEBAR_MIN_WIDTH
-        ? SIDEBAR_MIN_WIDTH
-        : clampSidebarWidth(rawWidth, viewportWidth.value)
+    latestClientX = moveEvent.clientX
+    if (resizeFrame === null) {
+      resizeFrame = window.requestAnimationFrame(applyMove)
+    }
   }
 
   const onUp = (upEvent: PointerEvent): void => {
     const rawWidth = startWidth + upEvent.clientX - startX
     _stopSidebarResize?.()
     dragSidebarWidth.value = null
+    dragSidebarCollapsed.value = false
     if (rawWidth < SIDEBAR_MIN_WIDTH) {
       void workspace.updateShell({ sidebarCollapsed: true })
       return
@@ -140,8 +161,13 @@ function startSidebarResize(event: PointerEvent): void {
   }
 
   _stopSidebarResize = () => {
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame)
+      resizeFrame = null
+    }
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
+    dragSidebarCollapsed.value = false
     _stopSidebarResize = undefined
   }
   window.addEventListener('pointermove', onMove)
@@ -166,8 +192,8 @@ function applySearchHistorySettings(): void {
           type="button"
           class="sidebar-chrome-btn"
           :class="{ selected: sidebarCollapsed }"
-          :aria-label="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
-          :title="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+          :aria-label="sidebarToggleLabel"
+          :title="sidebarToggleLabel"
           :aria-pressed="sidebarCollapsed"
           @click="toggleSidebar"
         >

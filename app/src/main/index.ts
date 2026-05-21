@@ -90,6 +90,7 @@ function installWindowStatePersistence(window: BrowserWindow): void {
       maximized: window.isMaximized(),
       fullscreen: window.isFullScreen()
     })
+    workspaceStore.flushSync()
     pending = null
   }
 

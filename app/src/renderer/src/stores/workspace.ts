@@ -4,11 +4,53 @@ import { computed, ref } from 'vue'
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  WORKSPACE_SCHEMA_VERSION,
   clampSidebarWidth,
   shouldAutoCollapseSidebar,
   type WorkspaceShellUpdate,
   type WorkspaceState
 } from '../../../shared/workspace'
+
+function defaultRendererWorkspaceState(): WorkspaceState {
+  return {
+    schemaVersion: WORKSPACE_SCHEMA_VERSION,
+    shell: {
+      sidebarCollapsed: false,
+      sidebarWidth: SIDEBAR_DEFAULT_WIDTH
+    },
+    window: {
+      bounds: null,
+      maximized: false,
+      fullscreen: false
+    },
+    tabs: [],
+    activeTabId: null,
+    recents: [],
+    outlineCollapsedByPath: {}
+  }
+}
+
+function normalizeOptimisticSidebarWidth(width: number): number {
+  if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.round(width))
+}
+
+function applyOptimisticShellPatch(
+  current: WorkspaceState | null,
+  patch: WorkspaceShellUpdate
+): WorkspaceState {
+  const base = current ?? defaultRendererWorkspaceState()
+  return {
+    ...base,
+    shell: {
+      ...base.shell,
+      ...(patch.sidebarCollapsed !== undefined ? { sidebarCollapsed: patch.sidebarCollapsed } : {}),
+      ...(patch.sidebarWidth !== undefined
+        ? { sidebarWidth: normalizeOptimisticSidebarWidth(patch.sidebarWidth) }
+        : {})
+    }
+  }
+}
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const state = ref<WorkspaceState | null>(null)
@@ -36,11 +78,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function updateShell(patch: WorkspaceShellUpdate): Promise<void> {
+    const previousState = state.value
+    state.value = applyOptimisticShellPatch(state.value, patch)
     loading.value = true
     error.value = null
     try {
       state.value = await window.ryte.workspace.updateShell(patch)
     } catch (e) {
+      state.value = previousState
       error.value = e instanceof Error ? e.message : String(e)
       throw e
     } finally {
