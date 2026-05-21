@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { isAbsolute, normalize, sep, win32 } from 'node:path'
 
 import type {
   DataFlowAcknowledgement,
@@ -6,7 +6,17 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
-import type { WorkspaceShellUpdate, WorkspaceWindowUpdate } from '../shared/workspace'
+import type {
+  WorkspaceCloseTabInput,
+  WorkspaceFocusTabInput,
+  WorkspaceOpenFileInput,
+  WorkspaceRecordRecentInput,
+  WorkspaceSetOutlineCollapsedInput,
+  WorkspaceShellUpdate,
+  WorkspaceUpdateTabViewModeInput,
+  WorkspaceViewMode,
+  WorkspaceWindowUpdate
+} from '../shared/workspace'
 import {
   isAnswerModelId,
   isAnswerProviderId,
@@ -20,7 +30,9 @@ const MAX_PATH_LENGTH = 4096
 const MAX_QUERY_LENGTH = 2000
 const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
+const MAX_TAB_ID_LENGTH = 200
 const REQUEST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const WORKSPACE_TAB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,199}$/
 
 const SETTINGS_KEYS = new Set([
   'notesRoot',
@@ -57,6 +69,73 @@ export function assertValidAbsolutePath(value: unknown): string {
     !isAbsolute(value)
   ) {
     throw new Error('Invalid file path')
+  }
+  return value
+}
+
+function assertObjectWithKeys(
+  value: unknown,
+  allowedKeys: readonly string[],
+  label: string
+): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`)
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (!allowedKeys.includes(key)) throw new Error(`Invalid ${label} key: ${key}`)
+  }
+  return input
+}
+
+function hasParentTraversal(value: string): boolean {
+  return value.split(/[\\/]+/).some((segment) => segment === '..')
+}
+
+function assertValidWorkspaceSourcePath(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_PATH_LENGTH ||
+    value.includes('\0') ||
+    isAbsolute(value) ||
+    win32.isAbsolute(value) ||
+    hasParentTraversal(value)
+  ) {
+    throw new Error('Invalid workspace source path')
+  }
+
+  const sourcePath = normalize(value)
+  if (
+    sourcePath === '.' ||
+    sourcePath === '..' ||
+    sourcePath.includes('\0') ||
+    isAbsolute(sourcePath) ||
+    win32.isAbsolute(sourcePath) ||
+    sourcePath.startsWith(`..${sep}`)
+  ) {
+    throw new Error('Invalid workspace source path')
+  }
+
+  return sourcePath
+}
+
+function assertValidWorkspaceTabId(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_TAB_ID_LENGTH ||
+    value.includes('\0') ||
+    !WORKSPACE_TAB_ID_RE.test(value)
+  ) {
+    throw new Error('Invalid workspace tab id')
+  }
+  return value
+}
+
+function assertValidWorkspaceViewMode(value: unknown): WorkspaceViewMode {
+  if (value !== 'preview' && value !== 'source') {
+    throw new Error('Invalid workspace tab view mode')
   }
   return value
 }
@@ -298,4 +377,53 @@ export function assertValidWorkspaceWindowPatch(value: unknown): WorkspaceWindow
     patch.fullscreen = assertOptionalBoolean(input.fullscreen, 'fullscreen')
   }
   return patch
+}
+
+export function assertValidWorkspaceOpenFileInput(value: unknown): WorkspaceOpenFileInput {
+  const input = assertObjectWithKeys(value, ['sourcePath'], 'workspace open file input')
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath)
+  }
+}
+
+export function assertValidWorkspaceFocusTabInput(value: unknown): WorkspaceFocusTabInput {
+  const input = assertObjectWithKeys(value, ['tabId'], 'workspace focus tab input')
+  return {
+    tabId: assertValidWorkspaceTabId(input.tabId)
+  }
+}
+
+export function assertValidWorkspaceCloseTabInput(value: unknown): WorkspaceCloseTabInput {
+  const input = assertObjectWithKeys(value, ['tabId'], 'workspace close tab input')
+  return {
+    tabId: assertValidWorkspaceTabId(input.tabId)
+  }
+}
+
+export function assertValidWorkspaceUpdateTabViewModeInput(
+  value: unknown
+): WorkspaceUpdateTabViewModeInput {
+  const input = assertObjectWithKeys(value, ['tabId', 'viewMode'], 'workspace tab view input')
+  return {
+    tabId: assertValidWorkspaceTabId(input.tabId),
+    viewMode: assertValidWorkspaceViewMode(input.viewMode)
+  }
+}
+
+export function assertValidWorkspaceRecordRecentInput(value: unknown): WorkspaceRecordRecentInput {
+  const input = assertObjectWithKeys(value, ['sourcePath'], 'workspace recent input')
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath)
+  }
+}
+
+export function assertValidWorkspaceSetOutlineCollapsedInput(
+  value: unknown
+): WorkspaceSetOutlineCollapsedInput {
+  const input = assertObjectWithKeys(value, ['sourcePath', 'collapsed'], 'workspace outline input')
+  if (typeof input.collapsed !== 'boolean') throw new Error('Invalid workspace outline state')
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath),
+    collapsed: input.collapsed
+  }
 }

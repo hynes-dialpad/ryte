@@ -6,7 +6,13 @@ import {
   assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSettingsPatch,
+  assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceRecordRecentInput,
+  assertValidWorkspaceSetOutlineCollapsedInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
 
@@ -96,5 +102,61 @@ describe('ipc validation', () => {
     expect(() =>
       assertValidWorkspaceWindowPatch({ bounds: { x: 0, y: 0, width: 0, height: 100 } })
     ).toThrow('Invalid window bounds')
+  })
+
+  it('accepts narrow workspace operation payloads', () => {
+    expect(assertValidWorkspaceOpenFileInput({ sourcePath: 'folder/a.md' })).toEqual({
+      sourcePath: 'folder/a.md'
+    })
+    expect(assertValidWorkspaceFocusTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
+    expect(assertValidWorkspaceCloseTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
+    expect(
+      assertValidWorkspaceUpdateTabViewModeInput({ tabId: 'tab-1', viewMode: 'source' })
+    ).toEqual({
+      tabId: 'tab-1',
+      viewMode: 'source'
+    })
+    expect(assertValidWorkspaceRecordRecentInput({ sourcePath: './folder/a.md' })).toEqual({
+      sourcePath: 'folder/a.md'
+    })
+    expect(
+      assertValidWorkspaceSetOutlineCollapsedInput({
+        sourcePath: 'folder/a.md',
+        collapsed: false
+      })
+    ).toEqual({
+      sourcePath: 'folder/a.md',
+      collapsed: false
+    })
+  })
+
+  it('rejects invalid workspace operation source paths and unknown keys', () => {
+    expect(() => assertValidWorkspaceOpenFileInput({ sourcePath: '/tmp/a.md' })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() => assertValidWorkspaceOpenFileInput({ sourcePath: '../a.md' })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() =>
+      assertValidWorkspaceOpenFileInput({ sourcePath: 'a.md', arbitrary: true })
+    ).toThrow('Invalid workspace open file input key')
+    expect(() => assertValidWorkspaceRecordRecentInput({ sourcePath: 'a\0.md' })).toThrow(
+      'Invalid workspace source path'
+    )
+  })
+
+  it('rejects invalid workspace operation tab ids and view modes', () => {
+    expect(() => assertValidWorkspaceFocusTabInput({ tabId: '' })).toThrow(
+      'Invalid workspace tab id'
+    )
+    expect(() => assertValidWorkspaceCloseTabInput({ tabId: '../tab' })).toThrow(
+      'Invalid workspace tab id'
+    )
+    expect(() =>
+      assertValidWorkspaceUpdateTabViewModeInput({ tabId: 'tab-1', viewMode: 'diff' })
+    ).toThrow('Invalid workspace tab view mode')
+    expect(() =>
+      assertValidWorkspaceSetOutlineCollapsedInput({ sourcePath: 'a.md', collapsed: 'yes' })
+    ).toThrow('Invalid workspace outline state')
   })
 })

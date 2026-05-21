@@ -13,7 +13,13 @@ import {
   assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSettingsPatch,
+  assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceRecordRecentInput,
+  assertValidWorkspaceSetOutlineCollapsedInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
 import { SearchService } from './search/search-service'
@@ -61,6 +67,34 @@ export function registerIpc(): void {
 
   ipcMain.handle('workspace:update-window', (_event, patch: unknown) => {
     return workspaceStore.updateWindow(assertValidWorkspaceWindowPatch(patch))
+  })
+
+  ipcMain.handle('workspace:open-file', (_event, input: unknown) => {
+    return workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+  })
+
+  ipcMain.handle('workspace:focus-tab', (_event, input: unknown) => {
+    return workspaceStore.focusTab(assertValidWorkspaceFocusTabInput(input))
+  })
+
+  ipcMain.handle('workspace:close-tab', (_event, input: unknown) => {
+    return workspaceStore.closeTab(assertValidWorkspaceCloseTabInput(input))
+  })
+
+  ipcMain.handle('workspace:update-tab-view-mode', (_event, input: unknown) => {
+    return workspaceStore.updateTabViewMode(assertValidWorkspaceUpdateTabViewModeInput(input))
+  })
+
+  ipcMain.handle('workspace:record-recent', (_event, input: unknown) => {
+    return workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
+  })
+
+  ipcMain.handle('workspace:set-outline-collapsed', (_event, input: unknown) => {
+    return workspaceStore.setOutlineCollapsed(assertValidWorkspaceSetOutlineCollapsedInput(input))
+  })
+
+  ipcMain.handle('workspace:prune-missing-file-refs', () => {
+    return workspaceStore.pruneMissingFileRefs()
   })
 
   ipcMain.handle('settings:save', async (_, patch: unknown) => {

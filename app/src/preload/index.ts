@@ -3,8 +3,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
 import type {
+  WorkspaceCloseTabInput,
+  WorkspaceFocusTabInput,
+  WorkspaceOpenFileInput,
+  WorkspaceRecordRecentInput,
+  WorkspaceSetOutlineCollapsedInput,
   WorkspaceShellUpdate,
   WorkspaceState,
+  WorkspaceUpdateTabViewModeInput,
   WorkspaceWindowUpdate
 } from '../shared/workspace'
 import type {
@@ -73,6 +79,13 @@ export interface RyteApi {
     getState(): Promise<WorkspaceState>
     updateShell(patch: WorkspaceShellUpdate): Promise<WorkspaceState>
     updateWindow(patch: WorkspaceWindowUpdate): Promise<WorkspaceState>
+    openFile(input: WorkspaceOpenFileInput): Promise<WorkspaceState>
+    focusTab(input: WorkspaceFocusTabInput): Promise<WorkspaceState>
+    closeTab(input: WorkspaceCloseTabInput): Promise<WorkspaceState>
+    updateTabViewMode(input: WorkspaceUpdateTabViewModeInput): Promise<WorkspaceState>
+    recordRecent(input: WorkspaceRecordRecentInput): Promise<WorkspaceState>
+    setOutlineCollapsed(input: WorkspaceSetOutlineCollapsedInput): Promise<WorkspaceState>
+    pruneMissingFileRefs(): Promise<WorkspaceState>
   }
   dialog: {
     openFolder(): Promise<string | null>
@@ -115,7 +128,14 @@ const api: RyteApi = {
   workspace: {
     getState: () => ipcRenderer.invoke('workspace:get-state'),
     updateShell: (patch) => ipcRenderer.invoke('workspace:update-shell', patch),
-    updateWindow: (patch) => ipcRenderer.invoke('workspace:update-window', patch)
+    updateWindow: (patch) => ipcRenderer.invoke('workspace:update-window', patch),
+    openFile: (input) => ipcRenderer.invoke('workspace:open-file', input),
+    focusTab: (input) => ipcRenderer.invoke('workspace:focus-tab', input),
+    closeTab: (input) => ipcRenderer.invoke('workspace:close-tab', input),
+    updateTabViewMode: (input) => ipcRenderer.invoke('workspace:update-tab-view-mode', input),
+    recordRecent: (input) => ipcRenderer.invoke('workspace:record-recent', input),
+    setOutlineCollapsed: (input) => ipcRenderer.invoke('workspace:set-outline-collapsed', input),
+    pruneMissingFileRefs: () => ipcRenderer.invoke('workspace:prune-missing-file-refs')
   },
   dialog: {
     openFolder: () => ipcRenderer.invoke('dialog:open-folder')
