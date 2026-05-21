@@ -6,6 +6,7 @@ import SettingsModal from './components/SettingsModal.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import Viewer from './components/Viewer.vue'
+import WorkspaceTabs from './components/WorkspaceTabs.vue'
 import { useIndexStatusStore } from './stores/index-status'
 import { useSearchStore } from './stores/search'
 import { useSettingsStore } from './stores/settings'
@@ -206,16 +207,16 @@ function applySearchHistorySettings(): void {
             aria-hidden="true"
           >
             <path
-              stroke="#fff"
+              stroke="currentColor"
               stroke-linecap="round"
               stroke-linejoin="round"
-              stroke-opacity=".75"
               stroke-width="1.5"
               d="M6.75 2.25v13.5m-3-13.5h10.5a1.5 1.5 0 0 1 1.5 1.5v10.5a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5V3.75a1.5 1.5 0 0 1 1.5-1.5"
             />
           </svg>
         </button>
       </div>
+      <WorkspaceTabs class="header-tabs" />
       <div class="header-actions">
         <button type="button" class="search-trigger-btn" @click="openSearch">Search</button>
         <button type="button" class="settings-btn" @click="openSettings">Settings</button>
@@ -255,7 +256,9 @@ function applySearchHistorySettings(): void {
         <Sidebar />
       </aside>
 
-      <Viewer />
+      <section class="workspace-pane" aria-label="Workspace">
+        <Viewer />
+      </section>
     </main>
 
     <StatusBar />
@@ -267,7 +270,7 @@ function applySearchHistorySettings(): void {
 
 <style scoped>
 .app {
-  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 80%);
+  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 88%);
 
   display: flex;
   flex-direction: column;
@@ -281,7 +284,7 @@ function applySearchHistorySettings(): void {
 
 .app-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   min-height: 3.5rem;
   padding: 0 1rem 0 0;
@@ -303,7 +306,14 @@ function applySearchHistorySettings(): void {
   flex: 0 0 auto;
 }
 
+.header-tabs {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+}
+
 .header-actions {
+  flex: 0 0 auto;
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -338,27 +348,38 @@ h1 {
 }
 
 .sidebar-chrome-btn {
-  width: 2.5rem;
-  height: 2.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 8px;
+  padding: 8px;
+  background: rgba(10, 9, 11, 0);
+  color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
+  line-height: 120%;
+  transition-duration: 250ms;
+  transition-property: background-color, color;
+  transition-timing-function: ease-out;
   -webkit-app-region: no-drag;
 }
 
 .sidebar-chrome-btn:hover {
-  background: oklch(100% 0 0 / 6%);
-  border-color: oklch(100% 0 0 / 6%);
+  background: rgba(10, 9, 11, 0.35);
+  transition-duration: 25ms;
+  transition-timing-function: ease-in;
 }
 
 .sidebar-chrome-btn.selected {
-  background: oklch(66.267% 0.18645 249.972 / 10%);
-  border-color: oklch(66.267% 0.18645 249.972 / 25%);
+  background: rgba(10, 9, 11, 0.25);
+  color: #ffffff;
+}
+
+.sidebar-chrome-btn.selected:hover {
+  background: rgba(10, 9, 11, 0.35);
+  transition-duration: 25ms;
+  transition-timing-function: ease-in;
 }
 
 .sidebar-chrome-btn svg {
@@ -437,5 +458,14 @@ h1 {
   display: flex;
   overflow: hidden;
   box-shadow: 16px 0 48px oklch(0% 0 0 / 34%);
+}
+
+.workspace-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>

@@ -2,26 +2,26 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { useViewerStore } from '../stores/viewer'
+import { useWorkspaceStore } from '../stores/workspace'
 
 interface TreeNode {
   name: string
   relPath: string
-  absPath: string
   isFolder: boolean
   depth: number
   children: TreeNode[]
 }
 
 const viewer = useViewerStore()
+const workspace = useWorkspaceStore()
 const expanded = ref<Set<string>>(new Set())
 const focusedIndex = ref(0)
 const rootEl = ref<HTMLUListElement | null>(null)
 
-function buildTree(paths: string[], notesRoot: string): TreeNode[] {
+function buildTree(paths: string[]): TreeNode[] {
   const root: TreeNode = {
     name: '',
     relPath: '',
-    absPath: notesRoot,
     isFolder: true,
     depth: -1,
     children: []
@@ -39,7 +39,6 @@ function buildTree(paths: string[], notesRoot: string): TreeNode[] {
         next = {
           name: segment,
           relPath: childRel,
-          absPath: `${notesRoot}/${childRel}`,
           isFolder: !isLast,
           depth: i,
           children: []
@@ -65,7 +64,7 @@ function buildTree(paths: string[], notesRoot: string): TreeNode[] {
 
 const tree = computed<TreeNode[]>(() => {
   if (!viewer.notesRoot || viewer.tree.length === 0) return []
-  return buildTree(viewer.tree, viewer.notesRoot)
+  return buildTree(viewer.tree)
 })
 
 function flatten(nodes: TreeNode[], out: TreeNode[] = []): TreeNode[] {
@@ -113,7 +112,7 @@ function onRowClick(node: TreeNode, index: number): void {
   if (node.isFolder) {
     toggle(node)
   } else {
-    void viewer.openFile(node.absPath)
+    void workspace.openFile({ sourcePath: node.relPath })
   }
 }
 
@@ -154,7 +153,7 @@ function onKeydown(event: KeyboardEvent): void {
     case 'Enter':
       event.preventDefault()
       if (current && !current.isFolder) {
-        void viewer.openFile(current.absPath)
+        void workspace.openFile({ sourcePath: current.relPath })
       } else if (current?.isFolder) {
         toggle(current)
       }
@@ -185,7 +184,7 @@ onMounted(() => {
         :key="node.relPath"
         role="treeitem"
         :aria-expanded="node.isFolder ? isExpanded(node) : undefined"
-        :aria-current="!node.isFolder && viewer.selectedPath === node.absPath ? 'true' : undefined"
+        :aria-current="!node.isFolder && viewer.sourcePath === node.relPath ? 'true' : undefined"
         :data-row-index="index"
         :class="[
           'row',
@@ -193,7 +192,7 @@ onMounted(() => {
             folder: node.isFolder,
             file: !node.isFolder,
             focused: focusedIndex === index,
-            selected: !node.isFolder && viewer.selectedPath === node.absPath
+            selected: !node.isFolder && viewer.sourcePath === node.relPath
           }
         ]"
         :style="{ paddingLeft: `${0.5 + node.depth * 0.9}rem` }"

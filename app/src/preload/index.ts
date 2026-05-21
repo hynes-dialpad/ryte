@@ -99,9 +99,12 @@ export interface RyteApi {
   files: {
     listTree(): Promise<FileTreeResponse>
     read(absPath: string): Promise<string>
+    readSource(input: WorkspaceOpenFileInput): Promise<string>
     watch(absPath: string): Promise<void>
+    watchSource(input: WorkspaceOpenFileInput): Promise<void>
     unwatch(): Promise<void>
     onChange(cb: (path: string) => void): () => void
+    onSourceChange(cb: (sourcePath: string) => void): () => void
     onTreeChanged(cb: () => void): () => void
   }
   search: {
@@ -153,12 +156,19 @@ const api: RyteApi = {
   files: {
     listTree: () => ipcRenderer.invoke('files:list-tree'),
     read: (absPath) => ipcRenderer.invoke('files:read', absPath),
+    readSource: (input) => ipcRenderer.invoke('files:read-source', input),
     watch: (absPath) => ipcRenderer.invoke('files:watch', absPath),
+    watchSource: (input) => ipcRenderer.invoke('files:watch-source', input),
     unwatch: () => ipcRenderer.invoke('files:unwatch'),
     onChange: (cb) => {
       const listener = (_: unknown, path: string): void => cb(path)
       ipcRenderer.on('viewer:file-changed', listener)
       return () => ipcRenderer.removeListener('viewer:file-changed', listener)
+    },
+    onSourceChange: (cb) => {
+      const listener = (_: unknown, sourcePath: string): void => cb(sourcePath)
+      ipcRenderer.on('viewer:source-changed', listener)
+      return () => ipcRenderer.removeListener('viewer:source-changed', listener)
     },
     onTreeChanged: (cb) => {
       const listener = (): void => cb()

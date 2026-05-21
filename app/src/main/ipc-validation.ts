@@ -386,6 +386,13 @@ export function assertValidWorkspaceOpenFileInput(value: unknown): WorkspaceOpen
   }
 }
 
+export function assertValidSourceFileInput(value: unknown): WorkspaceOpenFileInput {
+  const input = assertObjectWithKeys(value, ['sourcePath'], 'source file input')
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath)
+  }
+}
+
 export function assertValidWorkspaceFocusTabInput(value: unknown): WorkspaceFocusTabInput {
   const input = assertObjectWithKeys(value, ['tabId'], 'workspace focus tab input')
   return {

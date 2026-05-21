@@ -4,14 +4,14 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { render } from '../markdown/renderer'
 import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
-import { useViewerStore } from '../stores/viewer'
+import { useWorkspaceStore } from '../stores/workspace'
 import type { SearchQueryOptions, SearchRetrievalMode } from '../../../preload/index'
 
 const emit = defineEmits<{ close: [] }>()
 
 const search = useSearchStore()
 const settings = useSettingsStore()
-const viewer = useViewerStore()
+const workspace = useWorkspaceStore()
 const RETRIEVAL_MODES: SearchRetrievalMode[] = ['auto', 'keyword', 'hybrid']
 
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -92,8 +92,7 @@ async function searchLocallyOnly(): Promise<void> {
 }
 
 function openCitation(sourcePath: string): void {
-  if (!viewer.notesRoot) return
-  void viewer.openFile(`${viewer.notesRoot}/${sourcePath}`)
+  void workspace.openFile({ sourcePath })
   void closeOverlay()
 }
 

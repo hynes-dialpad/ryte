@@ -1,20 +1,41 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+
+import type { WorkspaceViewMode } from '../../../shared/workspace'
+import { useWorkspaceStore } from './workspace'
 
 export const useViewerStore = defineStore('viewer', () => {
+  const workspace = useWorkspaceStore()
   const tree = ref<string[]>([])
   const notesRoot = ref<string | null>(null)
-  const selectedPath = ref<string | null>(null)
   const content = ref<string>('')
-  const sourceMode = ref(false)
+  const loading = ref(false)
   const error = ref<string | null>(null)
 
-  let unsubscribeFileChange: (() => void) | null = null
-  let unsubscribeTreeChange: (() => void) | null = null
+  const activeTab = computed(() => workspace.activeTab)
+  const activeTabId = computed(() => activeTab.value?.id ?? null)
+  const sourcePath = computed(() => activeTab.value?.sourcePath ?? null)
+  const viewMode = computed<WorkspaceViewMode>(() => activeTab.value?.viewMode ?? 'preview')
+  const sourceMode = computed(() => viewMode.value === 'source')
 
-  function selectedPathExists(paths: string[], root: string): boolean {
-    if (!selectedPath.value) return true
-    return paths.some((relPath) => selectedPath.value === `${root}/${relPath}`)
+  let contentRequestId = 0
+  let unsubscribeSourceChange: (() => void) | null = null
+  let unsubscribeTreeChange: (() => void) | null = null
+  let stopActiveTabWatch: (() => void) | null = null
+
+  function sourcePathExists(paths: string[]): boolean {
+    return !sourcePath.value || paths.includes(sourcePath.value)
+  }
+
+  function isCurrentRequest(
+    requestId: number,
+    tabId: string,
+    requestedSourcePath: string
+  ): boolean {
+    const tab = activeTab.value
+    return (
+      requestId === contentRequestId && tab?.id === tabId && tab.sourcePath === requestedSourcePath
+    )
   }
 
   async function refreshTree(): Promise<void> {
@@ -22,71 +43,113 @@ export const useViewerStore = defineStore('viewer', () => {
     notesRoot.value = root
     tree.value = paths
 
-    if (!selectedPathExists(paths, root)) {
-      await closeFile()
+    if (!sourcePathExists(paths)) {
+      try {
+        await workspace.pruneMissingFileRefs()
+      } catch (e) {
+        error.value = e instanceof Error ? e.message : String(e)
+      }
+    }
+  }
+
+  async function loadActiveTab(): Promise<void> {
+    const tab = activeTab.value
+    const requestId = ++contentRequestId
+
+    if (!tab) {
+      loading.value = false
+      content.value = ''
+      error.value = null
+      try {
+        await window.ryte.files.unwatch()
+      } catch (e) {
+        if (requestId === contentRequestId) {
+          error.value = e instanceof Error ? e.message : String(e)
+        }
+      }
+      return
+    }
+
+    loading.value = true
+    content.value = ''
+    error.value = null
+
+    try {
+      const nextContent = await window.ryte.files.readSource({ sourcePath: tab.sourcePath })
+      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+
+      await window.ryte.files.watchSource({ sourcePath: tab.sourcePath })
+      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+
+      content.value = nextContent
+      error.value = null
+    } catch (e) {
+      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+      error.value = e instanceof Error ? e.message : String(e)
+      content.value = ''
+      try {
+        await window.ryte.files.unwatch()
+      } catch {
+        // Preserve the read/watch error as the actionable viewer error.
+      }
+    } finally {
+      if (requestId === contentRequestId) loading.value = false
     }
   }
 
   async function hydrate(): Promise<void> {
     await refreshTree()
 
-    if (unsubscribeFileChange) {
-      unsubscribeFileChange()
-    }
-    if (unsubscribeTreeChange) {
-      unsubscribeTreeChange()
-    }
+    unsubscribeSourceChange?.()
+    unsubscribeTreeChange?.()
+    stopActiveTabWatch?.()
 
-    unsubscribeFileChange = window.ryte.files.onChange(async (path) => {
-      if (path === selectedPath.value) {
-        try {
-          content.value = await window.ryte.files.read(path)
-          error.value = null
-        } catch (e) {
-          error.value = e instanceof Error ? e.message : String(e)
-        }
+    unsubscribeSourceChange = window.ryte.files.onSourceChange((changedSourcePath) => {
+      if (changedSourcePath === sourcePath.value) {
+        void loadActiveTab()
       }
     })
 
     unsubscribeTreeChange = window.ryte.files.onTreeChanged(() => {
       void refreshTree()
     })
+
+    stopActiveTabWatch = watch(
+      () => [activeTabId.value, sourcePath.value] as const,
+      () => {
+        void loadActiveTab()
+      }
+    )
+
+    await loadActiveTab()
   }
 
-  async function openFile(absPath: string): Promise<void> {
-    selectedPath.value = absPath
-    error.value = null
-    try {
-      content.value = await window.ryte.files.read(absPath)
-      await window.ryte.files.watch(absPath)
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
-      content.value = ''
-    }
+  async function setViewMode(nextViewMode: WorkspaceViewMode): Promise<void> {
+    const tab = activeTab.value
+    if (!tab || tab.viewMode === nextViewMode) return
+    await workspace.updateTabViewMode({ tabId: tab.id, viewMode: nextViewMode })
   }
 
-  async function closeFile(): Promise<void> {
-    await window.ryte.files.unwatch()
-    selectedPath.value = null
-    content.value = ''
-    error.value = null
-  }
-
-  function toggleSourceMode(): void {
-    sourceMode.value = !sourceMode.value
+  async function toggleSourceMode(): Promise<void> {
+    await setViewMode(sourceMode.value ? 'preview' : 'source')
   }
 
   return {
     tree,
     notesRoot,
-    selectedPath,
     content,
-    sourceMode,
+    loading,
     error,
+    activeTab,
+    activeTabId,
+    sourcePath,
+    selectedPath: sourcePath,
+    viewMode,
+    sourceMode,
     hydrate,
     refreshTree,
-    openFile,
-    closeFile,
+    loadActiveTab,
+    setViewMode,
     toggleSourceMode
   }
 })

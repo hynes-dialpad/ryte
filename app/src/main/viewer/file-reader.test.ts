@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { readFileSafe } from './file-reader'
+import { readFileSafe, readSourceFileSafe } from './file-reader'
 
 describe('readFileSafe', () => {
   let root: string
@@ -49,5 +49,14 @@ describe('readFileSafe', () => {
     const linkPath = join(root, 'link.md')
     symlinkSync(join(outsideDir, 'secret.md'), linkPath)
     await expect(readFileSafe(linkPath, root)).rejects.toThrow(/outside notes root/i)
+  })
+
+  it('reads a relative source path under the notes root', async () => {
+    const text = await readSourceFileSafe('sub/b.md', root)
+    expect(text).toBe('# nested\n')
+  })
+
+  it('rejects a relative source path that resolves outside the notes root', async () => {
+    await expect(readSourceFileSafe('../secret.md', root)).rejects.toThrow(/outside notes root/i)
   })
 })
