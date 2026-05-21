@@ -165,8 +165,10 @@ function applySearchHistorySettings(): void {
         <button
           type="button"
           class="sidebar-chrome-btn"
+          :class="{ selected: sidebarCollapsed }"
           :aria-label="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
           :title="workspace.shell.sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'"
+          :aria-pressed="sidebarCollapsed"
           @click="toggleSidebar"
         >
           <svg
@@ -205,15 +207,6 @@ function applySearchHistorySettings(): void {
           @pointerdown="startSidebarResize"
         />
       </section>
-
-      <button
-        v-else-if="!sidebarAutoCollapsed"
-        type="button"
-        class="sidebar-restore-btn"
-        @click="toggleSidebar"
-      >
-        Show sidebar
-      </button>
 
       <div
         v-if="sidebarAutoCollapsed"
@@ -337,6 +330,11 @@ h1 {
   border-color: oklch(100% 0 0 / 6%);
 }
 
+.sidebar-chrome-btn.selected {
+  background: oklch(66.267% 0.18645 249.972 / 10%);
+  border-color: oklch(66.267% 0.18645 249.972 / 25%);
+}
+
 .sidebar-chrome-btn svg {
   width: 1.125rem;
   height: 1.125rem;
@@ -384,18 +382,6 @@ h1 {
 
 .sidebar-resize-handle:hover::before {
   background: oklch(66.267% 0.18645 249.972 / 80%);
-}
-
-.sidebar-restore-btn {
-  flex: 0 0 32px;
-  writing-mode: vertical-rl;
-  background: oklch(8% 0.006 300 / 64%);
-  color: oklch(100% 0 0 / 72%);
-  border: 0;
-  border-right: 1px solid oklch(100% 0 0 / 10%);
-  font: inherit;
-  font-size: 0.72rem;
-  cursor: pointer;
 }
 
 .sidebar-edge-target {
