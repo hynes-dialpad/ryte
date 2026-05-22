@@ -1,27 +1,37 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch, type ComponentPublicInstance } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  type ComponentPublicInstance
+} from 'vue'
 
 import { useWorkspaceStore } from '../stores/workspace'
-
-const TAB_MIN_WIDTH = 144
-const TAB_MAX_WIDTH = 206
-const TAB_GAP = 2
+import {
+  WORKSPACE_TABPANEL_ID,
+  getCloseFallbackWorkspaceTabId,
+  getWorkspaceTabDomId,
+  resolveGlobalWorkspaceTabShortcut,
+  resolveTablistKeyboardAction
+} from './workspace-tab-keyboard'
 
 const workspace = useWorkspaceStore()
 
 const hasTabs = computed(() => workspace.tabs.length > 0)
 const tabListRef = ref<HTMLElement | null>(null)
-const tabWidth = ref(TAB_MAX_WIDTH)
 const scrollbarVisible = ref(false)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
+const screenReaderStatus = ref('')
 const tabElements = new Map<string, HTMLElement>()
+const tabButtonElements = new Map<string, HTMLButtonElement>()
 let resizeObserver: ResizeObserver | null = null
 let scrollFrame: number | null = null
 
-const tabListStyle = computed(() => ({
-  '--workspace-tab-width': `${tabWidth.value}px`
-}))
+const tabIds = computed(() => workspace.tabs.map((tab) => tab.id))
 const tabListClasses = computed(() => ({
   'has-left-fade': canScrollLeft.value,
   'has-right-fade': canScrollRight.value
@@ -39,18 +49,21 @@ function setTabElement(tabId: string, element: Element | ComponentPublicInstance
   tabElements.delete(tabId)
 }
 
-function updateTabWidth(): void {
-  const list = tabListRef.value
-  const tabCount = workspace.tabs.length
-  if (!list || tabCount === 0) {
-    tabWidth.value = TAB_MAX_WIDTH
+function setTabButtonElement(
+  tabId: string,
+  element: Element | ComponentPublicInstance | null
+): void {
+  if (element instanceof HTMLButtonElement) {
+    tabButtonElements.set(tabId, element)
     return
   }
+  tabButtonElements.delete(tabId)
+}
 
-  const gapsWidth = Math.max(0, tabCount - 1) * TAB_GAP
-  const availableWidth = Math.max(0, list.clientWidth - gapsWidth)
-  const fittedWidth = Math.floor(availableWidth / tabCount)
-  tabWidth.value = Math.max(TAB_MIN_WIDTH, Math.min(TAB_MAX_WIDTH, fittedWidth))
+function focusTabButton(tabId: string): void {
+  void nextTick(() => {
+    tabButtonElements.get(tabId)?.focus()
+  })
 }
 
 function scrollActiveTabIntoView(): void {
@@ -61,6 +74,23 @@ function scrollActiveTabIntoView(): void {
 
   const listRect = list.getBoundingClientRect()
   const tabRect = activeTab.getBoundingClientRect()
+  const leftOverflow = tabRect.left - listRect.left
+  const rightOverflow = tabRect.right - listRect.right
+
+  if (leftOverflow < 0) {
+    list.scrollLeft += leftOverflow
+  } else if (rightOverflow > 0) {
+    list.scrollLeft += rightOverflow
+  }
+}
+
+function scrollTabIntoView(tabId: string): void {
+  const list = tabListRef.value
+  const tab = tabElements.get(tabId)
+  if (!list || !tab) return
+
+  const listRect = list.getBoundingClientRect()
+  const tabRect = tab.getBoundingClientRect()
   const leftOverflow = tabRect.left - listRect.left
   const rightOverflow = tabRect.right - listRect.right
 
@@ -95,7 +125,6 @@ function syncTabLayout(): void {
     }
     scrollFrame = window.requestAnimationFrame(() => {
       scrollFrame = null
-      updateTabWidth()
       scrollActiveTabIntoView()
       updateScrollEdges()
     })
@@ -122,19 +151,157 @@ watch(
   { flush: 'post', immediate: true }
 )
 
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKeydown, true)
+})
+
 onUnmounted(() => {
   resizeObserver?.disconnect()
   if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame)
+  window.removeEventListener('keydown', onGlobalKeydown, true)
 })
 
-function focusTab(tabId: string): void {
-  if (workspace.activeTabId === tabId) return
+function tabDomId(tabId: string): string {
+  return getWorkspaceTabDomId(tabId)
+}
+
+function tabPanelId(): string {
+  return WORKSPACE_TABPANEL_ID
+}
+
+function tabIndex(tabId: string): 0 | -1 {
+  return workspace.activeTabId === tabId ? 0 : -1
+}
+
+function tabAccessibleLabel(title: string, sourcePath: string): string {
+  return title === sourcePath ? title : `${title}, ${sourcePath}`
+}
+
+function announce(message: string): void {
+  screenReaderStatus.value = ''
+  void nextTick(() => {
+    screenReaderStatus.value = message
+  })
+}
+
+function isFocusInsideTabs(): boolean {
+  const activeElement = document.activeElement
+  return activeElement instanceof HTMLElement && Boolean(activeElement.closest('.workspace-tabs'))
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable || target.closest('[contenteditable="true"]')) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+function hasModalOpen(): boolean {
+  return document.querySelector('[aria-modal="true"]') !== null
+}
+
+function focusFallbackShellControl(): void {
+  document.querySelector<HTMLElement>('[data-workspace-fallback-focus]')?.focus()
+}
+
+function focusTab(
+  tabId: string,
+  options: { moveKeyboardFocus?: boolean; announceSelection?: boolean } = {}
+): void {
+  if (workspace.activeTabId === tabId) {
+    void nextTick(() => {
+      scrollTabIntoView(tabId)
+      if (options.moveKeyboardFocus) {
+        focusTabButton(tabId)
+      }
+    })
+    return
+  }
   void workspace.focusTab({ tabId })
+  void nextTick(() => {
+    scrollTabIntoView(tabId)
+    if (options.moveKeyboardFocus) {
+      focusTabButton(tabId)
+    }
+    if (options.announceSelection) {
+      const selectedTab = workspace.tabs.find((tab) => tab.id === tabId)
+      if (selectedTab) announce(`Selected ${selectedTab.sourcePath}`)
+    }
+  })
+}
+
+function closeTabWithFocusRecovery(
+  tabId: string,
+  options: { moveKeyboardFocus?: boolean; announceClose?: boolean } = {}
+): void {
+  const closingTab = workspace.tabs.find((tab) => tab.id === tabId)
+  const fallbackTabId = getCloseFallbackWorkspaceTabId(tabIds.value, tabId)
+  void workspace.closeTab({ tabId })
+  void nextTick(() => {
+    const shouldRecoverBodyFocus = document.activeElement === document.body
+    if (fallbackTabId && (options.moveKeyboardFocus || shouldRecoverBodyFocus)) {
+      focusTabButton(fallbackTabId)
+      return
+    }
+    if (!fallbackTabId && (options.moveKeyboardFocus || shouldRecoverBodyFocus)) {
+      focusFallbackShellControl()
+    }
+  })
+  if (closingTab && options.announceClose) {
+    announce(`Closed ${closingTab.sourcePath}`)
+  }
 }
 
 function closeTab(event: MouseEvent, tabId: string): void {
   event.stopPropagation()
-  void workspace.closeTab({ tabId })
+  const target = event.currentTarget
+  const shouldRecoverFocus =
+    target instanceof HTMLElement && (event.detail === 0 || document.activeElement === target)
+
+  closeTabWithFocusRecovery(tabId, {
+    moveKeyboardFocus: shouldRecoverFocus,
+    announceClose: shouldRecoverFocus
+  })
+}
+
+function onTabKeydown(event: KeyboardEvent, tabId: string): void {
+  const action = resolveTablistKeyboardAction(event, tabIds.value, tabId)
+  if (!action) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  if (action.type === 'close') {
+    closeTabWithFocusRecovery(action.tabId, { moveKeyboardFocus: true, announceClose: true })
+    return
+  }
+
+  focusTab(action.tabId, { moveKeyboardFocus: true })
+}
+
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if (event.defaultPrevented || isEditableKeyboardTarget(event.target) || hasModalOpen()) return
+
+  const action = resolveGlobalWorkspaceTabShortcut(event, tabIds.value, workspace.activeTabId)
+  if (!action) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  if (action.type === 'close-active') {
+    if (workspace.activeTabId) {
+      closeTabWithFocusRecovery(workspace.activeTabId, {
+        moveKeyboardFocus: isFocusInsideTabs(),
+        announceClose: true
+      })
+    }
+    return
+  }
+
+  const focusStartedInsideTabs = isFocusInsideTabs()
+  focusTab(action.tabId, {
+    moveKeyboardFocus: true,
+    announceSelection: !focusStartedInsideTabs
+  })
 }
 </script>
 
@@ -147,36 +314,51 @@ function closeTab(event: MouseEvent, tabId: string): void {
     @pointerenter="scrollbarVisible = true"
     @pointerleave="scrollbarVisible = false"
   >
-    <div
-      :ref="setTabListRef"
-      class="tab-list"
-      :class="tabListClasses"
-      :style="tabListStyle"
-      @scroll="updateScrollEdges"
-    >
-      <div class="tab-track" role="tablist" aria-label="Workspace tabs">
+    <p id="workspace-tabs-instructions" class="sr-only">
+      Use Left and Right Arrow to switch tabs, Home and End to jump, Delete or Backspace to close
+      the focused tab, Command W to close the current tab, or Shift Command Left Bracket and Shift
+      Command Right Bracket to switch tabs from anywhere.
+    </p>
+    <div :ref="setTabListRef" class="tab-list" :class="tabListClasses" @scroll="updateScrollEdges">
+      <div
+        class="tab-track"
+        role="tablist"
+        aria-label="Workspace tabs"
+        aria-orientation="horizontal"
+        aria-describedby="workspace-tabs-instructions"
+      >
         <div
           v-for="tab in workspace.tabs"
           :key="tab.id"
           :ref="(element) => setTabElement(tab.id, element)"
           class="tab-item"
           :class="{ active: workspace.activeTabId === tab.id }"
+          role="presentation"
         >
           <button
+            :id="tabDomId(tab.id)"
+            :ref="(element) => setTabButtonElement(tab.id, element)"
             type="button"
             class="tab-focus"
             role="tab"
             :aria-selected="workspace.activeTabId === tab.id"
+            :aria-controls="tabPanelId()"
+            :aria-label="tabAccessibleLabel(tab.title, tab.sourcePath)"
+            aria-describedby="workspace-tabs-instructions"
+            aria-keyshortcuts="ArrowLeft ArrowRight Home End Delete Backspace Enter Space Meta+W Meta+Shift+[ Meta+Shift+]"
+            :tabindex="tabIndex(tab.id)"
             :title="tab.sourcePath"
             @click="focusTab(tab.id)"
+            @keydown="onTabKeydown($event, tab.id)"
           >
             <span class="tab-title">{{ tab.title }}</span>
           </button>
           <button
             type="button"
             class="tab-close"
-            :aria-label="`Close ${tab.title}`"
-            :title="`Close ${tab.title}`"
+            :aria-label="`Close ${tab.sourcePath}`"
+            :title="`Close ${tab.sourcePath}`"
+            tabindex="-1"
             @click="closeTab($event, tab.id)"
           >
             <svg
@@ -199,6 +381,7 @@ function closeTab(event: MouseEvent, tabId: string): void {
         </div>
       </div>
     </div>
+    <span class="sr-only" aria-live="polite" aria-atomic="true">{{ screenReaderStatus }}</span>
   </nav>
 </template>
 
@@ -214,6 +397,18 @@ function closeTab(event: MouseEvent, tabId: string): void {
   background: transparent;
   overflow: hidden;
   -webkit-app-region: no-drag;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .tab-list {
@@ -306,9 +501,8 @@ function closeTab(event: MouseEvent, tabId: string): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 0 var(--workspace-tab-width, calc(9.6rem + 52px));
-  width: var(--workspace-tab-width, calc(9.6rem + 52px));
-  min-width: 144px;
+  flex: 0 0 auto;
+  min-width: 0;
   max-width: calc(9.6rem + 52px);
   padding: 6px 8px 8px 16px;
   border-radius: 8px;
@@ -322,6 +516,11 @@ function closeTab(event: MouseEvent, tabId: string): void {
 .tab-item.active {
   color: #ffffff;
   background: rgba(10, 9, 11, 0.25);
+}
+
+.tab-item:focus-within {
+  outline: 2px solid rgba(120, 200, 255, 0.65);
+  outline-offset: -2px;
 }
 
 .tab-focus {
@@ -341,8 +540,7 @@ function closeTab(event: MouseEvent, tabId: string): void {
 
 .tab-focus:focus-visible,
 .tab-close:focus-visible {
-  outline: 2px solid rgba(120, 200, 255, 0.65);
-  outline-offset: -2px;
+  outline: 0;
 }
 
 .tab-item:hover {
@@ -392,6 +590,11 @@ function closeTab(event: MouseEvent, tabId: string): void {
 }
 
 .tab-close:hover {
+  color: #ffffff;
+  background: rgba(10, 9, 11, 0.9);
+}
+
+.tab-close:focus-visible {
   color: #ffffff;
   background: rgba(10, 9, 11, 0.9);
 }

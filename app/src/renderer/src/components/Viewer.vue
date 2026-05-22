@@ -3,8 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useViewerStore } from '../stores/viewer'
+import { useWorkspaceStore } from '../stores/workspace'
+import { WORKSPACE_TABPANEL_ID, getWorkspaceTabDomId } from './workspace-tab-keyboard'
 
 const viewer = useViewerStore()
+const workspace = useWorkspaceStore()
 const renderedHtml = ref<string>('')
 const renderError = ref<string | null>(null)
 const renderCache = new Map<string, string>()
@@ -14,6 +17,9 @@ const sourceEl = ref<HTMLElement | null>(null)
 const filenameDisplay = computed(() => {
   return viewer.sourcePath ?? ''
 })
+const activeTabPanelLabelledBy = computed(() =>
+  workspace.activeTabId ? getWorkspaceTabDomId(workspace.activeTabId) : undefined
+)
 
 async function updateRender(text: string): Promise<void> {
   if (renderCache.has(text)) {
@@ -82,7 +88,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="viewer" aria-label="Markdown viewer">
+  <section
+    :id="WORKSPACE_TABPANEL_ID"
+    class="viewer"
+    :role="activeTabPanelLabelledBy ? 'tabpanel' : undefined"
+    :aria-labelledby="activeTabPanelLabelledBy"
+    :aria-label="activeTabPanelLabelledBy ? undefined : 'Markdown viewer'"
+  >
     <header v-if="viewer.sourcePath" class="viewer-toolbar">
       <span class="filename" :title="viewer.sourcePath">{{ filenameDisplay }}</span>
       <button type="button" class="toggle" @click="togglePreservingScroll()">
