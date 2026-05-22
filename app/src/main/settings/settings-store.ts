@@ -20,7 +20,7 @@ import {
 } from '../../shared/provider-registry'
 import { keychain } from './keychain'
 
-export const SETTINGS_SCHEMA_VERSION = 3
+export const SETTINGS_SCHEMA_VERSION = 4
 
 export type {
   AnswerModelId,
@@ -32,6 +32,7 @@ export type {
 }
 
 export type SearchHistoryRetention = 'off' | 'session' | '7-days' | '30-days' | 'forever'
+export type ScrollbarVisibility = 'auto' | 'always'
 
 export interface DataFlowAcknowledgement {
   acknowledgedAt: string
@@ -56,6 +57,7 @@ export interface SettingsFile {
   embeddingModel: EmbeddingModelId
   searchHistoryRetention: SearchHistoryRetention
   searchHistoryIncludesAnswers: boolean
+  scrollbarVisibility: ScrollbarVisibility
   encryptedKeys: Partial<Record<ProviderId, string>>
   providerKeyMetadata: Partial<Record<ProviderId, ProviderKeyMetadata>>
 }
@@ -74,6 +76,7 @@ export interface PublicSettingsState {
   embeddingModel: EmbeddingModelId
   searchHistoryRetention: SearchHistoryRetention
   searchHistoryIncludesAnswers: boolean
+  scrollbarVisibility: ScrollbarVisibility
   hasAnthropicKey: boolean
   hasOpenAIKey: boolean
   hasGeminiKey: boolean
@@ -95,6 +98,7 @@ export interface SettingsUpdate {
   embeddingModel?: EmbeddingModelId
   searchHistoryRetention?: SearchHistoryRetention
   searchHistoryIncludesAnswers?: boolean
+  scrollbarVisibility?: ScrollbarVisibility
   anthropicKey?: string
   openaiKey?: string
   geminiKey?: string
@@ -115,6 +119,7 @@ function defaultSettings(): SettingsFile {
     embeddingModel: 'text-embedding-3-small',
     searchHistoryRetention: '30-days',
     searchHistoryIncludesAnswers: false,
+    scrollbarVisibility: 'auto',
     encryptedKeys: {},
     providerKeyMetadata: {}
   }
@@ -132,6 +137,10 @@ function isSearchHistoryRetention(value: unknown): value is SearchHistoryRetenti
     value === '30-days' ||
     value === 'forever'
   )
+}
+
+function isScrollbarVisibility(value: unknown): value is ScrollbarVisibility {
+  return value === 'auto' || value === 'always'
 }
 
 function isDataFlowAcknowledgement(value: unknown): value is DataFlowAcknowledgement {
@@ -212,6 +221,9 @@ function migrateSettings(parsed: LegacySettingsFile): SettingsFile {
       typeof parsed.searchHistoryIncludesAnswers === 'boolean'
         ? parsed.searchHistoryIncludesAnswers
         : defaults.searchHistoryIncludesAnswers,
+    scrollbarVisibility: isScrollbarVisibility(parsed.scrollbarVisibility)
+      ? parsed.scrollbarVisibility
+      : defaults.scrollbarVisibility,
     encryptedKeys: parsed.encryptedKeys ?? {},
     providerKeyMetadata: providerKeyMetadata(parsed.providerKeyMetadata)
   }
@@ -230,7 +242,12 @@ export class SettingsStore {
     const raw = readFileSync(path, 'utf-8')
     const parsed = JSON.parse(raw) as LegacySettingsFile
     this.cache = migrateSettings(parsed)
-    if (parsed.schemaVersion !== SETTINGS_SCHEMA_VERSION) this.persist(this.cache)
+    if (
+      parsed.schemaVersion !== SETTINGS_SCHEMA_VERSION ||
+      parsed.scrollbarVisibility !== this.cache.scrollbarVisibility
+    ) {
+      this.persist(this.cache)
+    }
     return this.cache
   }
 
@@ -257,6 +274,7 @@ export class SettingsStore {
       embeddingModel: s.embeddingModel,
       searchHistoryRetention: s.searchHistoryRetention,
       searchHistoryIncludesAnswers: s.searchHistoryIncludesAnswers,
+      scrollbarVisibility: s.scrollbarVisibility,
       hasAnthropicKey: !!s.encryptedKeys.anthropic,
       hasOpenAIKey: !!s.encryptedKeys.openai,
       hasGeminiKey: !!s.encryptedKeys.gemini,
@@ -320,6 +338,9 @@ export class SettingsStore {
     }
     if (patch.searchHistoryIncludesAnswers !== undefined) {
       next.searchHistoryIncludesAnswers = patch.searchHistoryIncludesAnswers
+    }
+    if (patch.scrollbarVisibility !== undefined) {
+      next.scrollbarVisibility = patch.scrollbarVisibility
     }
 
     for (const provider of patch.deleteProviderKeys ?? []) {

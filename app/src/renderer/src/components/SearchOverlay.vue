@@ -125,7 +125,11 @@ async function closeOverlay(): Promise<void> {
 </script>
 
 <template>
-  <div class="search-backdrop" @click.self="closeOverlay" @keydown="onKeydown">
+  <div
+    class="search-backdrop ryte-scrollbar ryte-scrollbar--y"
+    @click.self="closeOverlay"
+    @keydown="onKeydown"
+  >
     <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
       <!-- Input row -->
       <div class="search-input-row">
@@ -211,8 +215,13 @@ async function closeOverlay(): Promise<void> {
           </ul>
         </div>
 
-        <!-- eslint-disable-next-line vue/no-v-html -->
-        <div v-if="renderedAnswer" class="search-answer" v-html="renderedAnswer" />
+        <!-- eslint-disable vue/no-v-html -->
+        <div
+          v-if="renderedAnswer"
+          class="search-answer ryte-scrollbar ryte-scrollbar--y"
+          v-html="renderedAnswer"
+        />
+        <!-- eslint-enable vue/no-v-html -->
 
         <div v-if="search.status === 'error' && search.error" class="search-error">
           {{ search.error }}
@@ -236,7 +245,7 @@ async function closeOverlay(): Promise<void> {
         </div>
         <div v-for="(entry, i) in search.history" :key="i" class="history-entry">
           <div class="history-query">{{ entry.query }}</div>
-          <div class="history-answer">{{ entry.answer }}</div>
+          <div class="history-answer ryte-scrollbar ryte-scrollbar--y">{{ entry.answer }}</div>
           <ol v-if="entry.citations.length > 0" class="citation-list citation-list--compact">
             <li v-for="c in entry.citations" :key="c.index">
               <button class="citation-btn" @click="openCitation(c.sourcePath)">

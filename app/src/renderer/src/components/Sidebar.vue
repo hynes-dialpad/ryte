@@ -169,7 +169,7 @@ onMounted(() => {
 <template>
   <nav
     ref="rootEl"
-    class="sidebar"
+    class="sidebar ryte-scrollbar ryte-scrollbar--y"
     :aria-label="'Notes file tree'"
     tabindex="0"
     @keydown="onKeydown"

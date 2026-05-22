@@ -17,12 +17,13 @@ import {
   resolveGlobalWorkspaceTabShortcut,
   resolveTablistKeyboardAction
 } from './workspace-tab-keyboard'
+import { resolveOverflowEdges, resolveScrollDelta } from './workspace-tab-scroll'
 
 const workspace = useWorkspaceStore()
+const TAB_SCROLL_MARGIN = 8
 
 const hasTabs = computed(() => workspace.tabs.length > 0)
 const tabListRef = ref<HTMLElement | null>(null)
-const scrollbarVisible = ref(false)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const screenReaderStatus = ref('')
@@ -66,24 +67,6 @@ function focusTabButton(tabId: string): void {
   })
 }
 
-function scrollActiveTabIntoView(): void {
-  const list = tabListRef.value
-  const activeTabId = workspace.activeTabId
-  const activeTab = activeTabId ? tabElements.get(activeTabId) : null
-  if (!list || !activeTab) return
-
-  const listRect = list.getBoundingClientRect()
-  const tabRect = activeTab.getBoundingClientRect()
-  const leftOverflow = tabRect.left - listRect.left
-  const rightOverflow = tabRect.right - listRect.right
-
-  if (leftOverflow < 0) {
-    list.scrollLeft += leftOverflow
-  } else if (rightOverflow > 0) {
-    list.scrollLeft += rightOverflow
-  }
-}
-
 function scrollTabIntoView(tabId: string): void {
   const list = tabListRef.value
   const tab = tabElements.get(tabId)
@@ -91,14 +74,16 @@ function scrollTabIntoView(tabId: string): void {
 
   const listRect = list.getBoundingClientRect()
   const tabRect = tab.getBoundingClientRect()
-  const leftOverflow = tabRect.left - listRect.left
-  const rightOverflow = tabRect.right - listRect.right
+  const delta = resolveScrollDelta({
+    viewportStart: listRect.left,
+    viewportEnd: listRect.right,
+    itemStart: tabRect.left,
+    itemEnd: tabRect.right,
+    margin: TAB_SCROLL_MARGIN
+  })
 
-  if (leftOverflow < 0) {
-    list.scrollLeft += leftOverflow
-  } else if (rightOverflow > 0) {
-    list.scrollLeft += rightOverflow
-  }
+  if (delta !== 0) list.scrollLeft += delta
+  updateScrollEdges()
 }
 
 function updateScrollEdges(): void {
@@ -109,9 +94,13 @@ function updateScrollEdges(): void {
     return
   }
 
-  const maxScrollLeft = Math.max(0, list.scrollWidth - list.clientWidth)
-  canScrollLeft.value = list.scrollLeft > 1
-  canScrollRight.value = list.scrollLeft < maxScrollLeft - 1
+  const edges = resolveOverflowEdges({
+    scrollLeft: list.scrollLeft,
+    scrollWidth: list.scrollWidth,
+    clientWidth: list.clientWidth
+  })
+  canScrollLeft.value = edges.canScrollLeft
+  canScrollRight.value = edges.canScrollRight
 }
 
 function syncTabLayout(): void {
@@ -125,7 +114,7 @@ function syncTabLayout(): void {
     }
     scrollFrame = window.requestAnimationFrame(() => {
       scrollFrame = null
-      scrollActiveTabIntoView()
+      if (workspace.activeTabId) scrollTabIntoView(workspace.activeTabId)
       updateScrollEdges()
     })
   })
@@ -306,20 +295,18 @@ function onGlobalKeydown(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <nav
-    v-if="hasTabs"
-    class="workspace-tabs"
-    :class="{ 'scrollbar-is-visible': scrollbarVisible }"
-    aria-label="Open files"
-    @pointerenter="scrollbarVisible = true"
-    @pointerleave="scrollbarVisible = false"
-  >
+  <nav v-if="hasTabs" class="workspace-tabs" aria-label="Open files">
     <p id="workspace-tabs-instructions" class="sr-only">
       Use Left and Right Arrow to switch tabs, Home and End to jump, Delete or Backspace to close
       the focused tab, Command W to close the current tab, or Shift Command Left Bracket and Shift
       Command Right Bracket to switch tabs from anywhere.
     </p>
-    <div :ref="setTabListRef" class="tab-list" :class="tabListClasses" @scroll="updateScrollEdges">
+    <div
+      :ref="setTabListRef"
+      class="tab-list ryte-scrollbar ryte-scrollbar--x"
+      :class="tabListClasses"
+      @scroll="updateScrollEdges"
+    >
       <div
         class="tab-track"
         role="tablist"
@@ -413,6 +400,7 @@ function onGlobalKeydown(event: KeyboardEvent): void {
 
 .tab-list {
   --tab-fade-size: 24px;
+  --tab-scrollbar-strip: 6px;
   flex: 1 1 auto;
   min-width: 0;
   height: calc(100% - 2px);
@@ -421,71 +409,47 @@ function onGlobalKeydown(event: KeyboardEvent): void {
 }
 
 .tab-list.has-left-fade {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 var(--tab-fade-size),
-    #000 100%
-  );
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--tab-fade-size), #000 100%);
-  mask-mode: alpha;
+  --tab-edge-mask: linear-gradient(to right, transparent 0, #000 var(--tab-fade-size), #000 100%);
 }
 
 .tab-list.has-right-fade {
-  -webkit-mask-image: linear-gradient(
+  --tab-edge-mask: linear-gradient(
     to right,
     #000 0,
     #000 calc(100% - var(--tab-fade-size)),
     transparent 100%
   );
-  mask-image: linear-gradient(
-    to right,
-    #000 0,
-    #000 calc(100% - var(--tab-fade-size)),
-    transparent 100%
-  );
-  mask-mode: alpha;
 }
 
 .tab-list.has-left-fade.has-right-fade {
-  -webkit-mask-image: linear-gradient(
+  --tab-edge-mask: linear-gradient(
     to right,
     transparent 0,
     #000 var(--tab-fade-size),
     #000 calc(100% - var(--tab-fade-size)),
     transparent 100%
   );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 var(--tab-fade-size),
-    #000 calc(100% - var(--tab-fade-size)),
-    transparent 100%
-  );
+}
+
+.tab-list.has-left-fade,
+.tab-list.has-right-fade {
+  -webkit-mask-image: var(--tab-edge-mask), linear-gradient(#000, #000);
+  -webkit-mask-position:
+    top left,
+    bottom left;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    100% calc(100% - var(--tab-scrollbar-strip)),
+    100% var(--tab-scrollbar-strip);
+  mask-image: var(--tab-edge-mask), linear-gradient(#000, #000);
   mask-mode: alpha;
-}
-
-.tab-list::-webkit-scrollbar {
-  height: 4px;
-}
-
-.tab-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.tab-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: transparent;
-}
-
-.workspace-tabs.scrollbar-is-visible .tab-list::-webkit-scrollbar-thumb,
-.tab-list:focus-within::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.32);
-}
-
-.workspace-tabs.scrollbar-is-visible .tab-list::-webkit-scrollbar-thumb:hover,
-.tab-list:focus-within::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.46);
+  mask-position:
+    top left,
+    bottom left;
+  mask-repeat: no-repeat;
+  mask-size:
+    100% calc(100% - var(--tab-scrollbar-strip)),
+    100% var(--tab-scrollbar-strip);
 }
 
 .tab-track {

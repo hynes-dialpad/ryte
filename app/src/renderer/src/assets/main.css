@@ -9,9 +9,131 @@ body {
   overflow: hidden;
 }
 
-*::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+:root {
+  --ryte-scrollbar-size: 4px;
+  --ryte-scrollbar-track: rgba(255, 255, 255, 0.07);
+  --ryte-scrollbar-track-subtle: rgba(255, 255, 255, 0.04);
+  --ryte-scrollbar-thumb: rgba(255, 255, 255, 0.26);
+  --ryte-scrollbar-thumb-strong: rgba(255, 255, 255, 0.42);
+}
+
+.ryte-scrollbar {
+  --ryte-scrollbar-tray-color: transparent;
+
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.ryte-scrollbar::-webkit-scrollbar {
+  width: var(--ryte-scrollbar-size);
+  height: var(--ryte-scrollbar-size);
+}
+
+.ryte-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.ryte-scrollbar::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.ryte-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.ryte-scrollbar:hover,
+.ryte-scrollbar:focus,
+.ryte-scrollbar:focus-within {
+  scrollbar-color: var(--ryte-scrollbar-thumb) var(--ryte-scrollbar-track);
+}
+
+.ryte-scrollbar:hover::-webkit-scrollbar-track,
+.ryte-scrollbar:focus::-webkit-scrollbar-track,
+.ryte-scrollbar:focus-within::-webkit-scrollbar-track {
+  background: var(--ryte-scrollbar-track);
+}
+
+.ryte-scrollbar:hover::-webkit-scrollbar-thumb,
+.ryte-scrollbar:focus::-webkit-scrollbar-thumb,
+.ryte-scrollbar:focus-within::-webkit-scrollbar-thumb {
+  background: var(--ryte-scrollbar-thumb);
+}
+
+.ryte-scrollbar::-webkit-scrollbar-thumb:hover,
+.ryte-scrollbar:focus::-webkit-scrollbar-thumb:hover,
+.ryte-scrollbar:focus-within::-webkit-scrollbar-thumb:hover {
+  background: var(--ryte-scrollbar-thumb-strong);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar {
+  --ryte-scrollbar-tray-color: var(--ryte-scrollbar-track-subtle);
+
+  scrollbar-color: var(--ryte-scrollbar-thumb) var(--ryte-scrollbar-track-subtle);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar--x {
+  background-image: linear-gradient(
+    to right,
+    var(--ryte-scrollbar-tray-color),
+    var(--ryte-scrollbar-tray-color)
+  ) !important;
+  background-position: left bottom !important;
+  background-repeat: no-repeat !important;
+  background-size: 100% var(--ryte-scrollbar-size) !important;
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar--y {
+  background-image: linear-gradient(
+    to bottom,
+    var(--ryte-scrollbar-tray-color),
+    var(--ryte-scrollbar-tray-color)
+  ) !important;
+  background-position: right top !important;
+  background-repeat: no-repeat !important;
+  background-size: var(--ryte-scrollbar-size) 100% !important;
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar--both {
+  background-image:
+    linear-gradient(to bottom, var(--ryte-scrollbar-tray-color), var(--ryte-scrollbar-tray-color)),
+    linear-gradient(to right, var(--ryte-scrollbar-tray-color), var(--ryte-scrollbar-tray-color)) !important;
+  background-position:
+    right top,
+    left bottom !important;
+  background-repeat: no-repeat !important;
+  background-size:
+    var(--ryte-scrollbar-size) 100%,
+    100% var(--ryte-scrollbar-size) !important;
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar::-webkit-scrollbar-track {
+  background: var(--ryte-scrollbar-track-subtle);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar:hover,
+.app.scrollbars-always-visible .ryte-scrollbar:focus,
+.app.scrollbars-always-visible .ryte-scrollbar:focus-within {
+  --ryte-scrollbar-tray-color: var(--ryte-scrollbar-track);
+
+  scrollbar-color: var(--ryte-scrollbar-thumb-strong) var(--ryte-scrollbar-track);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar:hover::-webkit-scrollbar-track,
+.app.scrollbars-always-visible .ryte-scrollbar:focus::-webkit-scrollbar-track,
+.app.scrollbars-always-visible .ryte-scrollbar:focus-within::-webkit-scrollbar-track {
+  background: var(--ryte-scrollbar-track);
+}
+
+.app.scrollbars-always-visible .ryte-scrollbar:hover::-webkit-scrollbar-thumb,
+.app.scrollbars-always-visible .ryte-scrollbar:focus::-webkit-scrollbar-thumb,
+.app.scrollbars-always-visible .ryte-scrollbar:focus-within::-webkit-scrollbar-thumb {
+  background: var(--ryte-scrollbar-thumb-strong);
 }
 
 #app {

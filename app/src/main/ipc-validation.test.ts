@@ -55,13 +55,15 @@ describe('ipc validation', () => {
         answerProvider: 'openai',
         answerModel: 'gpt-5.2',
         searchHistoryRetention: '30-days',
-        searchHistoryIncludesAnswers: false
+        searchHistoryIncludesAnswers: false,
+        scrollbarVisibility: 'always'
       })
     ).toMatchObject({
       notesRoot: '/tmp/notes',
       cloudAnswersEnabled: true,
       answerProvider: 'openai',
-      answerModel: 'gpt-5.2'
+      answerModel: 'gpt-5.2',
+      scrollbarVisibility: 'always'
     })
   })
 
@@ -69,6 +71,9 @@ describe('ipc validation', () => {
     expect(() => assertValidSettingsPatch({ arbitrary: true })).toThrow('Invalid settings key')
     expect(() => assertValidSettingsPatch({ answerModel: 'not-a-model' })).toThrow(
       'Invalid answer model'
+    )
+    expect(() => assertValidSettingsPatch({ scrollbarVisibility: 'visible' })).toThrow(
+      'Invalid scrollbar visibility'
     )
   })
 

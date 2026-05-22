@@ -9,7 +9,9 @@ import type {
   AnswerModelId,
   AnswerProviderId,
   DataFlowAcknowledgement,
+  PublicSettingsState,
   ProviderId,
+  ScrollbarVisibility,
   SearchHistoryRetention
 } from '../../../main/settings/settings-store'
 
@@ -29,14 +31,18 @@ const cloudDataAcknowledged = ref(false)
 const semanticDataAcknowledged = ref(false)
 const searchHistoryRetention = ref<SearchHistoryRetention>('30-days')
 const searchHistoryIncludesAnswers = ref(false)
+const scrollbarVisibility = ref<ScrollbarVisibility>('auto')
 const openaiKey = ref('')
 const anthropicKey = ref('')
 const deletedProviderKeys = ref<Set<ProviderId>>(new Set())
 const validatingProvider = ref<ProviderId | null>(null)
 const keyValidationMessage = ref<Partial<Record<ProviderId, string>>>({})
 const saving = ref(false)
+const savingAppearance = ref(false)
 const localError = ref<string | null>(null)
 const appVersion = ref('')
+let formHydrated = false
+let scrollbarSaveToken = 0
 
 const ANSWER_MODELS = answerModels()
 
@@ -138,6 +144,11 @@ watch([answerProvider, answerModel], () => {
   cloudDataAcknowledged.value = cloudAcknowledgementCurrent.value
 })
 
+watch(scrollbarVisibility, (next, previous) => {
+  if (!formHydrated || next === settings.state?.scrollbarVisibility) return
+  void saveScrollbarVisibility(next, previous)
+})
+
 onMounted(async () => {
   const versionPromise = window.ryte.app.getVersion()
   if (!settings.state) await settings.hydrate()
@@ -152,7 +163,9 @@ onMounted(async () => {
     semanticDataAcknowledged.value = semanticAcknowledgementCurrent.value
     searchHistoryRetention.value = s.searchHistoryRetention
     searchHistoryIncludesAnswers.value = s.searchHistoryIncludesAnswers
+    scrollbarVisibility.value = s.scrollbarVisibility
   }
+  formHydrated = true
   appVersion.value = await versionPromise
 })
 
@@ -173,6 +186,41 @@ function nextAcknowledgement(
     return acknowledgement
   }
   return { acknowledgedAt: new Date().toISOString(), provider, model }
+}
+
+function patchRequiresReindex(
+  current: PublicSettingsState,
+  patch: Parameters<typeof settings.save>[0]
+): boolean {
+  return (
+    patch.notesRoot !== current.notesRoot ||
+    patch.openaiKey !== undefined ||
+    patch.deleteProviderKeys?.includes('openai') === true ||
+    patch.semanticIndexEnabled !== current.semanticIndexEnabled ||
+    patch.embeddingProvider !== current.embeddingProvider ||
+    patch.embeddingModel !== current.embeddingModel
+  )
+}
+
+async function saveScrollbarVisibility(
+  next: ScrollbarVisibility,
+  previous: ScrollbarVisibility
+): Promise<void> {
+  const token = ++scrollbarSaveToken
+  savingAppearance.value = true
+  localError.value = null
+  try {
+    await settings.save({ scrollbarVisibility: next })
+  } catch (e) {
+    if (token === scrollbarSaveToken) {
+      scrollbarVisibility.value = previous
+      localError.value = e instanceof Error ? e.message : String(e)
+    }
+  } finally {
+    if (token === scrollbarSaveToken) {
+      savingAppearance.value = false
+    }
+  }
 }
 
 async function pickFolder(): Promise<void> {
@@ -213,7 +261,8 @@ async function onSave(): Promise<void> {
           : null,
       searchHistoryRetention: searchHistoryRetention.value,
       searchHistoryIncludesAnswers:
-        searchHistoryRetention.value !== 'off' && searchHistoryIncludesAnswers.value
+        searchHistoryRetention.value !== 'off' && searchHistoryIncludesAnswers.value,
+      scrollbarVisibility: scrollbarVisibility.value
     }
 
     if (openaiKey.value.trim()) patch.openaiKey = openaiKey.value.trim()
@@ -225,13 +274,15 @@ async function onSave(): Promise<void> {
     })
     if (deleteProviderKeys.length > 0) patch.deleteProviderKeys = deleteProviderKeys
 
+    const shouldTriggerReindex = patchRequiresReindex(current, patch)
+
     await settings.save(patch)
     openaiKey.value = ''
     anthropicKey.value = ''
     deletedProviderKeys.value = new Set()
     keyValidationMessage.value = {}
     emit('close')
-    void indexStatus.triggerReindex()
+    if (shouldTriggerReindex) void indexStatus.triggerReindex()
   } catch (e) {
     localError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -311,7 +362,12 @@ function keyMetadataLabel(provider: ProviderId): string {
 
 <template>
   <div class="modal-backdrop" @click.self="onBackdropClick">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div
+      class="modal ryte-scrollbar ryte-scrollbar--y"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
       <header>
         <h2 id="settings-title">Settings</h2>
       </header>
@@ -397,6 +453,17 @@ function keyMetadataLabel(provider: ProviderId): string {
             Rebuilding the index uses local markdown files and does not require provider keys. By
             default, saved search history keeps queries only.
           </p>
+        </section>
+
+        <section class="settings-section" aria-labelledby="appearance-title">
+          <h3 id="appearance-title">Appearance</h3>
+          <label class="compact-row">
+            <span>Scrollbars</span>
+            <select v-model="scrollbarVisibility" :disabled="saving || savingAppearance">
+              <option value="auto">Automatic</option>
+              <option value="always">Always show trays</option>
+            </select>
+          </label>
         </section>
 
         <section class="settings-section" aria-labelledby="semantic-index-title">
@@ -654,6 +721,7 @@ button:disabled {
 
 .folder-row,
 .split-row,
+.compact-row,
 .button-row,
 .static-row {
   display: flex;
@@ -677,6 +745,16 @@ button:disabled {
 .folder-row input,
 .split-row label {
   flex: 1;
+}
+
+.compact-row {
+  align-items: center;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.compact-row select {
+  width: min(16rem, 56%);
 }
 
 .static-row {
