@@ -112,7 +112,7 @@ function onRowClick(node: TreeNode, index: number): void {
   if (node.isFolder) {
     toggle(node)
   } else {
-    void workspace.openFile({ sourcePath: node.relPath })
+    void workspace.openOrFocusFile({ sourcePath: node.relPath })
   }
 }
 
@@ -153,7 +153,7 @@ function onKeydown(event: KeyboardEvent): void {
     case 'Enter':
       event.preventDefault()
       if (current && !current.isFolder) {
-        void workspace.openFile({ sourcePath: current.relPath })
+        void workspace.openOrFocusFile({ sourcePath: current.relPath })
       } else if (current?.isFolder) {
         toggle(current)
       }

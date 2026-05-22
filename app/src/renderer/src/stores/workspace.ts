@@ -186,6 +186,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     )
   }
 
+  async function openOrFocusFile(input: WorkspaceOpenFileInput): Promise<void> {
+    const existingTab = tabs.value.findLast((tab) => tab.sourcePath === input.sourcePath)
+    if (existingTab) {
+      await focusTab({ tabId: existingTab.id })
+      return
+    }
+    await openFile(input)
+  }
+
   async function focusTab(input: WorkspaceFocusTabInput): Promise<void> {
     await runOptimisticWorkspaceOperation(
       (base) => ({
@@ -283,6 +292,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFile,
     focusTab,
     closeTab,
+    openOrFocusFile,
     updateTabViewMode,
     recordRecent,
     setOutlineCollapsed,

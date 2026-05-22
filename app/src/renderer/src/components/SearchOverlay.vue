@@ -92,7 +92,7 @@ async function searchLocallyOnly(): Promise<void> {
 }
 
 function openCitation(sourcePath: string): void {
-  void workspace.openFile({ sourcePath })
+  void workspace.openOrFocusFile({ sourcePath })
   void closeOverlay()
 }
 

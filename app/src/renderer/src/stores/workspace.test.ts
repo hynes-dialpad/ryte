@@ -148,6 +148,35 @@ describe('useWorkspaceStore', () => {
     expect(store.error).toBeNull()
   })
 
+  it('focuses the latest matching tab for openOrFocusFile without opening a duplicate', async () => {
+    const tabA = { id: 'tab-a', sourcePath: 'a.md', title: 'a.md', viewMode: 'preview' as const }
+    const tabB = { id: 'tab-b', sourcePath: 'b.md', title: 'b.md', viewMode: 'preview' as const }
+    const tabA2 = {
+      id: 'tab-a-2',
+      sourcePath: 'a.md',
+      title: 'a.md',
+      viewMode: 'source' as const
+    }
+    const initial = workspaceState({ tabs: [tabA, tabB, tabA2], activeTabId: tabB.id })
+    const focused = workspaceState({ tabs: [tabA, tabB, tabA2], activeTabId: tabA2.id })
+    const openFile = vi.fn()
+    const focusTab = vi.fn().mockResolvedValue(focused)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      focusTab,
+      openFile
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openOrFocusFile({ sourcePath: 'a.md' })
+
+    expect(focusTab).toHaveBeenCalledWith({ tabId: tabA2.id })
+    expect(openFile).not.toHaveBeenCalled()
+    expect(store.activeTabId).toBe(tabA2.id)
+  })
+
   it('applies optimistic focus, close, view mode, recent, and outline updates', async () => {
     const tabA = { id: 'tab-a', sourcePath: 'a.md', title: 'a.md', viewMode: 'preview' as const }
     const tabB = { id: 'tab-b', sourcePath: 'b.md', title: 'b.md', viewMode: 'preview' as const }
