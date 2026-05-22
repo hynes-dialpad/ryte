@@ -218,7 +218,14 @@ function applySearchHistorySettings(): void {
       </div>
       <WorkspaceTabs class="header-tabs" />
       <div class="header-actions">
-        <button type="button" class="search-trigger-btn" @click="openSearch">Search</button>
+        <button
+          type="button"
+          class="search-trigger-btn"
+          data-workspace-fallback-focus
+          @click="openSearch"
+        >
+          Search
+        </button>
         <button type="button" class="settings-btn" @click="openSettings">Settings</button>
       </div>
     </header>
