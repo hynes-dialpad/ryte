@@ -48,6 +48,7 @@ describe('SettingsStore', () => {
     expect(state.semanticIndexAcknowledgement).toBeNull()
     expect(state.searchHistoryRetention).toBe('30-days')
     expect(state.searchHistoryIncludesAnswers).toBe(false)
+    expect(state.scrollbarVisibility).toBe('auto')
     expect(state.hasAnthropicKey).toBe(false)
     expect(state.hasOpenAIKey).toBe(false)
     expect(state.hasGeminiKey).toBe(false)
@@ -103,7 +104,8 @@ describe('SettingsStore', () => {
         model: 'text-embedding-3-small'
       },
       searchHistoryRetention: '7-days',
-      searchHistoryIncludesAnswers: true
+      searchHistoryIncludesAnswers: true,
+      scrollbarVisibility: 'always'
     })
 
     const fresh = new SettingsStore()
@@ -123,6 +125,7 @@ describe('SettingsStore', () => {
     })
     expect(state.searchHistoryRetention).toBe('7-days')
     expect(state.searchHistoryIncludesAnswers).toBe(true)
+    expect(state.scrollbarVisibility).toBe('always')
   })
 
   it('migrates the legacy single-model settings file', async () => {
@@ -148,11 +151,36 @@ describe('SettingsStore', () => {
     expect(fresh.getSecret('anthropic')).toBe('sk-ant-legacy')
     expect(state.searchHistoryRetention).toBe('30-days')
     expect(state.searchHistoryIncludesAnswers).toBe(false)
+    expect(state.scrollbarVisibility).toBe('auto')
 
     const saved = JSON.parse(readFileSync(join(tempDir, 'settings.json'), 'utf-8')) as {
       schemaVersion: number
+      scrollbarVisibility: string
     }
     expect(saved.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(saved.scrollbarVisibility).toBe('auto')
+  })
+
+  it('migrates missing or invalid scrollbar visibility to auto', async () => {
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({
+        schemaVersion: 4,
+        notesRoot: '/tmp/current-notes',
+        scrollbarVisibility: 'visible'
+      }),
+      'utf-8'
+    )
+
+    const { SettingsStore } = await import('./settings-store')
+    const state = new SettingsStore().publicState()
+    expect(state.notesRoot).toBe('/tmp/current-notes')
+    expect(state.scrollbarVisibility).toBe('auto')
+
+    const saved = JSON.parse(readFileSync(join(tempDir, 'settings.json'), 'utf-8')) as {
+      scrollbarVisibility: string
+    }
+    expect(saved.scrollbarVisibility).toBe('auto')
   })
 
   it('does not include plaintext keys in publicState', async () => {

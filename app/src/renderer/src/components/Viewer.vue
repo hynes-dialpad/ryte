@@ -118,10 +118,16 @@ onUnmounted(() => {
     <pre
       v-else-if="viewer.sourceMode"
       ref="sourceEl"
-      class="source"
+      class="source ryte-scrollbar ryte-scrollbar--y"
     ><code>{{ viewer.content }}</code></pre>
-    <!-- eslint-disable-next-line vue/no-v-html -- markdown-it has html:false; shiki output is generator-produced -->
-    <article v-else ref="proseEl" class="prose" v-html="renderedHtml"></article>
+    <!-- eslint-disable vue/no-v-html -- markdown-it has html:false; shiki output is generator-produced -->
+    <article
+      v-else
+      ref="proseEl"
+      class="prose ryte-scrollbar ryte-scrollbar--y"
+      v-html="renderedHtml"
+    ></article>
+    <!-- eslint-enable vue/no-v-html -->
   </section>
 </template>
 

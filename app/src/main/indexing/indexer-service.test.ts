@@ -81,7 +81,7 @@ describe('IndexerService.embed()', () => {
     const { IndexerService } = await import('./indexer-service')
     vi.mocked(settingsStore.getSecret).mockReturnValue('sk-test')
     vi.mocked(settingsStore.load).mockReturnValue({
-      schemaVersion: 3,
+      schemaVersion: 4,
       notesRoot: '/tmp/notes',
       cloudAnswersEnabled: false,
       semanticIndexEnabled: true,
@@ -93,6 +93,7 @@ describe('IndexerService.embed()', () => {
       embeddingModel: 'text-embedding-3-small',
       searchHistoryRetention: '30-days',
       searchHistoryIncludesAnswers: false,
+      scrollbarVisibility: 'auto',
       encryptedKeys: {},
       providerKeyMetadata: {}
     })

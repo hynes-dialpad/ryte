@@ -59,6 +59,9 @@ const sidebarToggleLabel = computed(() =>
 const sidebarWidth = computed(
   () => dragSidebarWidth.value ?? workspace.sidebarWidthForViewport(viewportWidth.value)
 )
+const appClasses = computed(() => ({
+  'scrollbars-always-visible': settings.state?.scrollbarVisibility === 'always'
+}))
 const sidebarFrameStyle = computed(() => ({
   width: `${sidebarWidth.value}px`
 }))
@@ -67,9 +70,6 @@ const sidebarPopoverStyle = computed(() => ({
 }))
 const edgeTargetStyle = computed(() => ({
   width: `${SIDEBAR_EDGE_TARGET_WIDTH}px`
-}))
-const sidebarHeaderStyle = computed(() => ({
-  width: `${sidebarWidth.value}px`
 }))
 
 function openSearch(): void {
@@ -185,10 +185,9 @@ function applySearchHistorySettings(): void {
 </script>
 
 <template>
-  <div class="app" tabindex="0" @keydown.meta.k.prevent="openSearch">
+  <div class="app" :class="appClasses" tabindex="0" @keydown.meta.k.prevent="openSearch">
     <header class="app-header">
-      <div class="header-sidebar-zone" :style="sidebarHeaderStyle">
-        <h1>ryte</h1>
+      <div class="header-sidebar-zone">
         <button
           type="button"
           class="sidebar-chrome-btn"
@@ -215,6 +214,7 @@ function applySearchHistorySettings(): void {
             />
           </svg>
         </button>
+        <h1>ryte</h1>
       </div>
       <WorkspaceTabs class="header-tabs" />
       <div class="header-actions">
@@ -304,12 +304,11 @@ function applySearchHistorySettings(): void {
 
 .header-sidebar-zone {
   height: 100%;
-  min-width: 164px;
-  max-width: 50vw;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0 0.875rem 0 5.75rem;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0 1rem 0 5.75rem;
   flex: 0 0 auto;
 }
 
@@ -350,8 +349,7 @@ h1 {
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .sidebar-chrome-btn {

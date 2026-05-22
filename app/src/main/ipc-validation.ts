@@ -2,6 +2,7 @@ import { isAbsolute, normalize, sep, win32 } from 'node:path'
 
 import type {
   DataFlowAcknowledgement,
+  ScrollbarVisibility,
   SearchHistoryRetention,
   SettingsUpdate
 } from './settings/settings-store'
@@ -48,6 +49,7 @@ const SETTINGS_KEYS = new Set([
   'embeddingModel',
   'searchHistoryRetention',
   'searchHistoryIncludesAnswers',
+  'scrollbarVisibility',
   'anthropicKey',
   'openaiKey',
   'geminiKey',
@@ -197,6 +199,10 @@ function isSearchHistoryRetention(value: unknown): value is SearchHistoryRetenti
   )
 }
 
+function isScrollbarVisibility(value: unknown): value is ScrollbarVisibility {
+  return value === 'auto' || value === 'always'
+}
+
 function isDataFlowAcknowledgement(value: unknown): value is DataFlowAcknowledgement {
   if (value === null) return true
   if (!value || typeof value !== 'object') return false
@@ -299,6 +305,12 @@ export function assertValidSettingsPatch(value: unknown): SettingsUpdate {
       input.searchHistoryIncludesAnswers,
       'searchHistoryIncludesAnswers'
     )
+  }
+  if ('scrollbarVisibility' in input) {
+    if (!isScrollbarVisibility(input.scrollbarVisibility)) {
+      throw new Error('Invalid scrollbar visibility')
+    }
+    patch.scrollbarVisibility = input.scrollbarVisibility
   }
   if ('anthropicKey' in input)
     patch.anthropicKey = assertOptionalKey(input.anthropicKey, 'anthropicKey')

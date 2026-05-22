@@ -24,7 +24,7 @@ import {
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
 import { SearchService } from './search/search-service'
-import { settingsStore, type SettingsUpdate } from './settings/settings-store'
+import { settingsStore, type SettingsFile, type SettingsUpdate } from './settings/settings-store'
 import { validateProviderKey } from './settings/key-validation'
 import {
   readFileSafe,
@@ -39,13 +39,18 @@ import { workspaceStore } from './workspace/workspace-store'
 let searchService: SearchService | null = null
 let watchedViewerSourcePath: string | null = null
 
-function settingsPatchRequiresIndexerRestart(patch: SettingsUpdate): boolean {
+function settingsPatchRequiresIndexerRestart(
+  patch: SettingsUpdate,
+  before: SettingsFile,
+  after: SettingsFile
+): boolean {
   return (
-    patch.notesRoot !== undefined ||
+    before.notesRoot !== after.notesRoot ||
     patch.openaiKey !== undefined ||
-    patch.semanticIndexEnabled !== undefined ||
-    patch.embeddingProvider !== undefined ||
-    patch.embeddingModel !== undefined
+    patch.deleteProviderKeys?.includes('openai') === true ||
+    before.semanticIndexEnabled !== after.semanticIndexEnabled ||
+    before.embeddingProvider !== after.embeddingProvider ||
+    before.embeddingModel !== after.embeddingModel
   )
 }
 
@@ -107,8 +112,11 @@ export function registerIpc(): void {
 
   ipcMain.handle('settings:save', async (_, patch: unknown) => {
     const validatedPatch = assertValidSettingsPatch(patch)
+    const previousSettings = settingsStore.load()
     const next = settingsStore.update(validatedPatch)
-    if (settingsPatchRequiresIndexerRestart(validatedPatch)) {
+    if (
+      settingsPatchRequiresIndexerRestart(validatedPatch, previousSettings, settingsStore.load())
+    ) {
       // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
       indexerService.close()
       searchService = null // vectorStore is replaced; recreate on next search
