@@ -38,20 +38,26 @@ describe('WorkspaceStore', () => {
 
   it('persists shell state updates', () => {
     const workspace = store()
-    workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420 })
+    workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420, activeSidebar: 'home' })
     workspace.flushSync()
 
     const state = store().publicState()
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
+    expect(state.shell.activeSidebar).toBe('home')
   })
 
   it('updates the in-memory shell state before debounced persistence flushes', () => {
     const workspace = store()
-    const state = workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420 })
+    const state = workspace.updateShell({
+      sidebarCollapsed: true,
+      sidebarWidth: 420,
+      activeSidebar: 'home'
+    })
 
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
+    expect(state.shell.activeSidebar).toBe('home')
     expect(workspace.publicState().shell.sidebarCollapsed).toBe(true)
     expect(readdirSync(tempDir).filter((name) => name !== 'notes')).toEqual([])
 
@@ -59,7 +65,8 @@ describe('WorkspaceStore', () => {
     expect(JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8'))).toMatchObject({
       shell: {
         sidebarCollapsed: true,
-        sidebarWidth: 420
+        sidebarWidth: 420,
+        activeSidebar: 'home'
       }
     })
   })
@@ -251,7 +258,8 @@ describe('WorkspaceStore', () => {
         schemaVersion: 0,
         shell: {
           sidebarCollapsed: 'yes',
-          sidebarWidth: 1
+          sidebarWidth: 1,
+          activeSidebar: 'unknown'
         },
         window: {
           bounds: { x: 'bad', y: 0, width: 100, height: 100 },
@@ -264,17 +272,19 @@ describe('WorkspaceStore', () => {
     const state = store().publicState()
     expect(state.shell).toEqual({
       sidebarCollapsed: false,
-      sidebarWidth: SIDEBAR_MIN_WIDTH
+      sidebarWidth: SIDEBAR_MIN_WIDTH,
+      activeSidebar: 'files'
     })
     expect(state.window.bounds).toBeNull()
     expect(state.window.maximized).toBe(false)
 
     const saved = JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8')) as {
       schemaVersion: number
-      shell: { sidebarWidth: number }
+      shell: { sidebarWidth: number; activeSidebar: string }
     }
-    expect(saved.schemaVersion).toBe(1)
+    expect(saved.schemaVersion).toBe(2)
     expect(saved.shell.sidebarWidth).toBe(SIDEBAR_MIN_WIDTH)
+    expect(saved.shell.activeSidebar).toBe('files')
   })
 
   it('migrates valid tabs, recents, and outline flags while dropping malformed entries', () => {

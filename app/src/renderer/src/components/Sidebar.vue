@@ -211,7 +211,6 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
   outline: none;
   background: rgba(0, 0, 0, 0.1);
   font-size: 0.825rem;

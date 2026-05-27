@@ -9,7 +9,8 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     shell: {
       sidebarCollapsed: false,
-      sidebarWidth: 360
+      sidebarWidth: 360,
+      activeSidebar: 'files'
     },
     window: {
       bounds: null,
@@ -46,7 +47,8 @@ describe('useWorkspaceStore', () => {
     const persisted = workspaceState({
       shell: {
         sidebarCollapsed: true,
-        sidebarWidth: 420
+        sidebarWidth: 420,
+        activeSidebar: 'home'
       }
     })
     let resolveUpdate: (state: WorkspaceState) => void = () => {}
@@ -64,10 +66,15 @@ describe('useWorkspaceStore', () => {
     const store = useWorkspaceStore()
     await store.hydrate()
 
-    const update = store.updateShell({ sidebarCollapsed: true, sidebarWidth: 420 })
+    const update = store.updateShell({
+      sidebarCollapsed: true,
+      sidebarWidth: 420,
+      activeSidebar: 'home'
+    })
     expect(store.shell).toEqual({
       sidebarCollapsed: true,
-      sidebarWidth: 420
+      sidebarWidth: 420,
+      activeSidebar: 'home'
     })
 
     resolveUpdate(persisted)

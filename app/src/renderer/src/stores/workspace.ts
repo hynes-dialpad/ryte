@@ -13,6 +13,8 @@ import {
   type WorkspaceFocusTabInput,
   type WorkspaceOpenFileInput,
   type WorkspaceRecordRecentInput,
+  type WorkspaceSidebarMode,
+  type WorkspaceShellState,
   type WorkspaceSetOutlineCollapsedInput,
   type WorkspaceShellUpdate,
   type WorkspaceState,
@@ -26,7 +28,8 @@ function defaultRendererWorkspaceState(): WorkspaceState {
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     shell: {
       sidebarCollapsed: false,
-      sidebarWidth: SIDEBAR_DEFAULT_WIDTH
+      sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+      activeSidebar: 'files'
     },
     window: {
       bounds: null,
@@ -57,7 +60,8 @@ function applyOptimisticShellPatch(
       ...(patch.sidebarCollapsed !== undefined ? { sidebarCollapsed: patch.sidebarCollapsed } : {}),
       ...(patch.sidebarWidth !== undefined
         ? { sidebarWidth: normalizeOptimisticSidebarWidth(patch.sidebarWidth) }
-        : {})
+        : {}),
+      ...(patch.activeSidebar !== undefined ? { activeSidebar: patch.activeSidebar } : {})
     }
   }
 }
@@ -103,11 +107,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const shell = computed(
+  const shell = computed<WorkspaceShellState>(
     () =>
       state.value?.shell ?? {
         sidebarCollapsed: false,
-        sidebarWidth: SIDEBAR_DEFAULT_WIDTH
+        sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+        activeSidebar: 'files'
       }
   )
   const tabs = computed(() => state.value?.tabs ?? [])
@@ -269,6 +274,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await updateShell({ sidebarWidth: clampSidebarWidth(width, viewportWidth) })
   }
 
+  async function setActiveSidebar(activeSidebar: WorkspaceSidebarMode): Promise<void> {
+    await updateShell({ activeSidebar })
+  }
+
   function sidebarAutoCollapsed(viewportWidth: number): boolean {
     return shouldAutoCollapseSidebar(viewportWidth)
   }
@@ -299,6 +308,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pruneMissingFileRefs,
     setSidebarCollapsed,
     setSidebarWidth,
+    setActiveSidebar,
     sidebarAutoCollapsed,
     sidebarWidthForViewport,
     SIDEBAR_MIN_WIDTH
