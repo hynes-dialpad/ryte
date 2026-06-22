@@ -17,6 +17,12 @@ body {
   --ryte-scrollbar-thumb-strong: rgba(255, 255, 255, 0.42);
 }
 
+.ryte-svg-icon {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
 .ryte-scrollbar {
   --ryte-scrollbar-tray-color: transparent;
 

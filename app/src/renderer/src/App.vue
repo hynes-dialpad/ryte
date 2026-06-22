@@ -248,7 +248,7 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
 
           <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
             <Sidebar v-if="activeSidebar === 'files'" />
-            <HomeSidebar v-else />
+            <HomeSidebar v-else @open-search="openSearch" />
             <div
               class="sidebar-resize-handle"
               role="separator"
@@ -267,7 +267,7 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
         @mouseleave="hideSidebarPopover"
       >
         <Sidebar v-if="activeSidebar === 'files'" />
-        <HomeSidebar v-else />
+        <HomeSidebar v-else @open-search="openSearch" />
       </aside>
 
       <section class="workspace-region" aria-label="Workspace">
@@ -289,9 +289,9 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
 
 <style scoped>
 .app {
-  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 88%);
+  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 80%);
   --shell-chrome-height: 3.5rem;
-  --shell-rail-width: 42px;
+  --shell-rail-width: 52px;
 
   display: flex;
   flex-direction: column;
@@ -324,7 +324,7 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
   flex: 0 0 var(--shell-chrome-height);
   display: flex;
   align-items: center;
-  padding-left: 5.75rem;
+  padding-left: 6.25rem;
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -334,6 +334,7 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
   height: 22px;
   display: block;
   flex: 0 0 auto;
+  margin-top: 4px;
   pointer-events: none;
 }
 

@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
+import { resolveFileIconName, type FileIconName } from './file-icon-resolver'
+import IconChevronRight from './icons/IconChevronRight.vue'
+import IconFile from './icons/IconFile.vue'
 import { useViewerStore } from '../stores/viewer'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -12,11 +16,33 @@ interface TreeNode {
   children: TreeNode[]
 }
 
+interface TreeConnector {
+  key: string
+  depth: number
+  startIndex: number
+  rowCount: number
+}
+
+const TREE_DEPTH_INDENT_EM = 2.6667
+const TREE_DEPTH_INDENT_PX = 32
+const CHEVRON_CENTER_PX = 7
+const TREE_ROW_FONT_SIZE_PX = 12
+const TREE_ROW_PADDING_LEFT_EM = 0.25
+const TREE_ROW_PADDING_LEFT_PX = TREE_ROW_FONT_SIZE_PX * TREE_ROW_PADDING_LEFT_EM
+const TREE_ROW_HEIGHT_PX = 26
+const TREE_PADDING_X_PX = 12
+const TREE_PADDING_Y_PX = 8
+const TREE_CONNECTOR_OVERHANG_PX = 2
+
+const FILE_ICON_COMPONENTS: Record<FileIconName, Component> = {
+  file: IconFile
+}
+
 const viewer = useViewerStore()
 const workspace = useWorkspaceStore()
 const expanded = ref<Set<string>>(new Set())
 const focusedIndex = ref(0)
-const rootEl = ref<HTMLUListElement | null>(null)
+const rootEl = ref<HTMLElement | null>(null)
 
 function buildTree(paths: string[]): TreeNode[] {
   const root: TreeNode = {
@@ -79,6 +105,35 @@ function flatten(nodes: TreeNode[], out: TreeNode[] = []): TreeNode[] {
 
 const visibleRows = computed<TreeNode[]>(() => flatten(tree.value))
 
+const treeConnectors = computed<TreeConnector[]>(() => {
+  const rows = visibleRows.value
+  const connectors: TreeConnector[] = []
+
+  for (const [index, row] of rows.entries()) {
+    if (!row.isFolder || !isExpanded(row)) continue
+
+    let lastDescendantIndex = index
+    while (
+      lastDescendantIndex + 1 < rows.length &&
+      rows[lastDescendantIndex + 1].depth > row.depth
+    ) {
+      lastDescendantIndex++
+    }
+
+    const rowCount = lastDescendantIndex - index
+    if (rowCount > 0) {
+      connectors.push({
+        key: row.relPath,
+        depth: row.depth,
+        startIndex: index + 1,
+        rowCount
+      })
+    }
+  }
+
+  return connectors
+})
+
 watch(
   tree,
   (next) => {
@@ -113,6 +168,35 @@ function onRowClick(node: TreeNode, index: number): void {
     toggle(node)
   } else {
     void workspace.openOrFocusFile({ sourcePath: node.relPath })
+  }
+}
+
+function rowStyle(node: TreeNode): Record<string, string> | undefined {
+  if (node.depth <= 0) return undefined
+
+  return {
+    '--tree-depth-offset': `${node.depth * TREE_DEPTH_INDENT_EM}em`
+  }
+}
+
+function fileIconFor(fileName: string): Component {
+  return FILE_ICON_COMPONENTS[resolveFileIconName(fileName)]
+}
+
+function treeConnectorStyle(connector: TreeConnector): Record<string, string> {
+  const top =
+    TREE_PADDING_Y_PX + connector.startIndex * TREE_ROW_HEIGHT_PX - TREE_CONNECTOR_OVERHANG_PX
+  const height = connector.rowCount * TREE_ROW_HEIGHT_PX + TREE_CONNECTOR_OVERHANG_PX * 2
+
+  return {
+    left: `${
+      TREE_PADDING_X_PX +
+      TREE_ROW_PADDING_LEFT_PX +
+      connector.depth * TREE_DEPTH_INDENT_PX +
+      CHEVRON_CENTER_PX
+    }px`,
+    top: `${top}px`,
+    height: `${height}px`
   }
 }
 
@@ -178,30 +262,43 @@ onMounted(() => {
     <p v-else-if="visibleRows.length === 0" class="empty-sidebar">
       No markdown files in <code>{{ viewer.notesRoot }}</code>
     </p>
-    <ul v-else role="tree" class="tree">
-      <li
-        v-for="(node, index) in visibleRows"
-        :key="node.relPath"
-        role="treeitem"
-        :aria-expanded="node.isFolder ? isExpanded(node) : undefined"
-        :aria-current="!node.isFolder && viewer.sourcePath === node.relPath ? 'true' : undefined"
-        :data-row-index="index"
-        :class="[
-          'row',
-          {
-            folder: node.isFolder,
-            file: !node.isFolder,
-            focused: focusedIndex === index,
-            selected: !node.isFolder && viewer.sourcePath === node.relPath
-          }
-        ]"
-        :style="{ paddingLeft: `${0.5 + node.depth * 0.9}rem` }"
-        @click="onRowClick(node, index)"
-      >
-        <span v-if="node.isFolder" class="chevron" :class="{ open: isExpanded(node) }">▸</span>
-        <span class="name">{{ node.name }}</span>
-      </li>
-    </ul>
+    <div v-else class="tree-frame">
+      <div class="tree-connectors" aria-hidden="true">
+        <span
+          v-for="connector in treeConnectors"
+          :key="connector.key"
+          class="tree-connector"
+          :style="treeConnectorStyle(connector)"
+        />
+      </div>
+      <ul role="tree" class="tree">
+        <li
+          v-for="(node, index) in visibleRows"
+          :key="node.relPath"
+          role="treeitem"
+          :aria-expanded="node.isFolder ? isExpanded(node) : undefined"
+          :aria-current="!node.isFolder && viewer.sourcePath === node.relPath ? 'true' : undefined"
+          :data-row-index="index"
+          :class="[
+            'row',
+            {
+              folder: node.isFolder,
+              file: !node.isFolder,
+              focused: focusedIndex === index,
+              selected: !node.isFolder && viewer.sourcePath === node.relPath
+            }
+          ]"
+          :style="rowStyle(node)"
+          @click="onRowClick(node, index)"
+        >
+          <span v-if="node.isFolder" class="chevron" :class="{ open: isExpanded(node) }">
+            <IconChevronRight />
+          </span>
+          <component :is="fileIconFor(node.name)" v-else class="file-icon" aria-hidden="true" />
+          <span class="name">{{ node.name }}</span>
+        </li>
+      </ul>
+    </div>
   </nav>
 </template>
 
@@ -212,7 +309,6 @@ onMounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   outline: none;
-  background: rgba(0, 0, 0, 0.1);
   font-size: 0.825rem;
 }
 
@@ -235,23 +331,48 @@ onMounted(() => {
   word-break: break-all;
 }
 
+.tree-frame {
+  position: relative;
+}
+
+.tree-connectors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .tree {
+  position: relative;
+  z-index: 1;
   list-style: none;
   margin: 0;
-  padding: 0.25rem 0;
+  padding: 8px 12px;
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding-top: 0.18rem;
-  padding-bottom: 0.18rem;
-  padding-right: 0.5rem;
+  gap: 0.667rem;
+  padding-block: 0.583em;
+  padding-right: 0.25em;
+  padding-left: calc(0.25em + var(--tree-depth-offset, 0px));
+  border-radius: 0.5em;
+  box-sizing: border-box;
   cursor: pointer;
   user-select: none;
-  color: rgba(255, 255, 255, 0.78);
-  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  height: 2.167em;
+  line-height: 1.4;
+}
+
+.tree-connector {
+  position: absolute;
+  width: 1px;
+  pointer-events: none;
+  background: rgba(217, 217, 217, 0.25);
 }
 
 .row:hover {
@@ -264,8 +385,8 @@ onMounted(() => {
 }
 
 .row.focused {
-  background: rgba(120, 200, 255, 0.08);
-  box-shadow: inset 2px 0 0 rgba(120, 200, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px #0496ff;
 }
 
 .row.selected {
@@ -278,9 +399,14 @@ onMounted(() => {
 }
 
 .chevron {
-  display: inline-block;
-  width: 0.7em;
-  color: rgba(255, 255, 255, 0.5);
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #fff;
   transition: transform 120ms;
 }
 
@@ -288,7 +414,15 @@ onMounted(() => {
   transform: rotate(90deg);
 }
 
+.file-icon {
+  position: relative;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.75);
+}
+
 .name {
+  position: relative;
+  z-index: 2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
