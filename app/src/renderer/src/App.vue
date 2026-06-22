@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
+import ryteLogo from './assets/ryte-logo.svg'
+import HomeSidebar from './components/HomeSidebar.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
+import ShellRail from './components/ShellRail.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import Viewer from './components/Viewer.vue'
@@ -12,11 +15,8 @@ import { useSearchStore } from './stores/search'
 import { useSettingsStore } from './stores/settings'
 import { useViewerStore } from './stores/viewer'
 import { useWorkspaceStore } from './stores/workspace'
-import {
-  SIDEBAR_EDGE_TARGET_WIDTH,
-  SIDEBAR_MIN_WIDTH,
-  clampSidebarWidth
-} from '../../shared/workspace'
+import type { WorkspaceSidebarMode } from '../../shared/workspace'
+import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../../shared/workspace'
 
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
@@ -36,6 +36,7 @@ let _stopSidebarResize: (() => void) | undefined
 onMounted(async () => {
   _unbindSearch = search.bind()
   window.addEventListener('resize', onWindowResize)
+  window.addEventListener('keydown', onGlobalAppKeydown, true)
   await Promise.all([settings.hydrate(), indexStatus.bind(), workspace.hydrate()])
   applySearchHistorySettings()
 
@@ -46,15 +47,14 @@ onUnmounted(() => {
   _unbindSearch?.()
   _stopSidebarResize?.()
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('keydown', onGlobalAppKeydown, true)
 })
 
 const dismissable = computed(() => true)
+const activeSidebar = computed<WorkspaceSidebarMode>(() => workspace.shell.activeSidebar)
 const sidebarAutoCollapsed = computed(() => workspace.sidebarAutoCollapsed(viewportWidth.value))
 const sidebarCollapsed = computed(
   () => workspace.shell.sidebarCollapsed || sidebarAutoCollapsed.value || dragSidebarCollapsed.value
-)
-const sidebarToggleLabel = computed(() =>
-  sidebarCollapsed.value ? 'Show sidebar' : 'Hide sidebar'
 )
 const sidebarWidth = computed(
   () => dragSidebarWidth.value ?? workspace.sidebarWidthForViewport(viewportWidth.value)
@@ -67,9 +67,6 @@ const sidebarFrameStyle = computed(() => ({
 }))
 const sidebarPopoverStyle = computed(() => ({
   width: `${Math.min(sidebarWidth.value, Math.max(280, viewportWidth.value - 48))}px`
-}))
-const edgeTargetStyle = computed(() => ({
-  width: `${SIDEBAR_EDGE_TARGET_WIDTH}px`
 }))
 
 function openSearch(): void {
@@ -108,6 +105,19 @@ function toggleSidebar(): void {
     return
   }
   void workspace.setSidebarCollapsed(!sidebarCollapsed.value)
+}
+
+function selectSidebar(activeSidebar: WorkspaceSidebarMode): void {
+  if (sidebarAutoCollapsed.value) {
+    void workspace.setActiveSidebar(activeSidebar)
+    showSidebarPopover()
+    return
+  }
+
+  void workspace.updateShell({
+    activeSidebar,
+    sidebarCollapsed: false
+  })
 }
 
 function showSidebarPopover(): void {
@@ -182,77 +192,73 @@ function applySearchHistorySettings(): void {
     includeAnswers: settings.state.searchHistoryIncludesAnswers
   })
 }
+
+function hasModalOpen(): boolean {
+  return (
+    showSearch.value || showSettings.value || document.querySelector('[aria-modal="true"]') !== null
+  )
+}
+
+function isPrimaryAppCommand(event: KeyboardEvent): boolean {
+  return event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey
+}
+
+function onGlobalAppKeydown(event: KeyboardEvent): void {
+  if (event.defaultPrevented || hasModalOpen() || !isPrimaryAppCommand(event)) return
+
+  const key = event.key.toLowerCase()
+  if (key === 'k') {
+    event.preventDefault()
+    event.stopPropagation()
+    openSearch()
+    return
+  }
+
+  if (event.key === ',') {
+    event.preventDefault()
+    event.stopPropagation()
+    openSettings()
+  }
+}
 </script>
 
 <template>
-  <div class="app" :class="appClasses" tabindex="0" @keydown.meta.k.prevent="openSearch">
-    <header class="app-header">
-      <div class="header-sidebar-zone">
-        <button
-          type="button"
-          class="sidebar-chrome-btn"
-          :class="{ selected: sidebarCollapsed }"
-          :aria-label="sidebarToggleLabel"
-          :title="sidebarToggleLabel"
-          :aria-pressed="sidebarCollapsed"
-          @click="toggleSidebar"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
-            fill="none"
-            viewBox="0 0 18 18"
-            aria-hidden="true"
-          >
-            <path
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="1.5"
-              d="M6.75 2.25v13.5m-3-13.5h10.5a1.5 1.5 0 0 1 1.5 1.5v10.5a1.5 1.5 0 0 1-1.5 1.5H3.75a1.5 1.5 0 0 1-1.5-1.5V3.75a1.5 1.5 0 0 1 1.5-1.5"
-            />
-          </svg>
-        </button>
-        <h1>ryte</h1>
-      </div>
-      <WorkspaceTabs class="header-tabs" />
-      <div class="header-actions">
-        <button
-          type="button"
-          class="search-trigger-btn"
-          data-workspace-fallback-focus
-          @click="openSearch"
-        >
-          Search
-        </button>
-        <button type="button" class="settings-btn" @click="openSettings">Settings</button>
-      </div>
-    </header>
-
+  <div class="app" :class="appClasses">
     <main class="app-main" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
-      <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
-        <Sidebar />
-        <div
-          class="sidebar-resize-handle"
-          role="separator"
-          aria-label="Resize sidebar"
-          aria-orientation="vertical"
-          @pointerdown="startSidebarResize"
-        />
-      </section>
-
-      <div
-        v-if="sidebarAutoCollapsed"
-        class="sidebar-edge-target"
-        :style="edgeTargetStyle"
+      <aside
+        class="shell-sidebar"
+        :class="{ collapsed: sidebarCollapsed }"
+        aria-label="Primary navigation"
         @mouseenter="showSidebarPopover"
         @focusin="showSidebarPopover"
       >
-        <button type="button" class="sidebar-edge-btn" @click="showSidebarPopover">
-          Show sidebar
-        </button>
-      </div>
+        <div class="shell-chrome">
+          <img class="app-logo" :src="ryteLogo" alt="ryte" draggable="false" />
+        </div>
+
+        <div class="shell-sidebar-body">
+          <ShellRail
+            :active-sidebar="activeSidebar"
+            :sidebar-collapsed="sidebarCollapsed"
+            @toggle-sidebar="toggleSidebar"
+            @select-sidebar="selectSidebar"
+            @open-search="openSearch"
+            @open-settings="openSettings"
+          />
+
+          <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
+            <Sidebar v-if="activeSidebar === 'files'" />
+            <HomeSidebar v-else @open-search="openSearch" />
+            <div
+              class="sidebar-resize-handle"
+              role="separator"
+              aria-label="Resize sidebar"
+              aria-orientation="vertical"
+              @pointerdown="startSidebarResize"
+            />
+          </section>
+        </div>
+      </aside>
 
       <aside
         v-if="sidebarAutoCollapsed && sidebarPopoverOpen"
@@ -260,11 +266,17 @@ function applySearchHistorySettings(): void {
         :style="sidebarPopoverStyle"
         @mouseleave="hideSidebarPopover"
       >
-        <Sidebar />
+        <Sidebar v-if="activeSidebar === 'files'" />
+        <HomeSidebar v-else @open-search="openSearch" />
       </aside>
 
-      <section class="workspace-pane" aria-label="Workspace">
-        <Viewer />
+      <section class="workspace-region" aria-label="Workspace">
+        <div class="workspace-top-rail">
+          <WorkspaceTabs class="workspace-tabs-rail" />
+        </div>
+        <section class="workspace-pane">
+          <Viewer />
+        </section>
       </section>
     </main>
 
@@ -277,7 +289,9 @@ function applySearchHistorySettings(): void {
 
 <style scoped>
 .app {
-  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 88%);
+  --app-shell-tint: oklch(14.205% 0.00468 308.445 / 80%);
+  --shell-chrome-height: 3.5rem;
+  --shell-rail-width: 52px;
 
   display: flex;
   flex-direction: column;
@@ -289,117 +303,68 @@ function applySearchHistorySettings(): void {
     sans-serif;
 }
 
-.app-header {
+.shell-sidebar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  min-width: var(--shell-rail-width);
+  height: 100%;
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.shell-sidebar.collapsed {
+  width: var(--shell-rail-width);
+}
+
+.shell-chrome {
+  height: var(--shell-chrome-height);
+  flex: 0 0 var(--shell-chrome-height);
+  display: flex;
   align-items: center;
-  min-height: 3.5rem;
-  padding: 0 1rem 0 0;
-  background: transparent;
-  border-bottom: 1px solid oklch(100% 0 0 / 8%);
-  flex-shrink: 0;
+  padding-left: 6.25rem;
   -webkit-app-region: drag;
   user-select: none;
 }
 
-.header-sidebar-zone {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
-  padding: 0 1rem 0 5.75rem;
-  flex: 0 0 auto;
-}
-
-.header-tabs {
-  flex: 1 1 auto;
-  align-self: stretch;
-  min-width: 0;
-}
-
-.header-actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  -webkit-app-region: no-drag;
-}
-
-.search-trigger-btn,
-.settings-btn {
-  background: transparent;
-  color: var(--color-text);
-  border: 1px solid oklch(100% 0 0 / 18%);
-  border-radius: 4px;
-  padding: 0.3rem 0.7rem;
-  font-size: 0.825rem;
-  cursor: pointer;
-  font-family: inherit;
-  -webkit-app-region: no-drag;
-}
-
-.search-trigger-btn:hover,
-.settings-btn:hover {
-  background: oklch(100% 0 0 / 6%);
-}
-
-h1 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
-  letter-spacing: -0.01em;
-  flex: 0 0 auto;
-}
-
-.sidebar-chrome-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border: 0;
-  border-radius: 8px;
-  padding: 8px;
-  background: rgba(10, 9, 11, 0);
-  color: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-  line-height: 120%;
-  transition-duration: 250ms;
-  transition-property: background-color, color;
-  transition-timing-function: ease-out;
-  -webkit-app-region: no-drag;
-}
-
-.sidebar-chrome-btn:hover {
-  background: rgba(10, 9, 11, 0.35);
-  transition-duration: 25ms;
-  transition-timing-function: ease-in;
-}
-
-.sidebar-chrome-btn.selected {
-  background: rgba(10, 9, 11, 0.25);
-  color: #ffffff;
-}
-
-.sidebar-chrome-btn.selected:hover {
-  background: rgba(10, 9, 11, 0.35);
-  transition-duration: 25ms;
-  transition-timing-function: ease-in;
-}
-
-.sidebar-chrome-btn svg {
-  width: 1.125rem;
-  height: 1.125rem;
+.app-logo {
+  width: 40px;
+  height: 22px;
   display: block;
+  flex: 0 0 auto;
+  margin-top: 4px;
+  pointer-events: none;
+}
+
+.shell-sidebar-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
 }
 
 .app-main {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: row;
   overflow: hidden;
   min-height: 0;
   position: relative;
+}
+
+.app-main::before {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  top: calc(var(--shell-chrome-height) - 1px);
+  right: 0;
+  left: 0;
+  height: 1px;
+  pointer-events: none;
+  background: oklch(100% 0 0 / 8%);
 }
 
 .sidebar-frame {
@@ -419,6 +384,7 @@ h1 {
   width: 20px;
   height: 100%;
   cursor: col-resize;
+  -webkit-app-region: no-drag;
   touch-action: none;
   z-index: 3;
 }
@@ -436,39 +402,55 @@ h1 {
   background: oklch(66.267% 0.18645 249.972 / 80%);
 }
 
-.sidebar-edge-target {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 4;
-}
-
-.sidebar-edge-btn {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: transparent;
-  cursor: default;
-}
-
 .sidebar-popover {
   position: absolute;
   z-index: 6;
-  top: 0;
+  top: var(--shell-chrome-height);
   bottom: 0;
-  left: 0;
+  left: var(--shell-rail-width);
   display: flex;
   overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 16px 0 48px oklch(0% 0 0 / 34%);
+}
+
+.workspace-region {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-main:not(.sidebar-is-collapsed) .workspace-region {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workspace-top-rail {
+  height: var(--shell-chrome-height);
+  flex: 0 0 var(--shell-chrome-height);
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: transparent;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.app-main.sidebar-is-collapsed .workspace-top-rail {
+  padding-left: calc(5.75rem + 72px - var(--shell-rail-width));
+}
+
+.workspace-tabs-rail {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .workspace-pane {
   flex: 1 1 auto;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

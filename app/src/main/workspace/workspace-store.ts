@@ -28,6 +28,7 @@ import {
   type WorkspaceOpenFileInput,
   type WorkspaceRecentFile,
   type WorkspaceRecordRecentInput,
+  type WorkspaceSidebarMode,
   type WorkspaceSetOutlineCollapsedInput,
   type WorkspaceShellState,
   type WorkspaceShellUpdate,
@@ -53,7 +54,8 @@ const WORKSPACE_TAB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,199}$/
 function defaultShellState(): WorkspaceShellState {
   return {
     sidebarCollapsed: false,
-    sidebarWidth: SIDEBAR_DEFAULT_WIDTH
+    sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+    activeSidebar: 'files'
   }
 }
 
@@ -161,6 +163,10 @@ function isWorkspaceViewMode(value: unknown): value is WorkspaceViewMode {
   return value === 'preview' || value === 'source'
 }
 
+function isWorkspaceSidebarMode(value: unknown): value is WorkspaceSidebarMode {
+  return value === 'files' || value === 'home'
+}
+
 function titleFromSourcePath(sourcePath: string): string {
   const parts = sourcePath.split(/[\\/]+/).filter(Boolean)
   return parts.at(-1) ?? sourcePath
@@ -257,7 +263,10 @@ function normalizeWorkspace(parsed: LegacyWorkspaceFile): WorkspaceState {
         typeof shell.sidebarCollapsed === 'boolean'
           ? shell.sidebarCollapsed
           : defaults.shell.sidebarCollapsed,
-      sidebarWidth: normalizeSidebarWidth(shell.sidebarWidth)
+      sidebarWidth: normalizeSidebarWidth(shell.sidebarWidth),
+      activeSidebar: isWorkspaceSidebarMode(shell.activeSidebar)
+        ? shell.activeSidebar
+        : defaults.shell.activeSidebar
     },
     window: {
       bounds: normalizeBounds(window.bounds),
@@ -337,7 +346,8 @@ export class WorkspaceStore {
           : {}),
         ...(patch.sidebarWidth !== undefined
           ? { sidebarWidth: normalizeSidebarWidth(patch.sidebarWidth) }
-          : {})
+          : {}),
+        ...(patch.activeSidebar !== undefined ? { activeSidebar: patch.activeSidebar } : {})
       }
     }
     this.persist(next)

@@ -1,0 +1,55 @@
+<script setup lang="ts">
+import IconSearch from './icons/IconSearch.vue'
+
+defineEmits<{
+  search: []
+}>()
+</script>
+
+<template>
+  <button type="button" class="sidebar-search-button" @click="$emit('search')">
+    <IconSearch />
+    <span>Search...</span>
+  </button>
+</template>
+
+<style scoped>
+.sidebar-search-button {
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.68);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-search-button:hover,
+.sidebar-search-button:focus-visible {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  outline: 0;
+}
+
+.sidebar-search-button :deep(.ryte-svg-icon) {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-search-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

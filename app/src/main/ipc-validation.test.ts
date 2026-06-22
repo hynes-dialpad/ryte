@@ -78,9 +78,16 @@ describe('ipc validation', () => {
   })
 
   it('accepts narrow workspace shell and window patches', () => {
-    expect(assertValidWorkspaceShellPatch({ sidebarCollapsed: true, sidebarWidth: 360 })).toEqual({
+    expect(
+      assertValidWorkspaceShellPatch({
+        sidebarCollapsed: true,
+        sidebarWidth: 360,
+        activeSidebar: 'home'
+      })
+    ).toEqual({
       sidebarCollapsed: true,
-      sidebarWidth: 360
+      sidebarWidth: 360,
+      activeSidebar: 'home'
     })
     expect(
       assertValidWorkspaceWindowPatch({
@@ -101,6 +108,9 @@ describe('ipc validation', () => {
     )
     expect(() => assertValidWorkspaceShellPatch({ sidebarWidth: -1 })).toThrow(
       'Invalid sidebarWidth'
+    )
+    expect(() => assertValidWorkspaceShellPatch({ activeSidebar: 'settings' })).toThrow(
+      'Invalid activeSidebar'
     )
     expect(() => assertValidWorkspaceWindowPatch({ arbitrary: true })).toThrow(
       'Invalid workspace window key'

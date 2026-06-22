@@ -15,7 +15,8 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     shell: {
       sidebarCollapsed: false,
-      sidebarWidth: 360
+      sidebarWidth: 360,
+      activeSidebar: 'files'
     },
     window: {
       bounds: null,

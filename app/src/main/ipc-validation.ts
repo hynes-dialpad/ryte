@@ -352,7 +352,7 @@ export function assertValidWorkspaceShellPatch(value: unknown): WorkspaceShellUp
   }
   const input = value as Record<string, unknown>
   for (const key of Object.keys(input)) {
-    if (key !== 'sidebarCollapsed' && key !== 'sidebarWidth') {
+    if (key !== 'sidebarCollapsed' && key !== 'sidebarWidth' && key !== 'activeSidebar') {
       throw new Error(`Invalid workspace shell key: ${key}`)
     }
   }
@@ -364,6 +364,12 @@ export function assertValidWorkspaceShellPatch(value: unknown): WorkspaceShellUp
     const width = assertFiniteNumber(input.sidebarWidth, 'sidebarWidth')
     if (width <= 0 || width > MAX_SIDEBAR_WIDTH) throw new Error('Invalid sidebarWidth')
     patch.sidebarWidth = width
+  }
+  if ('activeSidebar' in input) {
+    if (input.activeSidebar !== 'files' && input.activeSidebar !== 'home') {
+      throw new Error('Invalid activeSidebar')
+    }
+    patch.activeSidebar = input.activeSidebar
   }
   return patch
 }

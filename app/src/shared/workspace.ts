@@ -1,10 +1,9 @@
-export const WORKSPACE_SCHEMA_VERSION = 1
+export const WORKSPACE_SCHEMA_VERSION = 2
 
 export const SIDEBAR_DEFAULT_WIDTH = 360
 export const SIDEBAR_MIN_WIDTH = 164
 export const SIDEBAR_MAX_VIEWPORT_FRACTION = 0.5
 export const SIDEBAR_AUTO_COLLAPSE_WIDTH = 640
-export const SIDEBAR_EDGE_TARGET_WIDTH = 32
 
 export const DEFAULT_WINDOW_WIDTH = 1460
 export const DEFAULT_WINDOW_HEIGHT = 980
@@ -13,6 +12,7 @@ export const MIN_WINDOW_HEIGHT = 680
 export const WORKSPACE_RECENTS_LIMIT = 25
 
 export type WorkspaceViewMode = 'preview' | 'source'
+export type WorkspaceSidebarMode = 'files' | 'home'
 
 export interface WindowBounds {
   x: number
@@ -24,6 +24,7 @@ export interface WindowBounds {
 export interface WorkspaceShellState {
   sidebarCollapsed: boolean
   sidebarWidth: number
+  activeSidebar: WorkspaceSidebarMode
 }
 
 export interface WorkspaceWindowState {
@@ -58,6 +59,7 @@ export interface WorkspaceState {
 export interface WorkspaceShellUpdate {
   sidebarCollapsed?: boolean
   sidebarWidth?: number
+  activeSidebar?: WorkspaceSidebarMode
 }
 
 export interface WorkspaceWindowUpdate {
