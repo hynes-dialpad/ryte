@@ -1,0 +1,47 @@
+app/src/renderer/src/components/icons/IconFile.vue
+  s_398952194ab3e7::t_59989316cb846d 1-19
+app/src/renderer/src/components/icons/IconChevronRight.vue
+  s_398952194ab3e7::t_0c639de337c3c4 1-20
+app/src/renderer/src/components/file-icon-resolver.test.ts
+  s_398952194ab3e7::t_458267564eaa15 3,7
+  s_398952194ab3e7::t_59989316cb846d 1-2,4-6,8-15
+app/src/renderer/src/components/file-icon-resolver.ts
+  s_398952194ab3e7::t_458267564eaa15 1,3-4,17-18
+  s_398952194ab3e7::t_59989316cb846d 2,5-16,19
+app/src/renderer/src/components/Sidebar.vue
+  s_398952194ab3e7::t_59989316cb846d 365,417-420
+  s_398952194ab3e7::t_c4dcb94a0e5f3f 297
+  s_398952194ab3e7::t_e7b71a538f3283 27
+  s_398952194ab3e7::t_0c639de337c3c4 6,404-409
+  s_398952194ab3e7::t_d9cda774b3ddbe 19-23,32,34-35,45,108-135,186,191,265-266,268-269,271,273-296,298-301,334-344,346-347,362
+  s_398952194ab3e7::t_312b5fe4c60ff8 29-31,178,192-197,360
+  s_398952194ab3e7::t_458267564eaa15 2,5,7,37-40,180-183
+  s_398952194ab3e7::t_9fabcd5fda35d6 24-26,28,36,177,179,184-185,200-201,267,270,272,354,369-375,402-403,421,424-425
+  s_398952194ab3e7::t_0d54711d2f2cbb 187-190,198-199
+  s_398952194ab3e7::t_107b49e51553f2 33,350
+  s_398952194ab3e7::t_f0190f5d757568 389
+  s_398952194ab3e7::t_dd53358f259926 367-368
+  s_398952194ab3e7::t_f93203a77ae2a5 174-176
+  s_398952194ab3e7::t_9e903605b02476 358-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "b0cfbf22511408465f805751a0bad5487cce843a",
+  "prompts": {},
+  "humans": {
+    "h_810e3c66cd5a95": {
+      "author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  },
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
