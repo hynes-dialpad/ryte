@@ -1,0 +1,85 @@
+app/src/renderer/src/markdown/title.ts
+  s_398952194ab3e7::t_b16235bb064ed5 1
+app/src/preload/index.ts
+  s_398952194ab3e7::t_3924f17aa97c25 5,97,107,157,178-182
+  s_398952194ab3e7::t_c6f008ac362ef8 100,160
+app/src/main/viewer/file-catalog.ts
+  s_398952194ab3e7::t_b46f8635bbbb29 6,8-9,26-27,35-46,48-54,56-60,62-63,66,78-84
+  s_398952194ab3e7::t_f0dc3289c4aeba 47,61,64,67-76
+  s_398952194ab3e7::t_e2a8cb79942283 1-5,7,10-25,28-34,55,65,77,85-88
+app/src/shared/markdown-title.ts
+  s_398952194ab3e7::t_b16235bb064ed5 1-57
+app/src/renderer/src/components/home-sidebar-model.ts
+  s_398952194ab3e7::t_4331ca65c2eb2e 1,34,43,79,81-85,105,107-108,130-147,170-176,179-185,187-190,222-226
+  s_398952194ab3e7::t_c0c55b869a1b4b 4,109,111-113,123-129,150-152,154-161,163-169,177,210,227
+  s_398952194ab3e7::t_297009546580c5 178
+  s_398952194ab3e7::t_15f28af8927072 186
+  s_398952194ab3e7::t_d7bde022b3474e 76
+  s_398952194ab3e7::t_b869564a0fbd45 6-9
+  s_398952194ab3e7::t_3dfd3b8dae944a 42,55-57,86-104,106,110,114-122,197-200,203,211,221
+  s_398952194ab3e7::t_f47573b614ad15 15,53-54,58,68-75,77-78,162
+app/src/main/indexing/watcher.ts
+  s_398952194ab3e7::t_3924f17aa97c25 8,28,33,39,60-64,68-71
+app/src/renderer/src/stores/file-catalog.ts
+  s_398952194ab3e7::t_4331ca65c2eb2e 1-5,8-12,14-15,18-19,21-25,28-29,31,34-35,37,39-41,50-52,54-62,67-73,75-79
+  s_398952194ab3e7::t_62cdf1e6f3380e 6-7,13,16-17,20,26-27,30,32-33,36,38,42-49,53,63-66,74
+app/src/main/ipc.ts
+  s_398952194ab3e7::t_c6f008ac362ef8 32,203-206
+  s_398952194ab3e7::t_3924f17aa97c25 36,187-191,207,250-252,254
+app/src/main/viewer/file-reader.ts
+  s_398952194ab3e7::t_b16235bb064ed5 4-5,42-48
+app/src/renderer/src/composables/useDocumentTitles.ts
+  s_398952194ab3e7::t_2513f7ee59c3be 1-4,6-11,16-17,19-20,23-24,30-50
+  s_398952194ab3e7::t_31f515c6472437 5,13-14,18,21-22,25-29
+  s_398952194ab3e7::t_0465f7dbe80cf3 12,15
+app/src/main/viewer/markdown-title-reader.ts
+  s_398952194ab3e7::t_b16235bb064ed5 1-19
+app/src/renderer/src/stores/file-catalog.test.ts
+  s_398952194ab3e7::t_4331ca65c2eb2e 1,3,5-6,47-52,57,60-61,63-72,74-85,90,94-95,125-143
+  s_398952194ab3e7::t_155c5aefe4169f 2,8-46,53-56,58,62,87,89,91-93,96-103,108-124
+  s_398952194ab3e7::t_0ee202b748c1ba 104-107
+  s_398952194ab3e7::t_44998af23d697d 4,7
+  s_398952194ab3e7::t_91e4681530c0e3 59,73,86,88
+app/src/main/viewer/file-catalog.test.ts
+  s_398952194ab3e7::t_3372a18c3d9054 20
+  s_398952194ab3e7::t_9aacdf76ce16c2 34,56-68
+  s_398952194ab3e7::t_e2a8cb79942283 1-19,21,26-33,35-39,41-42,46-55,69-70
+  s_398952194ab3e7::t_297009546580c5 22-25,40,43-45
+app/src/main/indexing/watcher.test.ts
+  s_398952194ab3e7::t_9aacdf76ce16c2 94,106
+  s_398952194ab3e7::t_3924f17aa97c25 44,46,57,64,66,74,82,84,90,97,99,109,112,114,120
+app/src/renderer/src/components/home-sidebar-model.test.ts
+  s_398952194ab3e7::t_11fb1109f8d874 45-46,119-120,192,208-213,233-261
+  s_398952194ab3e7::t_297009546580c5 230-232
+  s_398952194ab3e7::t_45dc49b903719b 285
+  s_398952194ab3e7::t_780ea991ac901c 3,6-14,17-20,26-27,44,47-56,126,133-139,151-168,170-177,179-191,193-203,206-207,214-215,218-221,224-229
+  s_398952194ab3e7::t_667b199265d17e 4,262-275,277,279-284,286
+  s_398952194ab3e7::t_b0db2d7110b3f7 204-205,216-217,222-223
+  s_398952194ab3e7::t_2acf78dfd56d37 15-16,23,28-43,64-65,83-84,90-113,115-118,127-132,147-150
+app/src/renderer/src/components/HomeSidebar.vue
+  s_398952194ab3e7::t_f47573b614ad15 9,80
+  s_398952194ab3e7::t_08c3568667de8b 31,63-69
+  s_398952194ab3e7::t_2513f7ee59c3be 2,4
+  s_398952194ab3e7::t_4331ca65c2eb2e 5,21,24,71-73,75-77
+app/src/renderer/src/composables/useDocumentTitles.test.ts
+  s_398952194ab3e7::t_2513f7ee59c3be 1-14,17-20,22-33,35-37,39-41,43-50,77-78
+  s_398952194ab3e7::t_9aacdf76ce16c2 15-16,21,34,38,42,51-76
+app/src/shared/files.ts
+  s_398952194ab3e7::t_e2a8cb79942283 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "419fd22c7881e7a5c587b616d18d3b96694cc480",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
