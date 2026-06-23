@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import ryteLogo from './assets/ryte-logo.svg'
 import HomeSidebar from './components/HomeSidebar.vue'
@@ -29,14 +29,19 @@ const viewportWidth = ref(window.innerWidth)
 const dragSidebarWidth = ref<number | null>(null)
 const dragSidebarCollapsed = ref(false)
 const sidebarPopoverOpen = ref(false)
+const hasActivatedHomeSidebar = ref(false)
+const showControlShortcutBadges = ref(false)
 
 let _unbindSearch: (() => void) | undefined
 let _stopSidebarResize: (() => void) | undefined
+let controlShortcutBadgeTimer: number | null = null
 
 onMounted(async () => {
   _unbindSearch = search.bind()
   window.addEventListener('resize', onWindowResize)
   window.addEventListener('keydown', onGlobalAppKeydown, true)
+  window.addEventListener('keyup', onGlobalAppKeyup, true)
+  window.addEventListener('blur', hideControlShortcutBadges)
   await Promise.all([settings.hydrate(), indexStatus.bind(), workspace.hydrate()])
   applySearchHistorySettings()
 
@@ -48,6 +53,9 @@ onUnmounted(() => {
   _stopSidebarResize?.()
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onGlobalAppKeydown, true)
+  window.removeEventListener('keyup', onGlobalAppKeyup, true)
+  window.removeEventListener('blur', hideControlShortcutBadges)
+  clearControlShortcutBadgeTimer()
 })
 
 const dismissable = computed(() => true)
@@ -68,6 +76,16 @@ const sidebarFrameStyle = computed(() => ({
 const sidebarPopoverStyle = computed(() => ({
   width: `${Math.min(sidebarWidth.value, Math.max(280, viewportWidth.value - 48))}px`
 }))
+
+watch(
+  activeSidebar,
+  (sidebar) => {
+    if (sidebar === 'home') {
+      hasActivatedHomeSidebar.value = true
+    }
+  },
+  { immediate: true }
+)
 
 function openSearch(): void {
   search.$patch({
@@ -203,8 +221,81 @@ function isPrimaryAppCommand(event: KeyboardEvent): boolean {
   return event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey
 }
 
+function clearControlShortcutBadgeTimer(): void {
+  if (controlShortcutBadgeTimer === null) return
+  window.clearTimeout(controlShortcutBadgeTimer)
+  controlShortcutBadgeTimer = null
+}
+
+function scheduleControlShortcutBadges(): void {
+  if (showControlShortcutBadges.value || controlShortcutBadgeTimer !== null) return
+
+  controlShortcutBadgeTimer = window.setTimeout(() => {
+    controlShortcutBadgeTimer = null
+    showControlShortcutBadges.value = true
+  }, 1000)
+}
+
+function hideControlShortcutBadges(): void {
+  clearControlShortcutBadgeTimer()
+  showControlShortcutBadges.value = false
+}
+
+function isControlAppCommand(event: KeyboardEvent): boolean {
+  return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+}
+
+function handleControlAppCommand(event: KeyboardEvent): boolean {
+  if (!isControlAppCommand(event)) return false
+
+  const key = event.key.toLowerCase()
+  if (key === '1') {
+    event.preventDefault()
+    event.stopPropagation()
+    selectSidebar('home')
+    return true
+  }
+
+  if (key === '2') {
+    event.preventDefault()
+    event.stopPropagation()
+    selectSidebar('files')
+    return true
+  }
+
+  if (key === '0') {
+    event.preventDefault()
+    event.stopPropagation()
+    openSettings()
+    return true
+  }
+
+  if (key === 't') {
+    event.preventDefault()
+    event.stopPropagation()
+    toggleSidebar()
+    return true
+  }
+
+  return false
+}
+
 function onGlobalAppKeydown(event: KeyboardEvent): void {
-  if (event.defaultPrevented || hasModalOpen() || !isPrimaryAppCommand(event)) return
+  if (event.defaultPrevented) return
+
+  if (event.key === 'Control') {
+    if (!hasModalOpen()) scheduleControlShortcutBadges()
+    return
+  }
+
+  if (hasModalOpen()) {
+    hideControlShortcutBadges()
+    return
+  }
+
+  if (handleControlAppCommand(event)) return
+
+  if (!isPrimaryAppCommand(event)) return
 
   const key = event.key.toLowerCase()
   if (key === 'k') {
@@ -218,6 +309,12 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     event.stopPropagation()
     openSettings()
+  }
+}
+
+function onGlobalAppKeyup(event: KeyboardEvent): void {
+  if (event.key === 'Control') {
+    hideControlShortcutBadges()
   }
 }
 </script>
@@ -240,6 +337,7 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
           <ShellRail
             :active-sidebar="activeSidebar"
             :sidebar-collapsed="sidebarCollapsed"
+            :show-shortcut-badges="showControlShortcutBadges"
             @toggle-sidebar="toggleSidebar"
             @select-sidebar="selectSidebar"
             @open-search="openSearch"
@@ -247,8 +345,12 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
           />
 
           <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
-            <Sidebar v-if="activeSidebar === 'files'" />
-            <HomeSidebar v-else @open-search="openSearch" />
+            <Sidebar v-show="activeSidebar === 'files'" @open-search="openSearch" />
+            <HomeSidebar
+              v-if="hasActivatedHomeSidebar"
+              v-show="activeSidebar === 'home'"
+              @open-search="openSearch"
+            />
             <div
               class="sidebar-resize-handle"
               role="separator"
@@ -266,8 +368,12 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
         :style="sidebarPopoverStyle"
         @mouseleave="hideSidebarPopover"
       >
-        <Sidebar v-if="activeSidebar === 'files'" />
-        <HomeSidebar v-else @open-search="openSearch" />
+        <Sidebar v-show="activeSidebar === 'files'" @open-search="openSearch" />
+        <HomeSidebar
+          v-if="hasActivatedHomeSidebar"
+          v-show="activeSidebar === 'home'"
+          @open-search="openSearch"
+        />
       </aside>
 
       <section class="workspace-region" aria-label="Workspace">

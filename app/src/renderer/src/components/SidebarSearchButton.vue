@@ -9,24 +9,25 @@ defineEmits<{
 <template>
   <button type="button" class="sidebar-search-button" @click="$emit('search')">
     <IconSearch />
-    <span>Search...</span>
+    <span>Search documents</span>
   </button>
 </template>
 
 <style scoped>
 .sidebar-search-button {
   width: 100%;
-  height: 34px;
+  height: 2.5em;
   display: flex;
   align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 0 10px;
+  gap: 0.75em;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5em;
+  padding: 0.5em;
   background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.68);
+  color: rgba(255, 255, 255, 0.5);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 12px;
   line-height: 1;
   text-align: left;
   cursor: pointer;
@@ -42,14 +43,12 @@ defineEmits<{
 }
 
 .sidebar-search-button :deep(.ryte-svg-icon) {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
 }
 
 .sidebar-search-button span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 </style>

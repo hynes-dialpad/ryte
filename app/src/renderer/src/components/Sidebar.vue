@@ -5,6 +5,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { resolveFileIconName, type FileIconName } from './file-icon-resolver'
 import IconChevronRight from './icons/IconChevronRight.vue'
 import IconFile from './icons/IconFile.vue'
+import SidebarSearchButton from './SidebarSearchButton.vue'
 import { useViewerStore } from '../stores/viewer'
 import { useWorkspaceStore } from '../stores/workspace'
 
@@ -40,6 +41,9 @@ const FILE_ICON_COMPONENTS: Record<FileIconName, Component> = {
 
 const viewer = useViewerStore()
 const workspace = useWorkspaceStore()
+const emit = defineEmits<{
+  openSearch: []
+}>()
 const expanded = ref<Set<string>>(new Set())
 const focusedIndex = ref(0)
 const rootEl = ref<HTMLElement | null>(null)
@@ -258,6 +262,10 @@ onMounted(() => {
     tabindex="0"
     @keydown="onKeydown"
   >
+    <div class="sidebar-search">
+      <SidebarSearchButton @search="emit('openSearch')" />
+    </div>
+
     <p v-if="!viewer.notesRoot" class="empty-sidebar">Loading…</p>
     <p v-else-if="visibleRows.length === 0" class="empty-sidebar">
       No markdown files in <code>{{ viewer.notesRoot }}</code>
@@ -315,6 +323,10 @@ onMounted(() => {
 .sidebar:focus-visible {
   outline: 2px solid rgba(120, 200, 255, 0.4);
   outline-offset: -2px;
+}
+
+.sidebar-search {
+  padding: 10px 12px 12px;
 }
 
 .empty-sidebar {

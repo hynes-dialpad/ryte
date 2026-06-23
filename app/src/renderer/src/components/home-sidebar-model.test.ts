@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { buildHomeSidebarModel } from './home-sidebar-model'
 
 describe('buildHomeSidebarModel', () => {
-  it('builds recent and open groups from workspace state', () => {
+  it('builds open and recent groups from workspace state', () => {
     const model = buildHomeSidebarModel({
       activeTabId: 'tab-b',
       recents: [
@@ -16,6 +16,11 @@ describe('buildHomeSidebarModel', () => {
           sourcePath: 'sessions/2026-05-26/briefing.md',
           title: 'briefing.md',
           openedAt: '2026-05-26T11:00:00.000Z'
+        },
+        {
+          sourcePath: 'reviews/pr-678-review.md',
+          title: 'pr-678-review.md',
+          openedAt: '2026-05-26T10:00:00.000Z'
         }
       ],
       tabs: [
@@ -34,38 +39,55 @@ describe('buildHomeSidebarModel', () => {
       ]
     })
 
-    expect(model.recentItems).toEqual([
+    expect(model.groups).toEqual([
       {
-        kind: 'recent',
-        id: 'recent:plans/latest-plan.md',
-        sourcePath: 'plans/latest-plan.md',
-        title: 'latest-plan.md',
-        active: false
+        id: 'open',
+        title: 'Open',
+        headingId: 'home-open-heading',
+        emptyLabel: 'No open files',
+        items: [
+          {
+            id: 'open:tab-a',
+            sourcePath: 'plans/latest-plan.md',
+            title: 'latest-plan.md',
+            active: false,
+            ariaLabel: 'Focus plans/latest-plan.md',
+            action: {
+              kind: 'focus-tab',
+              tabId: 'tab-a'
+            }
+          },
+          {
+            id: 'open:tab-b',
+            sourcePath: 'sessions/2026-05-26/briefing.md',
+            title: 'briefing.md',
+            active: true,
+            ariaLabel: 'Focus sessions/2026-05-26/briefing.md',
+            action: {
+              kind: 'focus-tab',
+              tabId: 'tab-b'
+            }
+          }
+        ]
       },
       {
-        kind: 'recent',
-        id: 'recent:sessions/2026-05-26/briefing.md',
-        sourcePath: 'sessions/2026-05-26/briefing.md',
-        title: 'briefing.md',
-        active: true
-      }
-    ])
-    expect(model.openItems).toEqual([
-      {
-        kind: 'open',
-        id: 'open:tab-a',
-        tabId: 'tab-a',
-        sourcePath: 'plans/latest-plan.md',
-        title: 'latest-plan.md',
-        active: false
-      },
-      {
-        kind: 'open',
-        id: 'open:tab-b',
-        tabId: 'tab-b',
-        sourcePath: 'sessions/2026-05-26/briefing.md',
-        title: 'briefing.md',
-        active: true
+        id: 'recent',
+        title: 'Recent',
+        headingId: 'home-recent-heading',
+        emptyLabel: 'No recent files',
+        items: [
+          {
+            id: 'recent:reviews/pr-678-review.md',
+            sourcePath: 'reviews/pr-678-review.md',
+            title: 'pr-678-review.md',
+            active: false,
+            ariaLabel: 'Open reviews/pr-678-review.md',
+            action: {
+              kind: 'open-explicit-file',
+              sourcePath: 'reviews/pr-678-review.md'
+            }
+          }
+        ]
       }
     ])
   })
@@ -90,7 +112,7 @@ describe('buildHomeSidebarModel', () => {
       ]
     })
 
-    expect(model.recentItems[0]?.title).toBe('overview.md')
-    expect(model.openItems[0]?.title).toBe('notes.md')
+    expect(model.groups[0]?.items[0]?.title).toBe('notes.md')
+    expect(model.groups[1]?.items[0]?.title).toBe('overview.md')
   })
 })
