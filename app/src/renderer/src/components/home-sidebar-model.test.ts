@@ -20,7 +20,7 @@ function catalogEntry(overrides: Partial<FileCatalogEntry>): FileCatalogEntry {
 }
 
 describe('buildHomeSidebarModel', () => {
-  it('builds briefing, plans, and recent groups without moving open files out of groups', () => {
+  it('builds briefing, plans, and recent groups without duplicating smart group items into recent', () => {
     const model = buildHomeSidebarModel({
       activeTabId: 'tab-b',
       catalogFiles: [
@@ -113,11 +113,45 @@ describe('buildHomeSidebarModel', () => {
       'sessions/2026-05-25/shaping/widget-shaping.md'
     ])
     expect(model.groups[2]?.items.map((item) => item.sourcePath)).toEqual([
-      'plans/latest-plan.md',
-      'sessions/2026-05-26/daily-briefing.md',
       'reviews/pr-678-review.md'
     ])
-    expect(model.groups[2]?.items[0]?.title).toBe('Latest Plan Title')
+    expect(model.groups[2]?.items[0]?.title).toBe('pr-678-review.md')
+  })
+
+  it('keeps a recent file visible when it matches a smart rule but is not rendered above recent', () => {
+    const catalogFiles = Array.from({ length: 11 }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0')
+      const date = `2026-06-${day}`
+
+      return catalogEntry({
+        sourcePath: `sessions/${date}/briefing-${date}.md`,
+        title: `briefing-${date}`,
+        directory: `sessions/${date}`,
+        searchableText: `briefing ${date} sessions/${date}/briefing-${date}.md`,
+        pathDate: date,
+        modifiedAtMs: index + 1
+      })
+    })
+
+    const model = buildHomeSidebarModel({
+      activeTabId: null,
+      catalogFiles,
+      recents: [
+        {
+          sourcePath: 'sessions/2026-06-01/briefing-2026-06-01.md',
+          title: 'briefing-2026-06-01.md',
+          openedAt: '2026-05-26T12:00:00.000Z'
+        }
+      ],
+      tabs: []
+    })
+
+    expect(
+      model.groups.find((group) => group.id === 'briefing')?.items.map((item) => item.sourcePath)
+    ).not.toContain('sessions/2026-06-01/briefing-2026-06-01.md')
+    expect(
+      model.groups.find((group) => group.id === 'recent')?.items.map((item) => item.sourcePath)
+    ).toEqual(['sessions/2026-06-01/briefing-2026-06-01.md'])
   })
 
   it('falls back to file names when persisted titles are blank', () => {

@@ -140,4 +140,58 @@ describe('useFileCatalogStore', () => {
     expect(catalog.files).toEqual([])
     expect(catalog.error).toBe('catalog failed')
   })
+
+  it('retries catalog loading for a new consumer after a transient bound error', async () => {
+    const listCatalog = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('catalog failed'))
+      .mockResolvedValueOnce(catalogResponse('plans/recovered.md'))
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog,
+          onCatalogChanged: vi.fn(() => vi.fn())
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    await catalog.hydrate()
+    expect(catalog.error).toBe('catalog failed')
+
+    await catalog.hydrate()
+    expect(listCatalog).toHaveBeenCalledTimes(2)
+    expect(catalog.error).toBeNull()
+    expect(catalog.files.map((file) => file.sourcePath)).toEqual(['plans/recovered.md'])
+  })
+
+  it('keeps the catalog subscription and cached files bound until every consumer unbinds', async () => {
+    const unsubscribe = vi.fn()
+    const onCatalogChanged = vi.fn(() => unsubscribe)
+    const listCatalog = vi.fn().mockResolvedValue(catalogResponse('plans/a.md'))
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog,
+          onCatalogChanged
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    await catalog.hydrate()
+    await catalog.hydrate()
+
+    expect(onCatalogChanged).toHaveBeenCalledOnce()
+    expect(listCatalog).toHaveBeenCalledOnce()
+    catalog.unbind()
+    expect(unsubscribe).not.toHaveBeenCalled()
+
+    catalog.unbind()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+
+    await catalog.hydrate()
+    expect(onCatalogChanged).toHaveBeenCalledTimes(2)
+    expect(listCatalog).toHaveBeenCalledTimes(2)
+  })
 })
