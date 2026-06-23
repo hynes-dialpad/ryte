@@ -1,0 +1,29 @@
+app/src/renderer/src/components/FileOpenOverlay.vue
+  s_398952194ab3e7::t_9f10455ac462bf 76-77,81-82
+  s_398952194ab3e7::t_5e2f9ef8e92897 175
+  s_398952194ab3e7::t_53d6f1a4fecec9 6-10,18,38,40-44,71-75,78-80,83-87
+app/src/renderer/src/components/file-open-model.ts
+  s_398952194ab3e7::t_7964d091a5b3e2 9-16,18,88-104
+app/src/renderer/src/components/file-open-model.test.ts
+  s_398952194ab3e7::t_72318628b3d55f 4,84-132
+app/src/renderer/src/stores/file-catalog.test.ts
+  s_398952194ab3e7::t_a5038b15465019 144-167
+app/src/renderer/src/stores/file-catalog.ts
+  s_398952194ab3e7::t_1c38566443ea76 53,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "883c1077a7e1d7fe0d233d90d7a8674efab85de5",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
