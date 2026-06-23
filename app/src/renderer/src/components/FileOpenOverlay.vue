@@ -3,7 +3,11 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { useFileCatalogStore } from '../stores/file-catalog'
 import { useWorkspaceStore } from '../stores/workspace'
-import { buildFileOpenResults, type FileOpenResult } from './file-open-model'
+import {
+  buildFileOpenResults,
+  resolveOpenResultScrollTop,
+  type FileOpenResult
+} from './file-open-model'
 import IconFile from './icons/IconFile.vue'
 
 const emit = defineEmits<{ close: [] }>()
@@ -11,6 +15,7 @@ const emit = defineEmits<{ close: [] }>()
 const catalog = useFileCatalogStore()
 const workspace = useWorkspaceStore()
 const inputRef = ref<HTMLInputElement | null>(null)
+const resultsRef = ref<HTMLElement | null>(null)
 const query = ref('')
 const selectedIndex = ref(0)
 const openingSourcePath = ref<string | null>(null)
@@ -30,7 +35,13 @@ watch(results, (nextResults) => {
 })
 
 watch(query, () => {
+  selectedIndex.value = 0
   openError.value = null
+  void nextTick(scrollSelectedResultIntoView)
+})
+
+watch(selectedIndex, () => {
+  void nextTick(scrollSelectedResultIntoView)
 })
 
 onMounted(async () => {
@@ -55,6 +66,25 @@ function setSelection(index: number): void {
 
 function resultOptionId(index: number): string {
   return `file-open-result-${index}`
+}
+
+function scrollSelectedResultIntoView(): void {
+  const container = resultsRef.value
+  const selectedItem = container?.children.item(selectedIndex.value) as HTMLElement | null
+  if (!container || !selectedItem) return
+
+  const containerRect = container.getBoundingClientRect()
+  const selectedItemRect = selectedItem.getBoundingClientRect()
+  const nextScrollTop = resolveOpenResultScrollTop({
+    currentScrollTop: container.scrollTop,
+    viewportHeight: container.clientHeight,
+    itemTop: container.scrollTop + selectedItemRect.top - containerRect.top,
+    itemHeight: selectedItemRect.height
+  })
+
+  if (nextScrollTop !== container.scrollTop) {
+    container.scrollTop = nextScrollTop
+  }
 }
 
 async function openResult(result: FileOpenResult | null): Promise<void> {
@@ -142,6 +172,7 @@ function onKeydown(event: KeyboardEvent): void {
       <ul
         v-else
         :id="resultsListId"
+        ref="resultsRef"
         class="open-results ryte-scrollbar ryte-scrollbar--y"
         role="listbox"
         aria-label="Files"

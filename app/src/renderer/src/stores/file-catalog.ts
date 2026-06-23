@@ -50,6 +50,7 @@ export const useFileCatalogStore = defineStore('file-catalog', () => {
 
   async function hydrate(): Promise<void> {
     const wasUnbound = bindCount === 0
+    const shouldRefresh = wasUnbound || error.value !== null
     bindCount += 1
     if (!unsubscribeCatalogChanged) {
       unsubscribeCatalogChanged = window.ryte.files.onCatalogChanged(() => {
@@ -57,7 +58,7 @@ export const useFileCatalogStore = defineStore('file-catalog', () => {
       })
     }
 
-    if (wasUnbound) await refreshCatalog()
+    if (shouldRefresh) await refreshCatalog()
   }
 
   function unbind(): void {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FileCatalogEntry } from '../../../shared/files'
-import { buildFileOpenResults } from './file-open-model'
+import { buildFileOpenResults, resolveOpenResultScrollTop } from './file-open-model'
 
 function catalogEntry(overrides: Partial<FileCatalogEntry>): FileCatalogEntry {
   return {
@@ -79,5 +79,55 @@ describe('buildFileOpenResults', () => {
     )
 
     expect(results[0]?.sourcePath).toBe('docs/plan.md')
+  })
+})
+
+describe('resolveOpenResultScrollTop', () => {
+  it('keeps the current scroll position when the item is fully visible with margin', () => {
+    expect(
+      resolveOpenResultScrollTop({
+        currentScrollTop: 100,
+        viewportHeight: 200,
+        itemTop: 130,
+        itemHeight: 40,
+        margin: 8
+      })
+    ).toBe(100)
+  })
+
+  it('scrolls upward when the selected item is clipped above the viewport margin', () => {
+    expect(
+      resolveOpenResultScrollTop({
+        currentScrollTop: 100,
+        viewportHeight: 200,
+        itemTop: 90,
+        itemHeight: 40,
+        margin: 8
+      })
+    ).toBe(82)
+  })
+
+  it('scrolls downward when the selected item is clipped below the viewport margin', () => {
+    expect(
+      resolveOpenResultScrollTop({
+        currentScrollTop: 100,
+        viewportHeight: 200,
+        itemTop: 280,
+        itemHeight: 40,
+        margin: 8
+      })
+    ).toBe(128)
+  })
+
+  it('does not return a negative scroll position near the top', () => {
+    expect(
+      resolveOpenResultScrollTop({
+        currentScrollTop: 20,
+        viewportHeight: 200,
+        itemTop: 4,
+        itemHeight: 40,
+        margin: 8
+      })
+    ).toBe(0)
   })
 })

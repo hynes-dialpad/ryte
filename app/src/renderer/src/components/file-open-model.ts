@@ -6,7 +6,16 @@ export interface FileOpenResult {
   modifiedAtMs: number
 }
 
+export interface OpenResultScrollState {
+  currentScrollTop: number
+  viewportHeight: number
+  itemTop: number
+  itemHeight: number
+  margin?: number
+}
+
 const DEFAULT_OPEN_RESULT_LIMIT = 40
+const DEFAULT_OPEN_RESULT_SCROLL_MARGIN = 6
 const QUERY_TOKEN_RE = /[a-z0-9]+/g
 
 function normalizeTokens(value: string): string[] {
@@ -75,4 +84,21 @@ export function buildFileOpenResults(
       title: result.title,
       modifiedAtMs: result.modifiedAtMs
     }))
+}
+
+export function resolveOpenResultScrollTop(state: OpenResultScrollState): number {
+  const margin = state.margin ?? DEFAULT_OPEN_RESULT_SCROLL_MARGIN
+  const viewportTop = state.currentScrollTop
+  const viewportBottom = state.currentScrollTop + state.viewportHeight
+  const itemBottom = state.itemTop + state.itemHeight
+
+  if (state.itemTop - margin < viewportTop) {
+    return Math.max(0, state.itemTop - margin)
+  }
+
+  if (itemBottom + margin > viewportBottom) {
+    return itemBottom + margin - state.viewportHeight
+  }
+
+  return state.currentScrollTop
 }
