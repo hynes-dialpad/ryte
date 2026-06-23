@@ -227,13 +227,26 @@ export function buildHomeSidebarModel(input: HomeSidebarModelInput): HomeSidebar
     )
   }
 
-  return {
-    groups: HOME_SMART_GROUP_DEFINITIONS.map((definition) => ({
+  const renderedSourcePaths = new Set<string>()
+  const groups = HOME_SMART_GROUP_DEFINITIONS.map((definition) => {
+    const builtItems = definition.buildItems(context)
+    const items =
+      definition.id === 'recent'
+        ? builtItems.filter((item) => !renderedSourcePaths.has(item.sourcePath))
+        : builtItems
+
+    for (const item of items) {
+      renderedSourcePaths.add(item.sourcePath)
+    }
+
+    return {
       id: definition.id,
       title: definition.title,
       headingId: `home-${definition.id}-heading`,
       emptyLabel: definition.emptyLabel,
-      items: definition.buildItems(context)
-    }))
-  }
+      items
+    }
+  })
+
+  return { groups }
 }

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import ryteLogo from './assets/ryte-logo.svg'
+import FileOpenOverlay from './components/FileOpenOverlay.vue'
 import HomeSidebar from './components/HomeSidebar.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
@@ -25,6 +26,7 @@ const search = useSearchStore()
 const workspace = useWorkspaceStore()
 const showSettings = ref(false)
 const showSearch = ref(false)
+const showFileOpen = ref(false)
 const viewportWidth = ref(window.innerWidth)
 const dragSidebarWidth = ref<number | null>(null)
 const dragSidebarCollapsed = ref(false)
@@ -97,6 +99,10 @@ function openSearch(): void {
     status: 'idle'
   })
   showSearch.value = true
+}
+
+function openFileOpen(): void {
+  showFileOpen.value = true
 }
 
 function openSettings(): void {
@@ -213,7 +219,10 @@ function applySearchHistorySettings(): void {
 
 function hasModalOpen(): boolean {
   return (
-    showSearch.value || showSettings.value || document.querySelector('[aria-modal="true"]') !== null
+    showSearch.value ||
+    showSettings.value ||
+    showFileOpen.value ||
+    document.querySelector('[aria-modal="true"]') !== null
   )
 }
 
@@ -305,6 +314,13 @@ function onGlobalAppKeydown(event: KeyboardEvent): void {
     return
   }
 
+  if (key === 'p') {
+    event.preventDefault()
+    event.stopPropagation()
+    openFileOpen()
+    return
+  }
+
   if (event.key === ',') {
     event.preventDefault()
     event.stopPropagation()
@@ -340,6 +356,7 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
             :show-shortcut-badges="showControlShortcutBadges"
             @toggle-sidebar="toggleSidebar"
             @select-sidebar="selectSidebar"
+            @open-file="openFileOpen"
             @open-search="openSearch"
             @open-settings="openSettings"
           />
@@ -388,6 +405,7 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
 
     <StatusBar />
 
+    <FileOpenOverlay v-if="showFileOpen" @close="showFileOpen = false" />
     <SearchOverlay v-if="showSearch" @close="showSearch = false" />
     <SettingsModal v-if="showSettings" :dismissable="dismissable" @close="closeSettings" />
   </div>

@@ -15,6 +15,7 @@ export const useFileCatalogStore = defineStore('file-catalog', () => {
   let unsubscribeCatalogChanged: (() => void) | null = null
   let refreshRequestId = 0
   let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let bindCount = 0
 
   async function refreshCatalog(): Promise<void> {
     const requestId = ++refreshRequestId
@@ -48,16 +49,21 @@ export const useFileCatalogStore = defineStore('file-catalog', () => {
   }
 
   async function hydrate(): Promise<void> {
+    const wasUnbound = bindCount === 0
+    bindCount += 1
     if (!unsubscribeCatalogChanged) {
       unsubscribeCatalogChanged = window.ryte.files.onCatalogChanged(() => {
         scheduleRefreshCatalog()
       })
     }
 
-    await refreshCatalog()
+    if (wasUnbound) await refreshCatalog()
   }
 
   function unbind(): void {
+    bindCount = Math.max(0, bindCount - 1)
+    if (bindCount > 0) return
+
     unsubscribeCatalogChanged?.()
     unsubscribeCatalogChanged = null
     if (refreshTimer) {

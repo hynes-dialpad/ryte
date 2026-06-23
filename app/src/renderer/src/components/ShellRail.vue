@@ -2,6 +2,7 @@
 import type { WorkspaceSidebarMode } from '../../../shared/workspace'
 import IconHome from './icons/IconHome.vue'
 import IconLibrary from './icons/IconLibrary.vue'
+import IconPlus from './icons/IconPlus.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconSettings from './icons/IconSettings.vue'
 import IconSidebar from './icons/IconSidebar.vue'
@@ -16,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   toggleSidebar: []
   selectSidebar: [mode: WorkspaceSidebarMode]
+  openFile: []
   openSearch: []
   openSettings: []
 }>()
@@ -37,6 +39,17 @@ function sidebarToggleLabel(): string {
         @click="emit('openSearch')"
       >
         <IconSearch />
+      </button>
+
+      <button
+        type="button"
+        class="rail-item"
+        aria-label="Open file"
+        title="Open file"
+        aria-keyshortcuts="Meta+P"
+        @click="emit('openFile')"
+      >
+        <IconPlus />
       </button>
 
       <button
