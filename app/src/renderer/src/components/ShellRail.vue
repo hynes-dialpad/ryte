@@ -10,6 +10,7 @@ import IconSidebarOpen from './icons/IconSidebarOpen.vue'
 const props = defineProps<{
   activeSidebar: WorkspaceSidebarMode
   sidebarCollapsed: boolean
+  showShortcutBadges: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,19 +29,6 @@ function sidebarToggleLabel(): string {
   <nav class="shell-rail" aria-label="Workspace navigation">
     <div class="rail-top">
       <button
-        type="button"
-        class="rail-item"
-        data-workspace-fallback-focus
-        :aria-label="sidebarToggleLabel()"
-        :title="sidebarToggleLabel()"
-        :aria-pressed="sidebarCollapsed"
-        @click="emit('toggleSidebar')"
-      >
-        <IconSidebarOpen v-if="sidebarCollapsed" />
-        <IconSidebar v-else />
-      </button>
-
-      <button
         v-if="sidebarCollapsed"
         type="button"
         class="rail-item"
@@ -54,13 +42,30 @@ function sidebarToggleLabel(): string {
       <button
         type="button"
         class="rail-item"
+        data-workspace-fallback-focus
+        :aria-label="sidebarToggleLabel()"
+        :title="sidebarToggleLabel()"
+        :aria-pressed="sidebarCollapsed"
+        aria-keyshortcuts="Control+T"
+        @click="emit('toggleSidebar')"
+      >
+        <IconSidebarOpen v-if="sidebarCollapsed" />
+        <IconSidebar v-else />
+        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">T</span>
+      </button>
+
+      <button
+        type="button"
+        class="rail-item"
         :class="{ selected: activeSidebar === 'home' }"
         aria-label="Home"
         title="Home"
         :aria-current="activeSidebar === 'home' ? 'page' : undefined"
+        aria-keyshortcuts="Control+1"
         @click="emit('selectSidebar', 'home')"
       >
         <IconHome />
+        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">1</span>
       </button>
 
       <button
@@ -70,9 +75,11 @@ function sidebarToggleLabel(): string {
         aria-label="Library"
         title="Library"
         :aria-current="activeSidebar === 'files' ? 'page' : undefined"
+        aria-keyshortcuts="Control+2"
         @click="emit('selectSidebar', 'files')"
       >
         <IconLibrary />
+        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">2</span>
       </button>
     </div>
 
@@ -81,9 +88,11 @@ function sidebarToggleLabel(): string {
       class="rail-item rail-bottom"
       aria-label="Settings"
       title="Settings"
+      aria-keyshortcuts="Control+0"
       @click="emit('openSettings')"
     >
       <IconSettings />
+      <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">0</span>
     </button>
   </nav>
 </template>
@@ -111,6 +120,7 @@ function sidebarToggleLabel(): string {
 }
 
 .rail-item {
+  position: relative;
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -148,6 +158,28 @@ function sidebarToggleLabel(): string {
 .rail-item :deep(.ryte-svg-icon) {
   width: 18px;
   height: 18px;
+}
+
+.shortcut-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  z-index: 2;
+  min-width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: 5px;
+  padding: 0 3px;
+  background: rgba(232, 232, 238, 0.92);
+  color: #201b25;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
 .rail-bottom {

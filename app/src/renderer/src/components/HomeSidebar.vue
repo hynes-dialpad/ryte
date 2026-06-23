@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
+import { extractMarkdownTitle } from '../markdown/title'
 import { useWorkspaceStore } from '../stores/workspace'
-import { buildHomeSidebarModel } from './home-sidebar-model'
+import {
+  buildHomeSidebarModel,
+  type HomeSmartGroupId,
+  type HomeSmartGroupItem
+} from './home-sidebar-model'
+import IconChevronRight from './icons/IconChevronRight.vue'
+import IconClose from './icons/IconClose.vue'
 import SidebarSearchButton from './SidebarSearchButton.vue'
 
 const emit = defineEmits<{
@@ -17,13 +24,107 @@ const model = computed(() =>
     activeTabId: workspace.activeTabId
   })
 )
+const documentTitles = ref<Record<string, string>>({})
+const collapsedGroupIds = ref<Set<HomeSmartGroupId>>(new Set())
+const closingTabIds = ref<Set<string>>(new Set())
 
-function openRecent(sourcePath: string): void {
-  void workspace.openOrFocusFile({ sourcePath })
+function isGroupExpanded(groupId: HomeSmartGroupId): boolean {
+  return !collapsedGroupIds.value.has(groupId)
 }
 
-function focusOpenTab(tabId: string): void {
-  void workspace.focusTab({ tabId })
+function toggleGroup(groupId: HomeSmartGroupId): void {
+  const nextGroupIds = new Set(collapsedGroupIds.value)
+  if (nextGroupIds.has(groupId)) {
+    nextGroupIds.delete(groupId)
+  } else {
+    nextGroupIds.add(groupId)
+  }
+  collapsedGroupIds.value = nextGroupIds
+}
+
+const visibleSourcePaths = computed(() => {
+  const paths: string[] = []
+  const seen = new Set<string>()
+
+  for (const group of model.value.groups) {
+    if (!isGroupExpanded(group.id)) continue
+    for (const item of group.items) {
+      if (seen.has(item.sourcePath)) continue
+      seen.add(item.sourcePath)
+      paths.push(item.sourcePath)
+    }
+  }
+
+  return paths
+})
+
+let titleRequestId = 0
+
+async function readDocumentTitle(sourcePath: string): Promise<[string, string] | null> {
+  try {
+    const raw = await window.ryte.files.readSource({ sourcePath })
+    const title = extractMarkdownTitle(raw)
+    return title ? [sourcePath, title] : null
+  } catch {
+    return null
+  }
+}
+
+watch(
+  visibleSourcePaths,
+  (sourcePaths) => {
+    const requestId = ++titleRequestId
+    const visiblePathSet = new Set(sourcePaths)
+    const unresolvedPaths = sourcePaths.filter((sourcePath) => !documentTitles.value[sourcePath])
+    if (unresolvedPaths.length === 0) return
+
+    void Promise.all(unresolvedPaths.map((sourcePath) => readDocumentTitle(sourcePath))).then(
+      (resolvedTitles) => {
+        if (requestId !== titleRequestId) return
+
+        const nextTitles = { ...documentTitles.value }
+        for (const resolvedTitle of resolvedTitles) {
+          if (!resolvedTitle) continue
+          const [sourcePath, title] = resolvedTitle
+          if (visiblePathSet.has(sourcePath)) nextTitles[sourcePath] = title
+        }
+        documentTitles.value = nextTitles
+      }
+    )
+  },
+  { immediate: true }
+)
+
+function itemTitle(item: HomeSmartGroupItem): string {
+  return documentTitles.value[item.sourcePath] ?? item.title
+}
+
+function activateItem(item: HomeSmartGroupItem): void {
+  if (item.action.kind === 'focus-tab') {
+    void workspace.focusTab({ tabId: item.action.tabId })
+    return
+  }
+
+  void workspace.openExplicitFile({ sourcePath: item.action.sourcePath })
+}
+
+async function closeOpenItem(item: HomeSmartGroupItem): Promise<void> {
+  if (item.action.kind !== 'focus-tab') return
+  const tabId = item.action.tabId
+  if (closingTabIds.value.has(tabId)) return
+
+  closingTabIds.value = new Set(closingTabIds.value).add(tabId)
+
+  try {
+    await workspace.closeTabToRecent({
+      tabId,
+      sourcePath: item.sourcePath
+    })
+  } finally {
+    const nextClosingTabIds = new Set(closingTabIds.value)
+    nextClosingTabIds.delete(tabId)
+    closingTabIds.value = nextClosingTabIds
+  }
 }
 </script>
 
@@ -33,50 +134,59 @@ function focusOpenTab(tabId: string): void {
       <SidebarSearchButton @search="emit('openSearch')" />
     </div>
 
-    <section class="home-section" aria-labelledby="home-recent-heading">
-      <h2 id="home-recent-heading" class="home-heading">Recent</h2>
-      <p v-if="model.recentItems.length === 0" class="home-empty">No recent files</p>
-      <ul v-else class="home-list">
-        <li v-for="item in model.recentItems" :key="item.id">
-          <button
-            type="button"
-            class="home-row"
-            :class="{ active: item.active }"
-            :title="item.sourcePath"
-            :aria-current="item.active ? 'page' : undefined"
-            :aria-label="`Open ${item.sourcePath}`"
-            @click="openRecent(item.sourcePath)"
-          >
-            <span class="row-marker" aria-hidden="true"></span>
-            <span class="row-copy">
-              <span class="row-title">{{ item.title }}</span>
-              <span class="row-path">{{ item.sourcePath }}</span>
-            </span>
-          </button>
-        </li>
-      </ul>
-    </section>
-
-    <section class="home-section" aria-labelledby="home-open-heading">
-      <h2 id="home-open-heading" class="home-heading">Open</h2>
-      <p v-if="model.openItems.length === 0" class="home-empty">No open files</p>
-      <ul v-else class="home-list">
-        <li v-for="item in model.openItems" :key="item.id">
-          <button
-            type="button"
-            class="home-row"
-            :class="{ active: item.active }"
-            :title="item.sourcePath"
-            :aria-current="item.active ? 'page' : undefined"
-            :aria-label="`Focus ${item.sourcePath}`"
-            @click="focusOpenTab(item.tabId)"
-          >
-            <span class="row-marker" aria-hidden="true"></span>
-            <span class="row-copy">
-              <span class="row-title">{{ item.title }}</span>
-              <span class="row-path">{{ item.sourcePath }}</span>
-            </span>
-          </button>
+    <section
+      v-for="group in model.groups"
+      :key="group.id"
+      class="home-section"
+      :class="{ expanded: isGroupExpanded(group.id) && group.items.length > 0 }"
+      :aria-labelledby="group.headingId"
+    >
+      <h2 :id="group.headingId" class="home-heading">
+        <button
+          type="button"
+          class="home-group-toggle"
+          :aria-expanded="isGroupExpanded(group.id)"
+          :aria-controls="`${group.id}-home-list`"
+          @click="toggleGroup(group.id)"
+        >
+          <span class="group-chevron" :class="{ open: isGroupExpanded(group.id) }">
+            <IconChevronRight />
+          </span>
+          <span>{{ group.title }}</span>
+        </button>
+      </h2>
+      <p v-if="isGroupExpanded(group.id) && group.items.length === 0" class="home-empty">
+        {{ group.emptyLabel }}
+      </p>
+      <ul v-else-if="isGroupExpanded(group.id)" :id="`${group.id}-home-list`" class="home-list">
+        <li v-for="item in group.items" :key="item.id">
+          <div class="home-row-frame">
+            <button
+              type="button"
+              class="home-row"
+              :class="{ active: item.active }"
+              :title="item.sourcePath"
+              :aria-current="item.active ? 'page' : undefined"
+              :aria-label="item.ariaLabel"
+              @click="activateItem(item)"
+            >
+              <span class="row-copy">
+                <span class="row-title">{{ itemTitle(item) }}</span>
+                <span class="row-path">{{ item.sourcePath }}</span>
+              </span>
+            </button>
+            <button
+              v-if="item.action.kind === 'focus-tab'"
+              type="button"
+              class="home-row-close"
+              :disabled="closingTabIds.has(item.action.tabId)"
+              :aria-label="`Close ${item.sourcePath}`"
+              @pointerdown.stop.prevent="closeOpenItem(item)"
+              @click.stop.prevent="closeOpenItem(item)"
+            >
+              <IconClose />
+            </button>
+          </div>
         </li>
       </ul>
     </section>
@@ -90,7 +200,6 @@ function focusOpenTab(tabId: string): void {
   overflow-y: auto;
   overflow-x: hidden;
   outline: none;
-  background: rgba(0, 0, 0, 0.1);
   font-size: 0.825rem;
 }
 
@@ -103,17 +212,69 @@ function focusOpenTab(tabId: string): void {
 }
 
 .home-section {
-  padding: 4px 8px 14px;
+  position: relative;
+  padding: 8px 12px;
+}
+
+.home-section.expanded::before {
+  content: '';
+  position: absolute;
+  top: 32px;
+  bottom: 6px;
+  left: 22px;
+  z-index: 2;
+  width: 1px;
+  pointer-events: none;
+  background: rgba(217, 217, 217, 0.25);
 }
 
 .home-heading {
-  margin: 0 0 6px;
-  padding: 0 6px;
-  color: rgba(255, 255, 255, 0.48);
-  font-size: 0.68rem;
-  font-weight: 600;
-  line-height: 1.2;
+  margin: 0;
   text-transform: uppercase;
+}
+
+.home-group-toggle {
+  position: relative;
+  width: 100%;
+  height: 2.167em;
+  display: flex;
+  align-items: center;
+  gap: 0.667rem;
+  border: 0;
+  border-radius: 0.5em;
+  box-sizing: border-box;
+  padding-block: 0.583em;
+  padding-right: 0.25em;
+  padding-left: 0.25em;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.home-group-toggle:hover,
+.home-group-toggle:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: 0;
+}
+
+.group-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #fff;
+  transition: transform 120ms;
+}
+
+.group-chevron.open {
+  transform: rotate(90deg);
 }
 
 .home-empty {
@@ -130,7 +291,13 @@ function focusOpenTab(tabId: string): void {
   padding: 0;
 }
 
+.home-row-frame {
+  position: relative;
+}
+
 .home-row {
+  position: relative;
+  z-index: 1;
   width: 100%;
   min-height: 42px;
   display: flex;
@@ -138,7 +305,7 @@ function focusOpenTab(tabId: string): void {
   gap: 8px;
   border: 0;
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 6px 28px;
   background: transparent;
   color: rgba(255, 255, 255, 0.72);
   font: inherit;
@@ -154,20 +321,43 @@ function focusOpenTab(tabId: string): void {
 }
 
 .home-row.active {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(120, 200, 255, 0.22);
+  box-shadow: inset 0 0 0 1px #0496ff;
+  color: white;
+}
+
+.home-row-close {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.home-row-frame:hover .home-row-close,
+.home-row-frame:focus-within .home-row-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.home-row-close:hover,
+.home-row-close:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-}
-
-.row-marker {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.home-row.active .row-marker {
-  background: currentColor;
+  outline: 0;
 }
 
 .row-copy {

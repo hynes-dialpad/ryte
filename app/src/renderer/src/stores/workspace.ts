@@ -200,6 +200,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await openFile(input)
   }
 
+  async function openExplicitFile(input: WorkspaceOpenFileInput): Promise<void> {
+    const existingTab = tabs.value.findLast((tab) => tab.sourcePath === input.sourcePath)
+    if (existingTab) {
+      await focusTab({ tabId: existingTab.id })
+      await recordRecent({ sourcePath: input.sourcePath })
+      return
+    }
+
+    await openFile(input)
+  }
+
   async function focusTab(input: WorkspaceFocusTabInput): Promise<void> {
     await runOptimisticWorkspaceOperation(
       (base) => ({
@@ -217,6 +228,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       (base) => closeTabInState(base, input.tabId),
       () => window.ryte.workspace.closeTab(input)
     )
+  }
+
+  async function closeTabToRecent(
+    input: WorkspaceCloseTabInput & WorkspaceRecordRecentInput
+  ): Promise<void> {
+    try {
+      await recordRecent({ sourcePath: input.sourcePath })
+    } catch {
+      // Closing should still work if the backing file is already missing.
+    }
+    await closeTab({ tabId: input.tabId })
   }
 
   async function updateTabViewMode(input: WorkspaceUpdateTabViewModeInput): Promise<void> {
@@ -301,7 +323,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openFile,
     focusTab,
     closeTab,
+    closeTabToRecent,
     openOrFocusFile,
+    openExplicitFile,
     updateTabViewMode,
     recordRecent,
     setOutlineCollapsed,

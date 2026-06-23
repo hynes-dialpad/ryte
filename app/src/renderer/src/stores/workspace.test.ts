@@ -184,6 +184,145 @@ describe('useWorkspaceStore', () => {
     expect(store.activeTabId).toBe(tabA2.id)
   })
 
+  it('focuses the latest matching tab and records recency for openExplicitFile', async () => {
+    const tabA = { id: 'tab-a', sourcePath: 'a.md', title: 'a.md', viewMode: 'preview' as const }
+    const tabB = { id: 'tab-b', sourcePath: 'b.md', title: 'b.md', viewMode: 'preview' as const }
+    const tabA2 = {
+      id: 'tab-a-2',
+      sourcePath: 'a.md',
+      title: 'a.md',
+      viewMode: 'source' as const
+    }
+    const initial = workspaceState({ tabs: [tabA, tabB, tabA2], activeTabId: tabB.id })
+    const focused = workspaceState({ tabs: [tabA, tabB, tabA2], activeTabId: tabA2.id })
+    const recented = workspaceState({
+      tabs: [tabA, tabB, tabA2],
+      activeTabId: tabA2.id,
+      recents: [{ sourcePath: 'a.md', title: 'a.md', openedAt: '2026-05-21T12:00:00.000Z' }]
+    })
+    const openFile = vi.fn()
+    const focusTab = vi.fn().mockResolvedValue(focused)
+    const recordRecent = vi.fn().mockResolvedValue(recented)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      focusTab,
+      recordRecent,
+      openFile
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openExplicitFile({ sourcePath: 'a.md' })
+
+    expect(focusTab).toHaveBeenCalledWith({ tabId: tabA2.id })
+    expect(recordRecent).toHaveBeenCalledWith({ sourcePath: 'a.md' })
+    expect(openFile).not.toHaveBeenCalled()
+    expect(store.activeTabId).toBe(tabA2.id)
+    expect(store.recents[0]?.sourcePath).toBe('a.md')
+  })
+
+  it('opens missing files without double-recording recency for openExplicitFile', async () => {
+    const initial = workspaceState()
+    const returned = workspaceState({
+      tabs: [
+        {
+          id: 'real-tab-id',
+          sourcePath: 'folder/new.md',
+          title: 'new.md',
+          viewMode: 'preview'
+        }
+      ],
+      activeTabId: 'real-tab-id',
+      recents: [
+        {
+          sourcePath: 'folder/new.md',
+          title: 'new.md',
+          openedAt: '2026-05-21T12:00:00.000Z'
+        }
+      ]
+    })
+    const openFile = vi.fn().mockResolvedValue(returned)
+    const recordRecent = vi.fn()
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      openFile,
+      recordRecent
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openExplicitFile({ sourcePath: 'folder/new.md' })
+
+    expect(openFile).toHaveBeenCalledWith({ sourcePath: 'folder/new.md' })
+    expect(recordRecent).not.toHaveBeenCalled()
+    expect(store.state).toEqual(returned)
+  })
+
+  it('records recency before closing a tab for closeTabToRecent', async () => {
+    const tabA = { id: 'tab-a', sourcePath: 'a.md', title: 'a.md', viewMode: 'preview' as const }
+    const tabB = { id: 'tab-b', sourcePath: 'b.md', title: 'b.md', viewMode: 'preview' as const }
+    const initial = workspaceState({ tabs: [tabA, tabB], activeTabId: tabB.id })
+    const recented = workspaceState({
+      tabs: [tabA, tabB],
+      activeTabId: tabB.id,
+      recents: [{ sourcePath: 'b.md', title: 'b.md', openedAt: '2026-05-21T12:00:00.000Z' }]
+    })
+    const closed = workspaceState({
+      tabs: [tabA],
+      activeTabId: tabA.id,
+      recents: [{ sourcePath: 'b.md', title: 'b.md', openedAt: '2026-05-21T12:00:00.000Z' }]
+    })
+    const recordRecent = vi.fn().mockResolvedValue(recented)
+    const closeTab = vi.fn().mockResolvedValue(closed)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      recordRecent,
+      closeTab
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.closeTabToRecent({ tabId: tabB.id, sourcePath: 'b.md' })
+
+    expect(recordRecent).toHaveBeenCalledWith({ sourcePath: 'b.md' })
+    expect(closeTab).toHaveBeenCalledWith({ tabId: tabB.id })
+    expect(recordRecent.mock.invocationCallOrder[0]).toBeLessThan(
+      closeTab.mock.invocationCallOrder[0]
+    )
+    expect(store.tabs.map((tab) => tab.id)).toEqual([tabA.id])
+    expect(store.recents[0]?.sourcePath).toBe('b.md')
+  })
+
+  it('still closes a tab when closeTabToRecent cannot record recency', async () => {
+    const tab = {
+      id: 'tab-a',
+      sourcePath: 'missing.md',
+      title: 'missing.md',
+      viewMode: 'preview' as const
+    }
+    const initial = workspaceState({ tabs: [tab], activeTabId: tab.id })
+    const closed = workspaceState({ tabs: [], activeTabId: null })
+    const recordRecent = vi.fn().mockRejectedValue(new Error('Invalid workspace source path'))
+    const closeTab = vi.fn().mockResolvedValue(closed)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      recordRecent,
+      closeTab
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath })
+
+    expect(recordRecent).toHaveBeenCalledWith({ sourcePath: tab.sourcePath })
+    expect(closeTab).toHaveBeenCalledWith({ tabId: tab.id })
+    expect(store.tabs).toEqual([])
+  })
+
   it('applies optimistic focus, close, view mode, recent, and outline updates', async () => {
     const tabA = { id: 'tab-a', sourcePath: 'a.md', title: 'a.md', viewMode: 'preview' as const }
     const tabB = { id: 'tab-b', sourcePath: 'b.md', title: 'b.md', viewMode: 'preview' as const }
