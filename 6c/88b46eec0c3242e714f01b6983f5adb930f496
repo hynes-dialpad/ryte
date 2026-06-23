@@ -1,0 +1,57 @@
+app/src/renderer/src/components/home-sidebar-model.ts
+  s_398952194ab3e7::t_02df201d7ba36a 3,78-85
+  s_398952194ab3e7::t_cb51f7195fa142 4-15,20-21,24-25,27-29,33-43,45-51,63-77,99-102,105-106,109,112-117
+  s_398952194ab3e7::t_aa4c872d81c65c 44,86-98,107-108
+app/src/renderer/src/App.vue
+  s_398952194ab3e7::t_93bf4c4533056b 348,371
+  s_398952194ab3e7::t_3295d732580655 33,37,43-44,56-58,224-265,273-282,284-298,314-319,340
+  s_398952194ab3e7::t_a75950ae4563cc 2,32,80-89,349-353,372-376
+  s_398952194ab3e7::t_1735953e545b1a 266-272
+app/src/renderer/src/stores/workspace.ts
+  s_398952194ab3e7::t_ca35febb6c33ca 203-213,328
+  s_398952194ab3e7::t_1e9ed86966281d 233-243,326
+app/src/renderer/src/components/home-sidebar-model.test.ts
+  s_398952194ab3e7::t_f807a8b30f2d91 19-23,80-82,84,87
+  s_398952194ab3e7::t_56b8d7de3e9dd2 42,48-49,51-53,55,58-60,62-64,66,69-71,78-79,83,85,88-90
+  s_398952194ab3e7::t_863bd96ab19dd9 6,44-47,50,54,56-57,61,65,67-68,74-77,86,115-116
+app/src/renderer/src/stores/workspace.test.ts
+  s_398952194ab3e7::t_4764ea3b9cefdc 187-262
+  s_398952194ab3e7::t_2e141b3e592e63 263-299,306-325
+  s_398952194ab3e7::t_988068b67663cc 300-305
+app/src/renderer/src/components/HomeSidebar.vue
+  s_398952194ab3e7::t_def1df7fd1bdbe 78,167
+  s_398952194ab3e7::t_ee8651b023ba82 2,4,27,45-49,51-77,79-101
+  s_398952194ab3e7::t_901a522d0426bb 102-108,137-140,142-143,162
+  s_398952194ab3e7::t_a739d9fa97170f 216,232,237,245-248,250,253,257,324-326
+  s_398952194ab3e7::t_a327a34fbba699 141,215,217-228,299-300,308
+  s_398952194ab3e7::t_345de5b0210b73 6-12,28,31-32,35-44,50,109-112,115,144-161,163-166,168-181,183,186-189,236,238-244,249,251-252,254-256,258-279,294-297,329-347,350-360
+  s_398952194ab3e7::t_2ef9f24b8b36b0 29,113-114,116-127,182,184-185
+app/src/renderer/src/markdown/title.ts
+  s_398952194ab3e7::t_c39a56a6f8baa6 1-57
+app/src/renderer/src/components/Sidebar.vue
+  s_398952194ab3e7::t_c85dfde5400b7e 8,44-46,265-268,328-329
+app/src/renderer/src/components/SidebarSearchButton.vue
+  s_398952194ab3e7::t_26ed183930ee47 12,19,22-26,28,30,46-47
+app/src/renderer/src/markdown/title.test.ts
+  s_398952194ab3e7::t_26254d8b90db82 1-31
+app/src/renderer/src/components/ShellRail.vue
+  s_398952194ab3e7::t_1735953e545b1a 91,95
+  s_398952194ab3e7::t_1329fce5318111 13,49,54,64,68,78,82,123,163-182
+  s_398952194ab3e7::t_73089b0fcc1382 32-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "6c88b46eec0c3242e714f01b6983f5adb930f496",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
