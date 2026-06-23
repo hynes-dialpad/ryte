@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-import { extractMarkdownTitle } from '../markdown/title'
+import { useDocumentTitles } from '../composables/useDocumentTitles'
+import { useFileCatalogStore } from '../stores/file-catalog'
 import { useWorkspaceStore } from '../stores/workspace'
 import {
   buildHomeSidebarModel,
+  homeSmartGroupItemTitle,
   type HomeSmartGroupId,
   type HomeSmartGroupItem
 } from './home-sidebar-model'
 import IconChevronRight from './icons/IconChevronRight.vue'
-import IconClose from './icons/IconClose.vue'
 import SidebarSearchButton from './SidebarSearchButton.vue'
 
 const emit = defineEmits<{
@@ -17,16 +18,17 @@ const emit = defineEmits<{
 }>()
 
 const workspace = useWorkspaceStore()
+const catalog = useFileCatalogStore()
 const model = computed(() =>
   buildHomeSidebarModel({
+    catalogFiles: catalog.files,
     recents: workspace.recents,
     tabs: workspace.tabs,
     activeTabId: workspace.activeTabId
   })
 )
-const documentTitles = ref<Record<string, string>>({})
 const collapsedGroupIds = ref<Set<HomeSmartGroupId>>(new Set())
-const closingTabIds = ref<Set<string>>(new Set())
+const catalogSourcePaths = computed(() => new Set(catalog.files.map((file) => file.sourcePath)))
 
 function isGroupExpanded(groupId: HomeSmartGroupId): boolean {
   return !collapsedGroupIds.value.has(groupId)
@@ -58,73 +60,28 @@ const visibleSourcePaths = computed(() => {
   return paths
 })
 
-let titleRequestId = 0
-
-async function readDocumentTitle(sourcePath: string): Promise<[string, string] | null> {
-  try {
-    const raw = await window.ryte.files.readSource({ sourcePath })
-    const title = extractMarkdownTitle(raw)
-    return title ? [sourcePath, title] : null
-  } catch {
-    return null
-  }
-}
-
-watch(
-  visibleSourcePaths,
-  (sourcePaths) => {
-    const requestId = ++titleRequestId
-    const visiblePathSet = new Set(sourcePaths)
-    const unresolvedPaths = sourcePaths.filter((sourcePath) => !documentTitles.value[sourcePath])
-    if (unresolvedPaths.length === 0) return
-
-    void Promise.all(unresolvedPaths.map((sourcePath) => readDocumentTitle(sourcePath))).then(
-      (resolvedTitles) => {
-        if (requestId !== titleRequestId) return
-
-        const nextTitles = { ...documentTitles.value }
-        for (const resolvedTitle of resolvedTitles) {
-          if (!resolvedTitle) continue
-          const [sourcePath, title] = resolvedTitle
-          if (visiblePathSet.has(sourcePath)) nextTitles[sourcePath] = title
-        }
-        documentTitles.value = nextTitles
-      }
-    )
-  },
-  { immediate: true }
+const uncatalogedVisibleSourcePaths = computed(() =>
+  visibleSourcePaths.value.filter((sourcePath) => !catalogSourcePaths.value.has(sourcePath))
+)
+const documentTitles = useDocumentTitles(
+  uncatalogedVisibleSourcePaths,
+  computed(() => catalog.revision)
 )
 
+onMounted(() => {
+  void catalog.hydrate()
+})
+
+onUnmounted(() => {
+  catalog.unbind()
+})
+
 function itemTitle(item: HomeSmartGroupItem): string {
-  return documentTitles.value[item.sourcePath] ?? item.title
+  return homeSmartGroupItemTitle(item, documentTitles.value[item.sourcePath])
 }
 
 function activateItem(item: HomeSmartGroupItem): void {
-  if (item.action.kind === 'focus-tab') {
-    void workspace.focusTab({ tabId: item.action.tabId })
-    return
-  }
-
   void workspace.openExplicitFile({ sourcePath: item.action.sourcePath })
-}
-
-async function closeOpenItem(item: HomeSmartGroupItem): Promise<void> {
-  if (item.action.kind !== 'focus-tab') return
-  const tabId = item.action.tabId
-  if (closingTabIds.value.has(tabId)) return
-
-  closingTabIds.value = new Set(closingTabIds.value).add(tabId)
-
-  try {
-    await workspace.closeTabToRecent({
-      tabId,
-      sourcePath: item.sourcePath
-    })
-  } finally {
-    const nextClosingTabIds = new Set(closingTabIds.value)
-    nextClosingTabIds.delete(tabId)
-    closingTabIds.value = nextClosingTabIds
-  }
 }
 </script>
 
@@ -174,17 +131,6 @@ async function closeOpenItem(item: HomeSmartGroupItem): Promise<void> {
                 <span class="row-title">{{ itemTitle(item) }}</span>
                 <span class="row-path">{{ item.sourcePath }}</span>
               </span>
-            </button>
-            <button
-              v-if="item.action.kind === 'focus-tab'"
-              type="button"
-              class="home-row-close"
-              :disabled="closingTabIds.has(item.action.tabId)"
-              :aria-label="`Close ${item.sourcePath}`"
-              @pointerdown.stop.prevent="closeOpenItem(item)"
-              @click.stop.prevent="closeOpenItem(item)"
-            >
-              <IconClose />
             </button>
           </div>
         </li>
@@ -324,40 +270,6 @@ async function closeOpenItem(item: HomeSmartGroupItem): Promise<void> {
   background: rgba(120, 200, 255, 0.22);
   box-shadow: inset 0 0 0 1px #0496ff;
   color: white;
-}
-
-.home-row-close {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  z-index: 2;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  padding: 0;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.72);
-  cursor: pointer;
-  opacity: 0;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.home-row-frame:hover .home-row-close,
-.home-row-frame:focus-within .home-row-close {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.home-row-close:hover,
-.home-row-close:focus-visible {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  outline: 0;
 }
 
 .row-copy {

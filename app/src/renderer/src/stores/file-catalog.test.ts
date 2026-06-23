@@ -1,0 +1,143 @@
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { FileCatalogResponse } from '../../../shared/files'
+import { useFileCatalogStore } from './file-catalog'
+
+function catalogResponse(sourcePath: string): FileCatalogResponse {
+  return {
+    notesRoot: '/notes',
+    files: [
+      {
+        sourcePath,
+        title: sourcePath,
+        directory: '',
+        searchableText: sourcePath,
+        pathDate: null,
+        modifiedAt: '2026-06-22T12:00:00.000Z',
+        modifiedAtMs: 1,
+        createdAt: null,
+        createdAtMs: null,
+        sizeBytes: 1
+      }
+    ]
+  }
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+
+  return { promise, resolve, reject }
+}
+
+async function flushAsync(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+describe('useFileCatalogStore', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.unstubAllGlobals()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('hydrates and refreshes on catalog change events', async () => {
+    vi.useFakeTimers()
+    const catalogChangedHandlers: Array<() => void> = []
+    const listCatalog = vi
+      .fn()
+      .mockResolvedValueOnce(catalogResponse('plans/a.md'))
+      .mockResolvedValueOnce({
+        notesRoot: '/notes',
+        files: []
+      })
+
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog,
+          onCatalogChanged: vi.fn((cb: () => void) => {
+            catalogChangedHandlers.push(cb)
+            return vi.fn()
+          })
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    await catalog.hydrate()
+
+    expect(catalog.files).toHaveLength(1)
+    expect(catalog.notesRoot).toBe('/notes')
+
+    expect(catalogChangedHandlers).toHaveLength(1)
+    catalogChangedHandlers[0]?.()
+    catalogChangedHandlers[0]?.()
+    expect(listCatalog).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(100)
+    await flushAsync()
+
+    expect(listCatalog).toHaveBeenCalledTimes(2)
+    expect(catalog.files).toEqual([])
+  })
+
+  it('ignores stale catalog responses when refreshes complete out of order', async () => {
+    const first = deferred<ReturnType<typeof catalogResponse>>()
+    const second = deferred<ReturnType<typeof catalogResponse>>()
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog: vi
+            .fn()
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise),
+          onCatalogChanged: vi.fn(() => vi.fn())
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    const firstRefresh = catalog.refreshCatalog()
+    const secondRefresh = catalog.refreshCatalog()
+
+    second.resolve(catalogResponse('new.md'))
+    await secondRefresh
+    expect(catalog.files.map((file) => file.sourcePath)).toEqual(['new.md'])
+    expect(catalog.loading).toBe(false)
+
+    first.resolve(catalogResponse('old.md'))
+    await firstRefresh
+    expect(catalog.files.map((file) => file.sourcePath)).toEqual(['new.md'])
+  })
+
+  it('clears files instead of throwing when catalog loading fails', async () => {
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog: vi.fn().mockRejectedValue(new Error('catalog failed')),
+          onCatalogChanged: vi.fn(() => vi.fn())
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    await catalog.hydrate()
+
+    expect(catalog.files).toEqual([])
+    expect(catalog.error).toBe('catalog failed')
+  })
+})

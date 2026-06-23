@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
+import type { FileCatalogResponse, FileTreeResponse } from '../shared/files'
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFocusTabInput,
@@ -30,11 +31,6 @@ export interface IndexerStatus {
   chunksDone: number
   lastIndexedAt: string | null
   error?: string
-}
-
-export interface FileTreeResponse {
-  notesRoot: string
-  paths: string[]
 }
 
 export interface SearchSource {
@@ -98,14 +94,17 @@ export interface RyteApi {
   }
   files: {
     listTree(): Promise<FileTreeResponse>
+    listCatalog(): Promise<FileCatalogResponse>
     read(absPath: string): Promise<string>
     readSource(input: WorkspaceOpenFileInput): Promise<string>
+    readSourceTitle(input: WorkspaceOpenFileInput): Promise<string | null>
     watch(absPath: string): Promise<void>
     watchSource(input: WorkspaceOpenFileInput): Promise<void>
     unwatch(): Promise<void>
     onChange(cb: (path: string) => void): () => void
     onSourceChange(cb: (sourcePath: string) => void): () => void
     onTreeChanged(cb: () => void): () => void
+    onCatalogChanged(cb: () => void): () => void
   }
   search: {
     query(q: string, options?: SearchQueryOptions): Promise<string | null>
@@ -155,8 +154,10 @@ const api: RyteApi = {
   },
   files: {
     listTree: () => ipcRenderer.invoke('files:list-tree'),
+    listCatalog: () => ipcRenderer.invoke('files:list-catalog'),
     read: (absPath) => ipcRenderer.invoke('files:read', absPath),
     readSource: (input) => ipcRenderer.invoke('files:read-source', input),
+    readSourceTitle: (input) => ipcRenderer.invoke('files:read-source-title', input),
     watch: (absPath) => ipcRenderer.invoke('files:watch', absPath),
     watchSource: (input) => ipcRenderer.invoke('files:watch-source', input),
     unwatch: () => ipcRenderer.invoke('files:unwatch'),
@@ -174,6 +175,11 @@ const api: RyteApi = {
       const listener = (): void => cb()
       ipcRenderer.on('files:tree-changed', listener)
       return () => ipcRenderer.removeListener('files:tree-changed', listener)
+    },
+    onCatalogChanged: (cb) => {
+      const listener = (): void => cb()
+      ipcRenderer.on('files:catalog-changed', listener)
+      return () => ipcRenderer.removeListener('files:catalog-changed', listener)
     }
   },
   search: {

@@ -29,9 +29,11 @@ import { validateProviderKey } from './settings/key-validation'
 import {
   readFileSafe,
   readSourceFileSafe,
+  readSourceTitleSafe,
   resolveAndAssertUnderRoot,
   resolveSourcePathUnderRoot
 } from './viewer/file-reader'
+import { listFileCatalog } from './viewer/file-catalog'
 import { sourcePathForViewerChange } from './viewer/source-change-path'
 import { viewerWatcher } from './viewer/viewer-watcher'
 import { workspaceStore } from './workspace/workspace-store'
@@ -182,6 +184,11 @@ export function registerIpc(): void {
     return { notesRoot, paths }
   })
 
+  ipcMain.handle('files:list-catalog', async () => {
+    const notesRoot = settingsStore.load().notesRoot
+    return listFileCatalog(notesRoot)
+  })
+
   ipcMain.handle('files:read', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
@@ -191,6 +198,12 @@ export function registerIpc(): void {
     const notesRoot = settingsStore.load().notesRoot
     const { sourcePath } = assertValidSourceFileInput(input)
     return readSourceFileSafe(sourcePath, notesRoot)
+  })
+
+  ipcMain.handle('files:read-source-title', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { sourcePath } = assertValidSourceFileInput(input)
+    return readSourceTitleSafe(sourcePath, notesRoot)
   })
 
   ipcMain.handle('files:watch', async (_event, absPath: unknown) => {
@@ -231,6 +244,12 @@ export function registerIpc(): void {
   watcher.onTreeChanged(() => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('files:tree-changed')
+    }
+  })
+
+  watcher.onCatalogChanged(() => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('files:catalog-changed')
     }
   })
 
