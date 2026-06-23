@@ -1,21 +1,18 @@
+import type { FileCatalogEntry } from '../../../shared/files'
 import type { WorkspaceFileTab, WorkspaceRecentFile } from '../../../shared/workspace'
 
-export type HomeSmartGroupId = 'open' | 'recent'
+export type HomeSmartGroupId = 'briefing' | 'plans' | 'recent'
 
-export type HomeSmartGroupItemAction =
-  | {
-      kind: 'open-explicit-file'
-      sourcePath: string
-    }
-  | {
-      kind: 'focus-tab'
-      tabId: string
-    }
+export interface HomeSmartGroupItemAction {
+  kind: 'open-explicit-file'
+  sourcePath: string
+}
 
 export interface HomeSmartGroupItem {
   id: string
   sourcePath: string
   title: string
+  titleFormat?: 'briefing-date'
   active: boolean
   ariaLabel: string
   action: HomeSmartGroupItemAction
@@ -34,6 +31,7 @@ export interface HomeSidebarModel {
 }
 
 interface HomeSidebarModelInput {
+  catalogFiles: FileCatalogEntry[]
   recents: WorkspaceRecentFile[]
   tabs: WorkspaceFileTab[]
   activeTabId: string | null
@@ -41,7 +39,8 @@ interface HomeSidebarModelInput {
 
 interface HomeSidebarModelContext extends HomeSidebarModelInput {
   activeSourcePath: string | null
-  openSourcePaths: Set<string>
+  catalogFilesBySourcePath: Map<string, FileCatalogEntry>
+  recentOpenedAtMsBySourcePath: Map<string, number>
 }
 
 interface HomeSmartGroupDefinition {
@@ -50,6 +49,12 @@ interface HomeSmartGroupDefinition {
   emptyLabel: string
   buildItems: (context: HomeSidebarModelContext) => HomeSmartGroupItem[]
 }
+
+const MORNING_BRIEFING_TITLE_RE = /^morning\s+briefing\s*(?:--|[\u2013\u2014-])\s*/i
+const BRIEFING_FILE_DATE_RE = /^briefing[-_ ]+(\d{4}-\d{2}-\d{2})$/i
+const SEARCH_TOKEN_RE = /[a-z0-9]+/g
+const PLANS_TOKENS = new Set(['plan', 'plans', 'planning', 'shaping', 'breadboard'])
+const BRIEFING_TOKENS = new Set(['briefing', 'briefings'])
 
 function titleFromSourcePath(sourcePath: string): string {
   const parts = sourcePath.split(/[\\/]+/).filter(Boolean)
@@ -60,42 +65,150 @@ function displayTitle(title: string, sourcePath: string): string {
   return title.trim() || titleFromSourcePath(sourcePath)
 }
 
+function briefingDateTitle(title: string): string {
+  const trimmed = title.trim()
+  const withoutPrefix = trimmed.replace(MORNING_BRIEFING_TITLE_RE, '').trim()
+  if (withoutPrefix && withoutPrefix !== trimmed) return withoutPrefix
+
+  return BRIEFING_FILE_DATE_RE.exec(trimmed)?.[1] ?? trimmed
+}
+
+export function homeSmartGroupItemTitle(item: HomeSmartGroupItem, documentTitle?: string): string {
+  const title = displayTitle(documentTitle ?? item.title, item.sourcePath)
+  return item.titleFormat === 'briefing-date' ? briefingDateTitle(title) : title
+}
+
+function recentOpenedAtMs(recent: WorkspaceRecentFile): number | null {
+  const ms = Date.parse(recent.openedAt)
+  return Number.isFinite(ms) ? ms : null
+}
+
+function sourceDateMs(file: FileCatalogEntry): number | null {
+  if (!file.pathDate) return null
+
+  const ms = Date.parse(`${file.pathDate}T00:00:00.000Z`)
+  return Number.isFinite(ms) ? ms : null
+}
+
+function searchableTokens(file: FileCatalogEntry): Set<string> {
+  return new Set(file.searchableText.match(SEARCH_TOKEN_RE) ?? [])
+}
+
+function hasAnyToken(file: FileCatalogEntry, allowedTokens: Set<string>): boolean {
+  for (const token of searchableTokens(file)) {
+    if (allowedTokens.has(token)) return true
+  }
+
+  return false
+}
+
+function matchesPlansRule(file: FileCatalogEntry): boolean {
+  return hasAnyToken(file, PLANS_TOKENS)
+}
+
+function matchesBriefingRule(file: FileCatalogEntry): boolean {
+  return hasAnyToken(file, BRIEFING_TOKENS)
+}
+
+function rankBriefingItems(left: FileCatalogEntry, right: FileCatalogEntry): number {
+  const leftDateMs = sourceDateMs(left)
+  const rightDateMs = sourceDateMs(right)
+
+  if (leftDateMs !== null || rightDateMs !== null) {
+    if (leftDateMs === null) return 1
+    if (rightDateMs === null) return -1
+    if (leftDateMs !== rightDateMs) return rightDateMs - leftDateMs
+  }
+
+  const leftCreatedAtMs = left.createdAtMs ?? left.modifiedAtMs
+  const rightCreatedAtMs = right.createdAtMs ?? right.modifiedAtMs
+
+  if (leftCreatedAtMs !== rightCreatedAtMs) return rightCreatedAtMs - leftCreatedAtMs
+  return left.sourcePath.localeCompare(right.sourcePath)
+}
+
+function rankPlansItems(
+  left: FileCatalogEntry,
+  right: FileCatalogEntry,
+  recentOpenedAtMsBySourcePath: Map<string, number>
+): number {
+  const leftOpenedAtMs = recentOpenedAtMsBySourcePath.get(left.sourcePath) ?? null
+  const rightOpenedAtMs = recentOpenedAtMsBySourcePath.get(right.sourcePath) ?? null
+
+  if (leftOpenedAtMs !== null || rightOpenedAtMs !== null) {
+    if (leftOpenedAtMs === null) return 1
+    if (rightOpenedAtMs === null) return -1
+    if (leftOpenedAtMs !== rightOpenedAtMs) return rightOpenedAtMs - leftOpenedAtMs
+  }
+
+  if (left.modifiedAtMs !== right.modifiedAtMs) return right.modifiedAtMs - left.modifiedAtMs
+  return left.sourcePath.localeCompare(right.sourcePath)
+}
+
 const HOME_SMART_GROUP_DEFINITIONS: HomeSmartGroupDefinition[] = [
   {
-    id: 'open',
-    title: 'Open',
-    emptyLabel: 'No open files',
+    id: 'briefing',
+    title: 'Briefing',
+    emptyLabel: 'No briefings',
     buildItems: (context) =>
-      context.tabs.map((tab) => ({
-        id: `open:${tab.id}`,
-        sourcePath: tab.sourcePath,
-        title: displayTitle(tab.title, tab.sourcePath),
-        active: tab.id === context.activeTabId,
-        ariaLabel: `Focus ${tab.sourcePath}`,
-        action: {
-          kind: 'focus-tab',
-          tabId: tab.id
-        }
-      }))
+      context.catalogFiles
+        .filter(matchesBriefingRule)
+        .sort(rankBriefingItems)
+        .slice(0, 10)
+        .map((file) => ({
+          id: `briefing:${file.sourcePath}`,
+          sourcePath: file.sourcePath,
+          title: displayTitle(file.title, file.sourcePath),
+          titleFormat: 'briefing-date',
+          active: file.sourcePath === context.activeSourcePath,
+          ariaLabel: `Open ${file.sourcePath}`,
+          action: {
+            kind: 'open-explicit-file',
+            sourcePath: file.sourcePath
+          }
+        }))
+  },
+  {
+    id: 'plans',
+    title: 'Plans',
+    emptyLabel: 'No plans',
+    buildItems: (context) =>
+      context.catalogFiles
+        .filter(matchesPlansRule)
+        .sort((left, right) => rankPlansItems(left, right, context.recentOpenedAtMsBySourcePath))
+        .slice(0, 10)
+        .map((file) => ({
+          id: `plans:${file.sourcePath}`,
+          sourcePath: file.sourcePath,
+          title: displayTitle(file.title, file.sourcePath),
+          active: file.sourcePath === context.activeSourcePath,
+          ariaLabel: `Open ${file.sourcePath}`,
+          action: {
+            kind: 'open-explicit-file',
+            sourcePath: file.sourcePath
+          }
+        }))
   },
   {
     id: 'recent',
     title: 'Recent',
     emptyLabel: 'No recent files',
     buildItems: (context) =>
-      context.recents
-        .filter((recent) => !context.openSourcePaths.has(recent.sourcePath))
-        .map((recent) => ({
+      context.recents.map((recent) => {
+        const catalogFile = context.catalogFilesBySourcePath.get(recent.sourcePath)
+
+        return {
           id: `recent:${recent.sourcePath}`,
           sourcePath: recent.sourcePath,
-          title: displayTitle(recent.title, recent.sourcePath),
+          title: displayTitle(catalogFile?.title ?? recent.title, recent.sourcePath),
           active: recent.sourcePath === context.activeSourcePath,
           ariaLabel: `Open ${recent.sourcePath}`,
           action: {
             kind: 'open-explicit-file',
             sourcePath: recent.sourcePath
           }
-        }))
+        }
+      })
   }
 ]
 
@@ -105,7 +218,13 @@ export function buildHomeSidebarModel(input: HomeSidebarModelInput): HomeSidebar
   const context: HomeSidebarModelContext = {
     ...input,
     activeSourcePath,
-    openSourcePaths: new Set(input.tabs.map((tab) => tab.sourcePath))
+    catalogFilesBySourcePath: new Map(input.catalogFiles.map((file) => [file.sourcePath, file])),
+    recentOpenedAtMsBySourcePath: new Map(
+      input.recents.flatMap((recent) => {
+        const openedAtMs = recentOpenedAtMs(recent)
+        return openedAtMs === null ? [] : [[recent.sourcePath, openedAtMs]]
+      })
+    )
   }
 
   return {

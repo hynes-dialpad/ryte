@@ -1,0 +1,79 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+import type { FileCatalogEntry } from '../../../shared/files'
+
+const CATALOG_REFRESH_DEBOUNCE_MS = 100
+
+export const useFileCatalogStore = defineStore('file-catalog', () => {
+  const files = ref<FileCatalogEntry[]>([])
+  const notesRoot = ref<string | null>(null)
+  const loading = ref(false)
+  const error = ref<string | null>(null)
+  const revision = ref(0)
+
+  let unsubscribeCatalogChanged: (() => void) | null = null
+  let refreshRequestId = 0
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  async function refreshCatalog(): Promise<void> {
+    const requestId = ++refreshRequestId
+    loading.value = true
+    error.value = null
+
+    try {
+      const response = await window.ryte.files.listCatalog()
+      if (requestId !== refreshRequestId) return
+
+      notesRoot.value = response.notesRoot
+      files.value = response.files
+      revision.value += 1
+    } catch (e) {
+      if (requestId !== refreshRequestId) return
+
+      error.value = e instanceof Error ? e.message : String(e)
+      files.value = []
+      revision.value += 1
+    } finally {
+      if (requestId === refreshRequestId) loading.value = false
+    }
+  }
+
+  function scheduleRefreshCatalog(): void {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null
+      void refreshCatalog()
+    }, CATALOG_REFRESH_DEBOUNCE_MS)
+  }
+
+  async function hydrate(): Promise<void> {
+    if (!unsubscribeCatalogChanged) {
+      unsubscribeCatalogChanged = window.ryte.files.onCatalogChanged(() => {
+        scheduleRefreshCatalog()
+      })
+    }
+
+    await refreshCatalog()
+  }
+
+  function unbind(): void {
+    unsubscribeCatalogChanged?.()
+    unsubscribeCatalogChanged = null
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+  }
+
+  return {
+    files,
+    notesRoot,
+    loading,
+    error,
+    revision,
+    hydrate,
+    refreshCatalog,
+    unbind
+  }
+})

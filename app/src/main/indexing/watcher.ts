@@ -5,6 +5,7 @@ import chokidar, { type FSWatcher } from 'chokidar'
 import { indexerService } from './indexer-service'
 
 const TREE_CHANGED_EVENT = 'tree-changed'
+const CATALOG_CHANGED_EVENT = 'catalog-changed'
 
 function isMarkdownFile(path: string): boolean {
   return path.toLowerCase().endsWith('.md')
@@ -24,15 +25,18 @@ export class Watcher {
     this.fsw.on('add', (path) => {
       if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
+      this.emitCatalogChanged()
       void indexerService.notifyFileChanged(path)
     })
     this.fsw.on('change', (path) => {
       if (!isMarkdownFile(path)) return
+      this.emitCatalogChanged()
       void indexerService.notifyFileChanged(path)
     })
     this.fsw.on('unlink', (path) => {
       if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
+      this.emitCatalogChanged()
       void indexerService.notifyFileRemoved(path)
     })
     this.fsw.on('addDir', () => {
@@ -53,8 +57,17 @@ export class Watcher {
     return () => this.events.off(TREE_CHANGED_EVENT, cb)
   }
 
+  onCatalogChanged(cb: () => void): () => void {
+    this.events.on(CATALOG_CHANGED_EVENT, cb)
+    return () => this.events.off(CATALOG_CHANGED_EVENT, cb)
+  }
+
   private emitTreeChanged(): void {
     this.events.emit(TREE_CHANGED_EVENT)
+  }
+
+  private emitCatalogChanged(): void {
+    this.events.emit(CATALOG_CHANGED_EVENT)
   }
 }
 

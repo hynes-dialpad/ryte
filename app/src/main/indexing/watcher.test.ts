@@ -41,7 +41,9 @@ describe('Watcher', () => {
   it('notifies the indexer and file tree subscribers when markdown files are added', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()
+    const onCatalogChanged = vi.fn()
     watcher.onTreeChanged(onTreeChanged)
+    watcher.onCatalogChanged(onCatalogChanged)
     watcher.start('/notes')
 
     expect(mocks.watch).toHaveBeenCalledWith(
@@ -52,13 +54,16 @@ describe('Watcher', () => {
     handlers.get('add')?.('/notes/new.md')
 
     expect(onTreeChanged).toHaveBeenCalledOnce()
+    expect(onCatalogChanged).toHaveBeenCalledOnce()
     expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/new.md')
   })
 
   it('ignores non-markdown file events from the watched notes root', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()
+    const onCatalogChanged = vi.fn()
     watcher.onTreeChanged(onTreeChanged)
+    watcher.onCatalogChanged(onCatalogChanged)
     watcher.start('/notes')
 
     handlers.get('add')?.('/notes/ignored.txt')
@@ -66,6 +71,7 @@ describe('Watcher', () => {
     handlers.get('unlink')?.('/notes/ignored.txt')
 
     expect(onTreeChanged).not.toHaveBeenCalled()
+    expect(onCatalogChanged).not.toHaveBeenCalled()
     expect(mocks.notifyFileChanged).not.toHaveBeenCalled()
     expect(mocks.notifyFileRemoved).not.toHaveBeenCalled()
   })
@@ -73,36 +79,45 @@ describe('Watcher', () => {
   it('notifies the indexer and file tree subscribers when markdown files are removed', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()
+    const onCatalogChanged = vi.fn()
     watcher.onTreeChanged(onTreeChanged)
+    watcher.onCatalogChanged(onCatalogChanged)
     watcher.start('/notes')
 
     handlers.get('unlink')?.('/notes/old.md')
 
     expect(onTreeChanged).toHaveBeenCalledOnce()
+    expect(onCatalogChanged).toHaveBeenCalledOnce()
     expect(mocks.notifyFileRemoved).toHaveBeenCalledWith('/notes/old.md')
   })
 
-  it('notifies file tree subscribers when folders are added or removed', () => {
+  it('notifies file tree but not catalog subscribers when folders are added or removed', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()
+    const onCatalogChanged = vi.fn()
     watcher.onTreeChanged(onTreeChanged)
+    watcher.onCatalogChanged(onCatalogChanged)
     watcher.start('/notes')
 
     handlers.get('addDir')?.('/notes/new-folder')
     handlers.get('unlinkDir')?.('/notes/old-folder')
 
     expect(onTreeChanged).toHaveBeenCalledTimes(2)
+    expect(onCatalogChanged).not.toHaveBeenCalled()
   })
 
-  it('does not emit file tree changes for content-only changes', () => {
+  it('emits catalog but not file tree changes for content-only changes', () => {
     const watcher = new Watcher()
     const onTreeChanged = vi.fn()
+    const onCatalogChanged = vi.fn()
     watcher.onTreeChanged(onTreeChanged)
+    watcher.onCatalogChanged(onCatalogChanged)
     watcher.start('/notes')
 
     handlers.get('change')?.('/notes/existing.md')
 
     expect(onTreeChanged).not.toHaveBeenCalled()
+    expect(onCatalogChanged).toHaveBeenCalledOnce()
     expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/existing.md')
   })
 })
