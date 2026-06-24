@@ -211,6 +211,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await openFile(input)
   }
 
+  async function openNativeFile(): Promise<void> {
+    try {
+      const picked = await window.ryte.dialog.openFile()
+      if (picked) await openExplicitFile(picked)
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    }
+  }
+
   async function focusTab(input: WorkspaceFocusTabInput): Promise<void> {
     await runOptimisticWorkspaceOperation(
       (base) => ({
@@ -326,6 +336,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     closeTabToRecent,
     openOrFocusFile,
     openExplicitFile,
+    openNativeFile,
     updateTabViewMode,
     recordRecent,
     setOutlineCollapsed,

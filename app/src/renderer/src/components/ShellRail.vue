@@ -36,6 +36,7 @@ function sidebarToggleLabel(): string {
         class="rail-item"
         aria-label="Search"
         title="Search"
+        aria-keyshortcuts="Meta+K"
         @click="emit('openSearch')"
       >
         <IconSearch />
@@ -59,7 +60,7 @@ function sidebarToggleLabel(): string {
         :aria-label="sidebarToggleLabel()"
         :title="sidebarToggleLabel()"
         :aria-pressed="sidebarCollapsed"
-        aria-keyshortcuts="Control+T"
+        aria-keyshortcuts="Meta+B Control+T"
         @click="emit('toggleSidebar')"
       >
         <IconSidebarOpen v-if="sidebarCollapsed" />
@@ -74,7 +75,7 @@ function sidebarToggleLabel(): string {
         aria-label="Home"
         title="Home"
         :aria-current="activeSidebar === 'home' ? 'page' : undefined"
-        aria-keyshortcuts="Control+1"
+        aria-keyshortcuts="Meta+1 Control+1"
         @click="emit('selectSidebar', 'home')"
       >
         <IconHome />
@@ -88,7 +89,7 @@ function sidebarToggleLabel(): string {
         aria-label="Library"
         title="Library"
         :aria-current="activeSidebar === 'files' ? 'page' : undefined"
-        aria-keyshortcuts="Control+2"
+        aria-keyshortcuts="Meta+2 Control+2"
         @click="emit('selectSidebar', 'files')"
       >
         <IconLibrary />
@@ -101,7 +102,7 @@ function sidebarToggleLabel(): string {
       class="rail-item rail-bottom"
       aria-label="Settings"
       title="Settings"
-      aria-keyshortcuts="Control+0"
+      aria-keyshortcuts="Meta+, Control+0"
       @click="emit('openSettings')"
     >
       <IconSettings />

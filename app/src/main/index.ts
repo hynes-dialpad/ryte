@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
 import icon from '../../resources/icon.png?asset'
 
+import { installAppMenu } from './app-menu'
 import { indexerService } from './indexing/indexer-service'
 import { watcher } from './indexing/watcher'
 import { registerIpc } from './ipc'
@@ -120,6 +121,7 @@ app.whenReady().then(() => {
 
   const ready = indexerService.init()
   registerIpc()
+  installAppMenu()
   if (ready) {
     watcher.start(settingsStore.load().notesRoot)
   }

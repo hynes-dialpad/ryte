@@ -267,9 +267,7 @@ onMounted(() => {
     </div>
 
     <p v-if="!viewer.notesRoot" class="empty-sidebar">Loading…</p>
-    <p v-else-if="visibleRows.length === 0" class="empty-sidebar">
-      No markdown files in <code>{{ viewer.notesRoot }}</code>
-    </p>
+    <p v-else-if="visibleRows.length === 0" class="empty-sidebar">No markdown files found.</p>
     <div v-else class="tree-frame">
       <div class="tree-connectors" aria-hidden="true">
         <span
