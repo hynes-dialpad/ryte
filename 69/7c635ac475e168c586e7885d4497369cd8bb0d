@@ -1,0 +1,73 @@
+app/src/main/app-menu.ts
+  s_398952194ab3e7::t_82b06943bdeab6 1-2,4-20,27-159,161-173
+  s_398952194ab3e7::t_a839a3dadf0d46 3,21-26,160
+app/src/renderer/src/components/FileOpenOverlay.vue
+  s_398952194ab3e7::t_c86178c01edf1b 30-32,173
+app/src/renderer/src/stores/workspace.test.ts
+  s_398952194ab3e7::t_2b14d8e6396b7c 28-31,34-35,268-279,281,286-291,294-295,342-357
+  s_398952194ab3e7::t_aaacf270cde9ee 267,280,292-293,296-341
+  s_398952194ab3e7::t_2a2dd79c1fd57e 282-285
+app/src/renderer/src/components/SidebarSearchButton.vue
+  s_398952194ab3e7::t_682b508337ed17 10-15,57-58
+app/src/renderer/src/components/HomeSidebar.vue
+  s_398952194ab3e7::t_941ecee0c74689 32-34,97-100,174-187,251,315,322
+  s_398952194ab3e7::t_7ba8137b8d1858 101-147
+app/src/renderer/src/app-shortcuts.ts
+  s_398952194ab3e7::t_fb1a70459015a5 35-39,76-77
+  s_398952194ab3e7::t_3aea240df49076 16,61,71
+  s_398952194ab3e7::t_df5cfa2b38a630 1-15,17-19,22-26,31-34,40,49-60,62-65,69-70,72,78-81
+  s_398952194ab3e7::t_611922a6fea34b 20-21,27-30,66-68,73-75
+  s_398952194ab3e7::t_a0ed137fe4a1c5 41-42,48
+  s_398952194ab3e7::t_8a008805b898a6 43-47
+app/src/renderer/src/components/Sidebar.vue
+  s_398952194ab3e7::t_4d85875f890c43 270
+app/src/main/ipc.ts
+  s_398952194ab3e7::t_2db9edf92d1d94 7,103-105,121-123,131-133
+  s_398952194ab3e7::t_c663d7ec0ad641 2-3,50-58,182-198
+  s_398952194ab3e7::t_8487dd252383ae 199
+  s_398952194ab3e7::t_2a2dd79c1fd57e 46-49
+app/src/renderer/src/components/ShellRail.vue
+  s_398952194ab3e7::t_4f856a307c2547 39
+  s_398952194ab3e7::t_c664f444ab71b1 105
+  s_398952194ab3e7::t_8bd2ed0cfcb31d 63,78,92
+app/src/renderer/src/App.vue
+  s_398952194ab3e7::t_23c3e5f632b866 118-120
+  s_398952194ab3e7::t_87fe64bfee72ff 22-26,298,309-311,314-316,319-321,324-325,331,334,373-381,385-389,391-404,406
+  s_398952194ab3e7::t_a839a3dadf0d46 152
+  s_398952194ab3e7::t_23c187b9ad2323 19,44,54,63,127-151,153-160,299-302,304-307,337-338,340-343,347-348,352-355,357-360,362-363,367-368
+  s_398952194ab3e7::t_a09faf3245fdeb 117,121-122,326-330,405
+app/src/renderer/src/app-shortcuts.test.ts
+  s_398952194ab3e7::t_9f65a56737a34f 1-6,18-23,27-28,35-51,55-67,69-78,80-82
+  s_398952194ab3e7::t_b7eaaebbc80bfb 24-26,52-54
+  s_398952194ab3e7::t_a21039c8063adc 68
+  s_398952194ab3e7::t_ea5783a14b902e 7-17,29-34
+  s_398952194ab3e7::t_10cadc7abd0a82 79
+app/src/preload/index.ts
+  s_398952194ab3e7::t_6b2b7a35b916ae 90
+  s_398952194ab3e7::t_a839a3dadf0d46 22
+  s_398952194ab3e7::t_5a2440693af891 69,126-131
+  s_398952194ab3e7::t_3bc1bed864fa0d 151-152
+app/src/shared/app-menu.ts
+  s_398952194ab3e7::t_93a444c4e78d9f 1-14
+app/src/main/index.ts
+  s_398952194ab3e7::t_b5408bb75af6d5 7,124
+app/src/renderer/src/stores/workspace.ts
+  s_398952194ab3e7::t_ad1b3b6bf584b0 214-215,218-223,339
+  s_398952194ab3e7::t_c9f659a8936642 216-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "697c635ac475e168c586e7885d4497369cd8bb0d",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
