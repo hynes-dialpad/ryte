@@ -16,8 +16,14 @@ import { useSearchStore } from './stores/search'
 import { useSettingsStore } from './stores/settings'
 import { useViewerStore } from './stores/viewer'
 import { useWorkspaceStore } from './stores/workspace'
+import type { AppMenuCommand } from '../../shared/app-menu'
 import type { WorkspaceSidebarMode } from '../../shared/workspace'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../../shared/workspace'
+import {
+  resolveAppShortcutAction,
+  shouldScheduleControlShortcutBadges,
+  type AppShortcutAction
+} from './app-shortcuts'
 
 const settings = useSettingsStore()
 const indexStatus = useIndexStatusStore()
@@ -35,6 +41,7 @@ const hasActivatedHomeSidebar = ref(false)
 const showControlShortcutBadges = ref(false)
 
 let _unbindSearch: (() => void) | undefined
+let _unbindMenuCommand: (() => void) | undefined
 let _stopSidebarResize: (() => void) | undefined
 let controlShortcutBadgeTimer: number | null = null
 
@@ -44,6 +51,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onGlobalAppKeydown, true)
   window.addEventListener('keyup', onGlobalAppKeyup, true)
   window.addEventListener('blur', hideControlShortcutBadges)
+  _unbindMenuCommand = window.ryte.app.onMenuCommand(handleMenuCommand)
   await Promise.all([settings.hydrate(), indexStatus.bind(), workspace.hydrate()])
   applySearchHistorySettings()
 
@@ -52,6 +60,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   _unbindSearch?.()
+  _unbindMenuCommand?.()
   _stopSidebarResize?.()
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onGlobalAppKeydown, true)
@@ -105,8 +114,48 @@ function openFileOpen(): void {
   showFileOpen.value = true
 }
 
+function openNativeFile(): void {
+  void workspace.openNativeFile().catch(() => {
+    // The workspace store owns the user-facing error state for failed opens.
+  })
+}
+
 function openSettings(): void {
   showSettings.value = true
+}
+
+function closeActiveTab(): void {
+  const tab = workspace.activeTab
+  if (!tab) return
+
+  void workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath }).catch(() => {
+    // The workspace store owns the user-facing error state for failed closes.
+  })
+}
+
+function closeAllTabs(): void {
+  const tabs = [...workspace.tabs]
+  void (async () => {
+    for (const tab of tabs) {
+      await workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath })
+    }
+  })().catch(() => {
+    // The workspace store owns the user-facing error state for failed closes.
+  })
+}
+
+function focusAdjacentTab(delta: 1 | -1): void {
+  const tabs = workspace.tabs
+  if (tabs.length === 0) return
+
+  const activeIndex = tabs.findIndex((tab) => tab.id === workspace.activeTabId)
+  const nextIndex = activeIndex === -1 ? 0 : (activeIndex + delta + tabs.length) % tabs.length
+  const nextTab = tabs[nextIndex]
+  if (!nextTab) return
+
+  void workspace.focusTab({ tabId: nextTab.id }).catch(() => {
+    // The workspace store owns the user-facing error state for failed tab focus.
+  })
 }
 
 function closeSettings(): void {
@@ -226,10 +275,6 @@ function hasModalOpen(): boolean {
   )
 }
 
-function isPrimaryAppCommand(event: KeyboardEvent): boolean {
-  return event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey
-}
-
 function clearControlShortcutBadgeTimer(): void {
   if (controlShortcutBadgeTimer === null) return
   window.clearTimeout(controlShortcutBadgeTimer)
@@ -250,82 +295,115 @@ function hideControlShortcutBadges(): void {
   showControlShortcutBadges.value = false
 }
 
-function isControlAppCommand(event: KeyboardEvent): boolean {
-  return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+function runAppShortcutAction(action: AppShortcutAction): void {
+  if (action.type === 'focus-next-tab') {
+    focusAdjacentTab(1)
+    return
+  }
+
+  if (action.type === 'focus-previous-tab') {
+    focusAdjacentTab(-1)
+    return
+  }
+
+  if (action.type === 'select-sidebar') {
+    selectSidebar(action.sidebar)
+    return
+  }
+
+  if (action.type === 'toggle-sidebar') {
+    toggleSidebar()
+    return
+  }
+
+  if (action.type === 'open-search') {
+    openSearch()
+    return
+  }
+
+  if (action.type === 'open-file') {
+    openFileOpen()
+    return
+  }
+
+  if (action.type === 'open-native-file') {
+    openNativeFile()
+    return
+  }
+
+  openSettings()
 }
 
-function handleControlAppCommand(event: KeyboardEvent): boolean {
-  if (!isControlAppCommand(event)) return false
+function handleMenuCommand(command: AppMenuCommand): void {
+  if (hasModalOpen()) return
 
-  const key = event.key.toLowerCase()
-  if (key === '1') {
-    event.preventDefault()
-    event.stopPropagation()
-    selectSidebar('home')
-    return true
+  if (command.type === 'open-source-path') {
+    void workspace.openExplicitFile({ sourcePath: command.sourcePath }).catch(() => {
+      // The workspace store owns the user-facing error state for failed opens.
+    })
+    return
   }
 
-  if (key === '2') {
-    event.preventDefault()
-    event.stopPropagation()
-    selectSidebar('files')
-    return true
+  if (command.type === 'close-active-tab') {
+    closeActiveTab()
+    return
   }
 
-  if (key === '0') {
-    event.preventDefault()
-    event.stopPropagation()
-    openSettings()
-    return true
+  if (command.type === 'close-all-tabs') {
+    closeAllTabs()
+    return
   }
 
-  if (key === 't') {
-    event.preventDefault()
-    event.stopPropagation()
-    toggleSidebar()
-    return true
+  if (command.type === 'focus-next-tab') {
+    focusAdjacentTab(1)
+    return
   }
 
-  return false
+  if (command.type === 'focus-previous-tab') {
+    focusAdjacentTab(-1)
+    return
+  }
+
+  runAppShortcutAction(command)
 }
 
 function onGlobalAppKeydown(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
 
-  if (event.key === 'Control') {
-    if (!hasModalOpen()) scheduleControlShortcutBadges()
+  const modalOpen = hasModalOpen()
+  if (
+    shouldScheduleControlShortcutBadges({
+      key: event.key,
+      defaultPrevented: event.defaultPrevented,
+      modalOpen
+    })
+  ) {
+    scheduleControlShortcutBadges()
     return
   }
 
-  if (hasModalOpen()) {
+  if (event.key === 'Control') return
+
+  if (modalOpen) {
     hideControlShortcutBadges()
     return
   }
 
-  if (handleControlAppCommand(event)) return
+  const action = resolveAppShortcutAction({
+    key: event.key,
+    metaKey: event.metaKey,
+    ctrlKey: event.ctrlKey,
+    altKey: event.altKey,
+    shiftKey: event.shiftKey,
+    defaultPrevented: event.defaultPrevented,
+    modalOpen
+  })
+  if (!action) return
 
-  if (!isPrimaryAppCommand(event)) return
-
-  const key = event.key.toLowerCase()
-  if (key === 'k') {
-    event.preventDefault()
-    event.stopPropagation()
-    openSearch()
-    return
-  }
-
-  if (key === 'p') {
-    event.preventDefault()
-    event.stopPropagation()
-    openFileOpen()
-    return
-  }
-
-  if (event.key === ',') {
-    event.preventDefault()
-    event.stopPropagation()
-    openSettings()
-  }
+  event.preventDefault()
+  event.stopPropagation()
+  hideControlShortcutBadges()
+  runAppShortcutAction(action)
 }
 
 function onGlobalAppKeyup(event: KeyboardEvent): void {

@@ -19,6 +19,7 @@ import type {
   SearchRetrievalMode as MainSearchRetrievalMode
 } from '../main/search/search-service'
 import type { ProviderId } from '../shared/provider-registry'
+import { APP_MENU_COMMAND_CHANNEL, type AppMenuCommand } from '../shared/app-menu'
 
 export type SearchRetrievalMode = MainSearchRetrievalMode
 export type SearchAnswerMode = MainSearchAnswerMode
@@ -65,6 +66,7 @@ export interface SearchQueryOptions {
 export interface RyteApi {
   app: {
     getVersion(): Promise<string>
+    onMenuCommand(cb: (command: AppMenuCommand) => void): () => void
   }
   settings: {
     getState(): Promise<PublicSettingsState>
@@ -85,6 +87,7 @@ export interface RyteApi {
   }
   dialog: {
     openFolder(): Promise<string | null>
+    openFile(): Promise<WorkspaceOpenFileInput | null>
   }
   indexer: {
     triggerReindex(): Promise<void>
@@ -120,7 +123,12 @@ export interface RyteApi {
 
 const api: RyteApi = {
   app: {
-    getVersion: () => ipcRenderer.invoke('app:get-version')
+    getVersion: () => ipcRenderer.invoke('app:get-version'),
+    onMenuCommand: (cb) => {
+      const listener = (_: unknown, command: AppMenuCommand): void => cb(command)
+      ipcRenderer.on(APP_MENU_COMMAND_CHANNEL, listener)
+      return () => ipcRenderer.removeListener(APP_MENU_COMMAND_CHANNEL, listener)
+    }
   },
   settings: {
     getState: () => ipcRenderer.invoke('settings:get-state'),
@@ -140,7 +148,8 @@ const api: RyteApi = {
     pruneMissingFileRefs: () => ipcRenderer.invoke('workspace:prune-missing-file-refs')
   },
   dialog: {
-    openFolder: () => ipcRenderer.invoke('dialog:open-folder')
+    openFolder: () => ipcRenderer.invoke('dialog:open-folder'),
+    openFile: () => ipcRenderer.invoke('dialog:open-file')
   },
   indexer: {
     triggerReindex: () => ipcRenderer.invoke('indexer:trigger-reindex'),

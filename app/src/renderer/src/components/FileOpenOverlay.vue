@@ -27,6 +27,9 @@ const selectedResult = computed(() => results.value[selectedIndex.value] ?? null
 const activeOptionId = computed(() =>
   selectedResult.value ? resultOptionId(selectedIndex.value) : undefined
 )
+const emptyResultsLabel = computed(() =>
+  catalog.files.length === 0 ? 'No files indexed' : `No matches for "${query.value.trim()}"`
+)
 
 watch(results, (nextResults) => {
   if (selectedIndex.value >= nextResults.length) {
@@ -167,7 +170,7 @@ function onKeydown(event: KeyboardEvent): void {
       <div v-if="openError" class="open-state error open-error" role="alert">{{ openError }}</div>
       <div v-if="catalog.loading && results.length === 0" class="open-state">Loading files...</div>
       <div v-else-if="catalog.error" class="open-state error">{{ catalog.error }}</div>
-      <div v-else-if="results.length === 0" class="open-state">No files found</div>
+      <div v-else-if="results.length === 0" class="open-state">{{ emptyResultsLabel }}</div>
 
       <ul
         v-else

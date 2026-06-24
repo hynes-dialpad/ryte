@@ -25,10 +25,14 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
   }
 }
 
-function installWorkspaceApi(workspace: Partial<Window['ryte']['workspace']>): void {
+function installWorkspaceApi(
+  workspace: Partial<Window['ryte']['workspace']>,
+  dialog: Partial<Window['ryte']['dialog']> = {}
+): void {
   vi.stubGlobal('window', {
     ryte: {
-      workspace
+      workspace,
+      dialog
     }
   })
 }
@@ -258,6 +262,98 @@ describe('useWorkspaceStore', () => {
     expect(openFile).toHaveBeenCalledWith({ sourcePath: 'folder/new.md' })
     expect(recordRecent).not.toHaveBeenCalled()
     expect(store.state).toEqual(returned)
+  })
+
+  it('opens a picked native file through the explicit open path', async () => {
+    const initial = workspaceState()
+    const returned = workspaceState({
+      tabs: [
+        {
+          id: 'native-tab-id',
+          sourcePath: 'folder/native.md',
+          title: 'native.md',
+          viewMode: 'preview'
+        }
+      ],
+      activeTabId: 'native-tab-id'
+    })
+    const dialogOpenFile = vi.fn().mockResolvedValue({ sourcePath: 'folder/native.md' })
+    const openFile = vi.fn().mockResolvedValue(returned)
+    installWorkspaceApi(
+      { getState: vi.fn().mockResolvedValue(initial), openFile },
+      { openFile: dialogOpenFile }
+    )
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openNativeFile()
+
+    expect(dialogOpenFile).toHaveBeenCalledOnce()
+    expect(openFile).toHaveBeenCalledWith({ sourcePath: 'folder/native.md' })
+    expect(store.state).toEqual(returned)
+    expect(store.error).toBeNull()
+  })
+
+  it('focuses an existing tab for a picked native file', async () => {
+    const tab = {
+      id: 'tab-native',
+      sourcePath: 'folder/native.md',
+      title: 'native.md',
+      viewMode: 'preview' as const
+    }
+    const initial = workspaceState({ tabs: [tab], activeTabId: null })
+    const focused = workspaceState({ tabs: [tab], activeTabId: tab.id })
+    const recented = workspaceState({
+      tabs: [tab],
+      activeTabId: tab.id,
+      recents: [
+        {
+          sourcePath: 'folder/native.md',
+          title: 'native.md',
+          openedAt: '2026-05-21T12:00:00.000Z'
+        }
+      ]
+    })
+    const dialogOpenFile = vi.fn().mockResolvedValue({ sourcePath: 'folder/native.md' })
+    const focusTab = vi.fn().mockResolvedValue(focused)
+    const recordRecent = vi.fn().mockResolvedValue(recented)
+    const openFile = vi.fn()
+    installWorkspaceApi(
+      {
+        getState: vi.fn().mockResolvedValue(initial),
+        focusTab,
+        recordRecent,
+        openFile
+      },
+      { openFile: dialogOpenFile }
+    )
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openNativeFile()
+
+    expect(dialogOpenFile).toHaveBeenCalledOnce()
+    expect(focusTab).toHaveBeenCalledWith({ tabId: tab.id })
+    expect(recordRecent).toHaveBeenCalledWith({ sourcePath: 'folder/native.md' })
+    expect(openFile).not.toHaveBeenCalled()
+    expect(store.state).toEqual(recented)
+  })
+
+  it('keeps workspace state unchanged when the native file picker is canceled', async () => {
+    const initial = workspaceState()
+    const openFile = vi.fn().mockResolvedValue(null)
+    installWorkspaceApi({ getState: vi.fn().mockResolvedValue(initial) }, { openFile })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openNativeFile()
+
+    expect(openFile).toHaveBeenCalledOnce()
+    expect(store.state).toEqual(initial)
+    expect(store.error).toBeNull()
   })
 
   it('records recency before closing a tab for closeTabToRecent', async () => {

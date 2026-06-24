@@ -29,6 +29,9 @@ const model = computed(() =>
 )
 const collapsedGroupIds = ref<Set<HomeSmartGroupId>>(new Set())
 const catalogSourcePaths = computed(() => new Set(catalog.files.map((file) => file.sourcePath)))
+const showInitialLoadingState = computed(() => catalog.loading && catalog.files.length === 0)
+const showBlockingErrorState = computed(() => catalog.error !== null && catalog.files.length === 0)
+const showRefreshErrorState = computed(() => catalog.error !== null && catalog.files.length > 0)
 
 function isGroupExpanded(groupId: HomeSmartGroupId): boolean {
   return !collapsedGroupIds.value.has(groupId)
@@ -91,51 +94,57 @@ function activateItem(item: HomeSmartGroupItem): void {
       <SidebarSearchButton @search="emit('openSearch')" />
     </div>
 
-    <section
-      v-for="group in model.groups"
-      :key="group.id"
-      class="home-section"
-      :class="{ expanded: isGroupExpanded(group.id) && group.items.length > 0 }"
-      :aria-labelledby="group.headingId"
-    >
-      <h2 :id="group.headingId" class="home-heading">
-        <button
-          type="button"
-          class="home-group-toggle"
-          :aria-expanded="isGroupExpanded(group.id)"
-          :aria-controls="`${group.id}-home-list`"
-          @click="toggleGroup(group.id)"
-        >
-          <span class="group-chevron" :class="{ open: isGroupExpanded(group.id) }">
-            <IconChevronRight />
-          </span>
-          <span>{{ group.title }}</span>
-        </button>
-      </h2>
-      <p v-if="isGroupExpanded(group.id) && group.items.length === 0" class="home-empty">
-        {{ group.emptyLabel }}
-      </p>
-      <ul v-else-if="isGroupExpanded(group.id)" :id="`${group.id}-home-list`" class="home-list">
-        <li v-for="item in group.items" :key="item.id">
-          <div class="home-row-frame">
-            <button
-              type="button"
-              class="home-row"
-              :class="{ active: item.active }"
-              :title="item.sourcePath"
-              :aria-current="item.active ? 'page' : undefined"
-              :aria-label="item.ariaLabel"
-              @click="activateItem(item)"
-            >
-              <span class="row-copy">
-                <span class="row-title">{{ itemTitle(item) }}</span>
-                <span class="row-path">{{ item.sourcePath }}</span>
-              </span>
-            </button>
-          </div>
-        </li>
-      </ul>
-    </section>
+    <p v-if="showInitialLoadingState" class="home-state">Loading files...</p>
+    <p v-else-if="showBlockingErrorState" class="home-state error">Could not load file list.</p>
+    <p v-else-if="showRefreshErrorState" class="home-state error">Could not refresh file list.</p>
+
+    <template v-if="!showInitialLoadingState && !showBlockingErrorState">
+      <section
+        v-for="group in model.groups"
+        :key="group.id"
+        class="home-section"
+        :class="{ expanded: isGroupExpanded(group.id) && group.items.length > 0 }"
+        :aria-labelledby="group.headingId"
+      >
+        <h2 :id="group.headingId" class="home-heading">
+          <button
+            type="button"
+            class="home-group-toggle"
+            :aria-expanded="isGroupExpanded(group.id)"
+            :aria-controls="`${group.id}-home-list`"
+            @click="toggleGroup(group.id)"
+          >
+            <span class="group-chevron" :class="{ open: isGroupExpanded(group.id) }">
+              <IconChevronRight />
+            </span>
+            <span>{{ group.title }}</span>
+          </button>
+        </h2>
+        <p v-if="isGroupExpanded(group.id) && group.items.length === 0" class="home-empty">
+          {{ group.emptyLabel }}
+        </p>
+        <ul v-else-if="isGroupExpanded(group.id)" :id="`${group.id}-home-list`" class="home-list">
+          <li v-for="item in group.items" :key="item.id">
+            <div class="home-row-frame">
+              <button
+                type="button"
+                class="home-row"
+                :class="{ active: item.active }"
+                :title="item.sourcePath"
+                :aria-current="item.active ? 'page' : undefined"
+                :aria-label="item.ariaLabel"
+                @click="activateItem(item)"
+              >
+                <span class="row-copy">
+                  <span class="row-title">{{ itemTitle(item) }}</span>
+                  <span class="row-path">{{ item.sourcePath }}</span>
+                </span>
+              </button>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </template>
   </nav>
 </template>
 
@@ -160,6 +169,20 @@ function activateItem(item: HomeSmartGroupItem): void {
 .home-section {
   position: relative;
   padding: 8px 12px;
+}
+
+.home-state {
+  margin: 0 12px 8px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.home-state.error {
+  color: rgba(255, 184, 184, 0.78);
+  background: rgba(255, 92, 92, 0.08);
 }
 
 .home-section.expanded::before {
@@ -225,7 +248,7 @@ function activateItem(item: HomeSmartGroupItem): void {
 
 .home-empty {
   margin: 0;
-  padding: 8px 6px 10px;
+  padding: 8px 28px 10px;
   color: rgba(255, 255, 255, 0.4);
   font-size: 0.78rem;
   line-height: 1.35;
@@ -289,14 +312,14 @@ function activateItem(item: HomeSmartGroupItem): void {
 .row-title {
   color: inherit;
   font-size: 0.82rem;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .row-path {
   color: rgba(255, 255, 255, 0.42);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.67rem;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .home-row:hover .row-path,

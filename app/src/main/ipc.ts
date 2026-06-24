@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { relative } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { extname, relative, resolve } from 'node:path'
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
+import { refreshAppMenu } from './app-menu'
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
@@ -40,6 +42,19 @@ import { workspaceStore } from './workspace/workspace-store'
 
 let searchService: SearchService | null = null
 let watchedViewerSourcePath: string | null = null
+
+async function sourcePathForPickedMarkdownFile(
+  absPath: string,
+  notesRoot: string
+): Promise<string> {
+  const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+  if (extname(safePath).toLowerCase() !== '.md') {
+    throw new Error('Selected file must be a Markdown file')
+  }
+
+  const resolvedRoot = await realpath(resolve(notesRoot))
+  return relative(resolvedRoot, safePath)
+}
 
 function settingsPatchRequiresIndexerRestart(
   patch: SettingsUpdate,
@@ -85,7 +100,9 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('workspace:open-file', (_event, input: unknown) => {
-    return workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+    const next = workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+    refreshAppMenu()
+    return next
   })
 
   ipcMain.handle('workspace:focus-tab', (_event, input: unknown) => {
@@ -101,7 +118,9 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('workspace:record-recent', (_event, input: unknown) => {
-    return workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
+    const next = workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
+    refreshAppMenu()
+    return next
   })
 
   ipcMain.handle('workspace:set-outline-collapsed', (_event, input: unknown) => {
@@ -109,7 +128,9 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('workspace:prune-missing-file-refs', () => {
-    return workspaceStore.pruneMissingFileRefs()
+    const next = workspaceStore.pruneMissingFileRefs()
+    refreshAppMenu()
+    return next
   })
 
   ipcMain.handle('settings:save', async (_, patch: unknown) => {
@@ -156,6 +177,26 @@ export function registerIpc(): void {
       : await dialog.showOpenDialog({ properties: ['openDirectory'] })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:open-file', async (event) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+      : await dialog.showOpenDialog({
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+    if (result.canceled || result.filePaths.length === 0) return null
+
+    const sourcePath = await sourcePathForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
+    return { sourcePath }
   })
 
   ipcMain.handle('indexer:get-status', () => indexerService.getStatus())

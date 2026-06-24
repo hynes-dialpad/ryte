@@ -7,7 +7,12 @@ defineEmits<{
 </script>
 
 <template>
-  <button type="button" class="sidebar-search-button" @click="$emit('search')">
+  <button
+    type="button"
+    class="sidebar-search-button"
+    aria-keyshortcuts="Meta+K"
+    @click="$emit('search')"
+  >
     <IconSearch />
     <span>Search documents</span>
   </button>
@@ -49,6 +54,8 @@ defineEmits<{
 
 .sidebar-search-button span {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 </style>
