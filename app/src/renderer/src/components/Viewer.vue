@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { renderMermaidDiagrams } from '../markdown/mermaid'
 import { render } from '../markdown/renderer'
 import { useViewerStore } from '../stores/viewer'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -40,6 +41,12 @@ async function updateRender(text: string): Promise<void> {
   }
 }
 
+async function hydrateRenderedContent(): Promise<void> {
+  await nextTick()
+  if (viewer.sourceMode || !proseEl.value) return
+  await renderMermaidDiagrams(proseEl.value)
+}
+
 watch(
   () => viewer.content,
   (next) => {
@@ -54,6 +61,16 @@ watch(
     })
   },
   { immediate: true }
+)
+
+watch(
+  [renderedHtml, () => viewer.sourceMode],
+  () => {
+    hydrateRenderedContent().catch((err) => {
+      renderError.value = err instanceof Error ? err.message : String(err)
+    })
+  },
+  { flush: 'post' }
 )
 
 async function togglePreservingScroll(): Promise<void> {
@@ -325,6 +342,43 @@ onUnmounted(() => {
   padding: 0;
   color: inherit;
   font-size: inherit;
+}
+
+.prose :deep(pre.mermaid) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.prose :deep(pre.mermaid svg) {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.prose :deep(.mermaid-error-label) {
+  align-self: stretch;
+  color: rgba(255, 184, 184, 0.9);
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-weight: 600;
+}
+
+.prose :deep(.mermaid-error-detail),
+.prose :deep(.mermaid-error-source) {
+  align-self: stretch;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose :deep(.mermaid-error-detail) {
+  color: rgba(255, 184, 184, 0.75);
 }
 
 .prose :deep(blockquote) {

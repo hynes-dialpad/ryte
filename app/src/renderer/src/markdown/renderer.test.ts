@@ -17,6 +17,20 @@ describe('render', () => {
     expect(html).toMatch(/<span style="color:/)
   })
 
+  it('should render Mermaid fences as diagram placeholders', async () => {
+    const html = await render('```mermaid\ngraph TD\n  A --> B\n```')
+    expect(html).toContain('<pre class="mermaid" data-mermaid-pending="true">')
+    expect(html).toContain('graph TD')
+    expect(html).toContain('A --&gt; B')
+    expect(html).not.toContain('shiki')
+  })
+
+  it('should escape Mermaid source before viewer hydration', async () => {
+    const html = await render('```mermaid\ngraph TD\n  A["<script>"] --> B\n```')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>')
+  })
+
   it('should strip YAML frontmatter before rendering', async () => {
     const html = await render('---\nfoo: bar\n---\n# H')
     expect(html).toContain('<h1>H</h1>')

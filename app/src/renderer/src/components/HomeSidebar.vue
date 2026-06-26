@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import { useDocumentTitles } from '../composables/useDocumentTitles'
 import { useFileCatalogStore } from '../stores/file-catalog'
+import { useTasksStore } from '../stores/tasks'
 import { useWorkspaceStore } from '../stores/workspace'
 import {
   buildHomeSidebarModel,
@@ -19,12 +20,16 @@ const emit = defineEmits<{
 
 const workspace = useWorkspaceStore()
 const catalog = useFileCatalogStore()
+const tasks = useTasksStore()
+const activeTaskFingerprint = ref<string | null>(null)
 const model = computed(() =>
   buildHomeSidebarModel({
     catalogFiles: catalog.files,
     recents: workspace.recents,
     tabs: workspace.tabs,
-    activeTabId: workspace.activeTabId
+    activeTabId: workspace.activeTabId,
+    taskFacts: tasks.openTasks,
+    activeTaskFingerprint: activeTaskFingerprint.value
   })
 )
 const collapsedGroupIds = ref<Set<HomeSmartGroupId>>(new Set())
@@ -32,6 +37,7 @@ const catalogSourcePaths = computed(() => new Set(catalog.files.map((file) => fi
 const showInitialLoadingState = computed(() => catalog.loading && catalog.files.length === 0)
 const showBlockingErrorState = computed(() => catalog.error !== null && catalog.files.length === 0)
 const showRefreshErrorState = computed(() => catalog.error !== null && catalog.files.length > 0)
+const showTaskRefreshErrorState = computed(() => tasks.error !== null && tasks.tasks.length === 0)
 
 function isGroupExpanded(groupId: HomeSmartGroupId): boolean {
   return !collapsedGroupIds.value.has(groupId)
@@ -73,10 +79,12 @@ const documentTitles = useDocumentTitles(
 
 onMounted(() => {
   void catalog.hydrate()
+  void tasks.hydrate()
 })
 
 onUnmounted(() => {
   catalog.unbind()
+  tasks.unbind()
 })
 
 function itemTitle(item: HomeSmartGroupItem): string {
@@ -84,6 +92,7 @@ function itemTitle(item: HomeSmartGroupItem): string {
 }
 
 function activateItem(item: HomeSmartGroupItem): void {
+  activeTaskFingerprint.value = item.taskFingerprint ?? null
   void workspace.openExplicitFile({ sourcePath: item.action.sourcePath })
 }
 </script>
@@ -97,6 +106,7 @@ function activateItem(item: HomeSmartGroupItem): void {
     <p v-if="showInitialLoadingState" class="home-state">Loading files...</p>
     <p v-else-if="showBlockingErrorState" class="home-state error">Could not load file list.</p>
     <p v-else-if="showRefreshErrorState" class="home-state error">Could not refresh file list.</p>
+    <p v-else-if="showTaskRefreshErrorState" class="home-state error">Could not load tasks.</p>
 
     <template v-if="!showInitialLoadingState && !showBlockingErrorState">
       <section
@@ -131,13 +141,13 @@ function activateItem(item: HomeSmartGroupItem): void {
                 class="home-row"
                 :class="{ active: item.active }"
                 :title="item.sourcePath"
-                :aria-current="item.active ? 'page' : undefined"
+                :aria-current="item.active && !item.taskFingerprint ? 'page' : undefined"
                 :aria-label="item.ariaLabel"
                 @click="activateItem(item)"
               >
                 <span class="row-copy">
                   <span class="row-title">{{ itemTitle(item) }}</span>
-                  <span class="row-path">{{ item.sourcePath }}</span>
+                  <span class="row-path">{{ item.detail ?? item.sourcePath }}</span>
                 </span>
               </button>
             </div>

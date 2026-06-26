@@ -5,6 +5,7 @@ import { createHighlighter, createJavaScriptRegexEngine } from 'shiki'
 import { isSafeLinkTarget, sanitizeRenderedHtml } from './sanitizer'
 
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/
+const MERMAID_LANGUAGE = 'mermaid'
 
 // Languages that are pre-loaded at init so they're available synchronously
 // for the markdown-it highlight callback. All are JS grammar files — no WASM.
@@ -30,6 +31,18 @@ const PRELOAD_LANGS = [
 ] as const
 
 let mdPromise: Promise<MarkdownIt> | null = null
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function renderMermaidFence(content: string): string {
+  return `<pre class="mermaid" data-mermaid-pending="true">${escapeHtml(content)}</pre>\n`
+}
 
 async function getMd(): Promise<MarkdownIt> {
   if (!mdPromise) {
@@ -59,6 +72,17 @@ async function getMd(): Promise<MarkdownIt> {
           fallbackLanguage: 'markdown'
         })
       )
+      const defaultFence =
+        md.renderer.rules.fence ??
+        ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const token = tokens[idx]
+        const language = token.info.trim().split(/\s+/)[0]?.toLowerCase()
+        if (language === MERMAID_LANGUAGE) {
+          return renderMermaidFence(token.content)
+        }
+        return defaultFence(tokens, idx, options, env, self)
+      }
       return md
     })().catch((err) => {
       // Reset so the next render attempt retries rather than caching a rejected promise.

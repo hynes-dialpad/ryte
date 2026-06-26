@@ -7,6 +7,7 @@ import {
   assertValidSearchQuery,
   assertValidSourceFileInput,
   assertValidSettingsPatch,
+  assertValidTaskListInput,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
   assertValidWorkspaceOpenFileInput,
@@ -30,6 +31,10 @@ describe('ipc validation', () => {
       retrievalMode: 'keyword',
       answerMode: 'local-only'
     })
+    expect(assertValidTaskListInput({ checked: false, limit: 25 })).toEqual({
+      checked: false,
+      limit: 25
+    })
   })
 
   it('rejects malformed primitive inputs', () => {
@@ -40,6 +45,11 @@ describe('ipc validation', () => {
       'Invalid retrieval mode'
     )
     expect(() => assertValidSearchOptions({ arbitrary: true })).toThrow('Invalid search option')
+    expect(() => assertValidTaskListInput({ arbitrary: true })).toThrow(
+      'Invalid task list input key'
+    )
+    expect(() => assertValidTaskListInput({ checked: 'false' })).toThrow('Invalid task checked')
+    expect(() => assertValidTaskListInput({ limit: 201 })).toThrow('Invalid task list limit')
   })
 
   it('accepts a narrow settings patch', () => {

@@ -7,6 +7,7 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
+import type { TaskListInput } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFocusTabInput,
@@ -32,6 +33,7 @@ const MAX_QUERY_LENGTH = 2000
 const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
 const MAX_TAB_ID_LENGTH = 200
+const MAX_TASK_LIST_LIMIT = 200
 const REQUEST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_TAB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,199}$/
 
@@ -182,6 +184,29 @@ export function assertValidSearchOptions(value: unknown): SearchOptions {
     options.answerMode = input.answerMode
   }
   return options
+}
+
+export function assertValidTaskListInput(value: unknown): TaskListInput {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid task list input')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'checked' && key !== 'limit') throw new Error(`Invalid task list input key: ${key}`)
+  }
+
+  const taskListInput: TaskListInput = {}
+  if ('checked' in input) {
+    taskListInput.checked = assertOptionalBoolean(input.checked, 'task checked')
+  }
+  if ('limit' in input) {
+    const limit = assertFiniteNumber(input.limit, 'task list limit')
+    if (limit < 0 || limit > MAX_TASK_LIST_LIMIT) throw new Error('Invalid task list limit')
+    taskListInput.limit = Math.floor(limit)
+  }
+
+  return taskListInput
 }
 
 export function assertValidProviderId(value: unknown): ProviderId {

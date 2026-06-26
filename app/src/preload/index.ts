@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
 import type { FileCatalogResponse, FileTreeResponse } from '../shared/files'
+import type { TaskFactsResponse, TaskListInput, TaskRefreshResponse } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFocusTabInput,
@@ -109,6 +110,11 @@ export interface RyteApi {
     onTreeChanged(cb: () => void): () => void
     onCatalogChanged(cb: () => void): () => void
   }
+  tasks: {
+    list(input?: TaskListInput): Promise<TaskFactsResponse>
+    refresh(): Promise<TaskRefreshResponse>
+    onChanged(cb: () => void): () => void
+  }
   search: {
     query(q: string, options?: SearchQueryOptions): Promise<string | null>
     cancel(requestId: string): Promise<void>
@@ -189,6 +195,15 @@ const api: RyteApi = {
       const listener = (): void => cb()
       ipcRenderer.on('files:catalog-changed', listener)
       return () => ipcRenderer.removeListener('files:catalog-changed', listener)
+    }
+  },
+  tasks: {
+    list: (input) => ipcRenderer.invoke('tasks:list', input),
+    refresh: () => ipcRenderer.invoke('tasks:refresh'),
+    onChanged: (cb) => {
+      const listener = (): void => cb()
+      ipcRenderer.on('tasks:changed', listener)
+      return () => ipcRenderer.removeListener('tasks:changed', listener)
     }
   },
   search: {

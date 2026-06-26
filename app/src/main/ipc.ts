@@ -5,6 +5,7 @@ import { extname, relative, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
 import { refreshAppMenu } from './app-menu'
+import { taskFactsService } from './facts/task-facts-service'
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
@@ -16,6 +17,7 @@ import {
   assertValidSearchQuery,
   assertValidSourceFileInput,
   assertValidSettingsPatch,
+  assertValidTaskListInput,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
   assertValidWorkspaceOpenFileInput,
@@ -230,6 +232,21 @@ export function registerIpc(): void {
     return listFileCatalog(notesRoot)
   })
 
+  ipcMain.handle('tasks:list', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    return taskFactsService.list(notesRoot, assertValidTaskListInput(input))
+  })
+
+  ipcMain.handle('tasks:refresh', async () => {
+    const notesRoot = settingsStore.load().notesRoot
+    const snapshot = await taskFactsService.refresh(notesRoot)
+    return {
+      notesRoot: snapshot.notesRoot,
+      taskCount: snapshot.tasks.length,
+      refreshedAt: snapshot.refreshedAt
+    }
+  })
+
   ipcMain.handle('files:read', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
@@ -289,8 +306,10 @@ export function registerIpc(): void {
   })
 
   watcher.onCatalogChanged(() => {
+    taskFactsService.markStale()
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('files:catalog-changed')
+      win.webContents.send('tasks:changed')
     }
   })
 
