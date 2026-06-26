@@ -1,0 +1,77 @@
+app/src/renderer/src/components/Viewer.vue
+  s_398952194ab3e7::t_cf06fbe4ae377a 4,44-49,66-73
+  s_398952194ab3e7::t_17c9012cb2cc8b 347-383
+  s_398952194ab3e7::t_caa61aa284d7d7 74-75
+app/src/renderer/src/stores/tasks.ts
+  s_398952194ab3e7::t_cb4abaa1f69c16 1-93
+app/src/main/facts/task-extractor.test.ts
+  s_398952194ab3e7::t_6c519c6cb470d9 1-3,5-7,12-179
+  s_398952194ab3e7::t_17ca23b5dd7dd7 8-11
+  s_398952194ab3e7::t_ca1c79da32caec 4
+app/src/main/ipc.ts
+  s_398952194ab3e7::t_0e73d5ada1cc11 8,20,235-249,309,312
+app/package.json
+  s_398952194ab3e7::t_f683dfd2603ef3 42
+app/src/renderer/src/markdown/mermaid.test.ts
+  s_398952194ab3e7::t_120db1f2e97b94 34,37
+  s_398952194ab3e7::t_7770d964ddc0f8 1-33,35-36,38-57
+app/src/renderer/src/components/HomeSidebar.vue
+  s_398952194ab3e7::t_af7c56d2f26d95 6,23,30,40,82,87,109,150
+  s_398952194ab3e7::t_59e79d4c7ffc8e 24,31-32,95,144
+app/src/preload/index.ts
+  s_398952194ab3e7::t_0e73d5ada1cc11 6,113-117,200-206
+  s_398952194ab3e7::t_4f3eac3c821556 207-208
+app/src/main/facts/task-facts-service.ts
+  s_398952194ab3e7::t_29ed4b1f01a4ce 1-131
+app/src/renderer/src/stores/tasks.test.ts
+  s_398952194ab3e7::t_cb4abaa1f69c16 1-99
+app/src/main/facts/task-facts-service.test.ts
+  s_398952194ab3e7::t_29ed4b1f01a4ce 1-61,63-66,70-72
+  s_398952194ab3e7::t_d59fa39b1cb95d 62,67-69
+app/src/main/ipc-validation.ts
+  s_398952194ab3e7::t_ca1c79da32caec 10,36,189-209
+  s_398952194ab3e7::t_790e94e0f2273f 210-211
+app/src/shared/tasks.ts
+  s_398952194ab3e7::t_29ed4b1f01a4ce 1-31
+app/src/renderer/src/components/home-sidebar-model.test.ts
+  s_398952194ab3e7::t_cee676250c3fa5 166,202-234
+  s_398952194ab3e7::t_4a647e7c344a50 4,23-40,109-110,136-165,167-197,201,300-305,433
+  s_398952194ab3e7::t_d59fa39b1cb95d 130-135,198-200,306,412-414
+app/src/main/ipc-validation.test.ts
+  s_398952194ab3e7::t_ca1c79da32caec 10,34-37,48-52
+app/src/main/facts/task-extractor.ts
+  s_398952194ab3e7::t_6c519c6cb470d9 1-2,5-158,160-225,227-229,234-246,248-260
+  s_398952194ab3e7::t_29ed4b1f01a4ce 3-4
+  s_398952194ab3e7::t_28316597bcc844 159,230-233,247
+  s_398952194ab3e7::t_5e456abec2bbe0 226
+app/src/renderer/src/markdown/mermaid.ts
+  s_398952194ab3e7::t_13a7f443d2cde5 2,6-7,15,19-26,28-51,57-78
+  s_398952194ab3e7::t_e5dc4b31dfb07a 1,3-5,8-14,16-18,27,52,54-56
+  s_398952194ab3e7::t_a12f9fc92438e8 53
+app/src/renderer/src/markdown/renderer.test.ts
+  s_398952194ab3e7::t_fa761fee82fb48 20-33
+app/src/renderer/src/markdown/renderer.ts
+  s_398952194ab3e7::t_2ad078cffaabf9 8,43,45-46,75-85
+  s_398952194ab3e7::t_0ca85e4a98a8d1 35-42,44
+app/src/renderer/src/components/home-sidebar-model.ts
+  s_398952194ab3e7::t_59e79d4c7ffc8e 18,42,47,175-176,258
+  s_398952194ab3e7::t_757ca0adb2f57b 2,5,17,41,56,120-125,162-174,177-183,188,211,257,277-280
+app/pnpm-lock.yaml
+  s_398952194ab3e7::t_81557ef2d10d74 38-40,117-119,210-215,954-959,988-990,1180-1272,1288-1290,1336-1338,1410-1412,1746-1753,1771-1776,1795-1953,1990-1992,2023-2025,2117-2119,2433-2435,2510-2512,2527-2533,2621-2624,2628-2630,2635-2640,2655-2657,2685-2689,2704-2706,2882-2884,2892-2894,2945-2950,3072-3074,3080-3085,3251-3253,3293-3296,3338-3341,3424-3427,3658-3662,3777-3780,4276-4283,4320-4323,4467-4583,4598-4599,4654-4656,4760-4764,5172-5175,5188-5195,5214-5399,5430-5433,5477-5480,5600-5601,6045-6046,6134-6135,6147-6150,6218-6221,6226-6227,6230-6233,6249-6250,6280-6281,6303-6326,6488-6489,6496-6497,6539-6545,6674-6675,6707-6715,6865-6866,6922-6923,6955-6956,7038-7039
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "69af66e410c70413a55331bd387b91b8342f2f27",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
