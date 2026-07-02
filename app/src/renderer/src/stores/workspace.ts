@@ -7,11 +7,16 @@ import {
   WORKSPACE_RECENTS_LIMIT,
   WORKSPACE_SCHEMA_VERSION,
   clampSidebarWidth,
+  isWorkspaceSourceFileRef,
   shouldAutoCollapseSidebar,
+  workspaceFileKey,
+  workspaceFileTitle,
   type WorkspaceCloseTabInput,
+  type WorkspaceFileRef,
   type WorkspaceFileTab,
   type WorkspaceFocusTabInput,
   type WorkspaceOpenFileInput,
+  type WorkspaceOpenRecentFileInput,
   type WorkspaceRecordRecentInput,
   type WorkspaceSidebarMode,
   type WorkspaceShellState,
@@ -66,23 +71,32 @@ function applyOptimisticShellPatch(
   }
 }
 
-function titleFromSourcePath(sourcePath: string): string {
-  const parts = sourcePath.split(/[\\/]+/).filter(Boolean)
-  return parts.at(-1) ?? sourcePath
-}
-
-function recordRecentInState(state: WorkspaceState, sourcePath: string): WorkspaceState {
+function recordRecentInState(state: WorkspaceState, fileRef: WorkspaceFileRef): WorkspaceState {
+  const key = workspaceFileKey(fileRef)
   return {
     ...state,
     recents: [
       {
-        sourcePath,
-        title: titleFromSourcePath(sourcePath),
+        ...fileRef,
+        title: workspaceFileTitle(fileRef),
         openedAt: new Date().toISOString()
       },
-      ...state.recents.filter((recent) => recent.sourcePath !== sourcePath)
+      ...state.recents.filter((recent) => workspaceFileKey(recent) !== key)
     ].slice(0, WORKSPACE_RECENTS_LIMIT)
   }
+}
+
+function messageFromError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function normalizeNativeOpenErrorMessage(error: unknown): string {
+  const message = messageFromError(error)
+  const unwrapped = message.replace(
+    /^Error invoking remote method 'workspace:open-native-file': Error:\s*/,
+    ''
+  )
+  return unwrapped
 }
 
 function closeTabInState(state: WorkspaceState, tabId: string): WorkspaceState {
@@ -175,7 +189,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         const tab: WorkspaceFileTab = {
           id: temporaryTabId,
           sourcePath: input.sourcePath,
-          title: titleFromSourcePath(input.sourcePath),
+          title: workspaceFileTitle(input),
           viewMode: 'preview'
         }
         return recordRecentInState(
@@ -184,7 +198,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
             tabs: [...base.tabs, tab],
             activeTabId: tab.id
           },
-          input.sourcePath
+          input
         )
       },
       () => window.ryte.workspace.openFile(input)
@@ -192,7 +206,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function openOrFocusFile(input: WorkspaceOpenFileInput): Promise<void> {
-    const existingTab = tabs.value.findLast((tab) => tab.sourcePath === input.sourcePath)
+    const existingTab = tabs.value.findLast(
+      (tab) => isWorkspaceSourceFileRef(tab) && tab.sourcePath === input.sourcePath
+    )
     if (existingTab) {
       await focusTab({ tabId: existingTab.id })
       return
@@ -201,7 +217,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function openExplicitFile(input: WorkspaceOpenFileInput): Promise<void> {
-    const existingTab = tabs.value.findLast((tab) => tab.sourcePath === input.sourcePath)
+    const existingTab = tabs.value.findLast(
+      (tab) => isWorkspaceSourceFileRef(tab) && tab.sourcePath === input.sourcePath
+    )
     if (existingTab) {
       await focusTab({ tabId: existingTab.id })
       await recordRecent({ sourcePath: input.sourcePath })
@@ -212,12 +230,30 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function openNativeFile(): Promise<void> {
+    loading.value = true
+    error.value = null
     try {
-      const picked = await window.ryte.dialog.openFile()
-      if (picked) await openExplicitFile(picked)
+      state.value = await window.ryte.workspace.openNativeFile()
     } catch (e) {
+      error.value = normalizeNativeOpenErrorMessage(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function openRecentFile(input: WorkspaceOpenRecentFileInput): Promise<void> {
+    const previousState = state.value
+    loading.value = true
+    error.value = null
+    try {
+      state.value = await window.ryte.workspace.openRecentFile(input)
+    } catch (e) {
+      state.value = previousState
       error.value = e instanceof Error ? e.message : String(e)
       throw e
+    } finally {
+      loading.value = false
     }
   }
 
@@ -240,13 +276,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     )
   }
 
-  async function closeTabToRecent(
-    input: WorkspaceCloseTabInput & WorkspaceRecordRecentInput
-  ): Promise<void> {
-    try {
-      await recordRecent({ sourcePath: input.sourcePath })
-    } catch {
-      // Closing should still work if the backing file is already missing.
+  async function closeTabToRecent(input: WorkspaceCloseTabInput): Promise<void> {
+    const closingTab = tabs.value.find((tab) => tab.id === input.tabId)
+    if (closingTab && isWorkspaceSourceFileRef(closingTab)) {
+      try {
+        await recordRecent({ sourcePath: closingTab.sourcePath })
+      } catch {
+        // Closing should still work if the backing file is already missing.
+      }
     }
     await closeTab({ tabId: input.tabId })
   }
@@ -265,7 +302,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function recordRecent(input: WorkspaceRecordRecentInput): Promise<void> {
     await runOptimisticWorkspaceOperation(
-      (base) => recordRecentInState(base, input.sourcePath),
+      (base) => recordRecentInState(base, input),
       () => window.ryte.workspace.recordRecent(input)
     )
   }
@@ -337,6 +374,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openOrFocusFile,
     openExplicitFile,
     openNativeFile,
+    openRecentFile,
     updateTabViewMode,
     recordRecent,
     setOutlineCollapsed,

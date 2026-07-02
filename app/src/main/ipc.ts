@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { realpath } from 'node:fs/promises'
-import { extname, relative, resolve } from 'node:path'
+import { readFile, realpath, stat } from 'node:fs/promises'
+import { extname, relative, resolve, sep } from 'node:path'
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 
@@ -18,12 +18,15 @@ import {
   assertValidSourceFileInput,
   assertValidSettingsPatch,
   assertValidTaskListInput,
+  assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
   assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
@@ -34,28 +37,54 @@ import {
   readFileSafe,
   readSourceFileSafe,
   readSourceTitleSafe,
-  resolveAndAssertUnderRoot,
   resolveSourcePathUnderRoot
 } from './viewer/file-reader'
 import { listFileCatalog } from './viewer/file-catalog'
 import { sourcePathForViewerChange } from './viewer/source-change-path'
 import { viewerWatcher } from './viewer/viewer-watcher'
 import { workspaceStore } from './workspace/workspace-store'
+import { isWorkspaceSourceFileRef, type WorkspaceFileRef } from '../shared/workspace'
 
 let searchService: SearchService | null = null
 let watchedViewerSourcePath: string | null = null
+let watchedViewerTabId: string | null = null
 
-async function sourcePathForPickedMarkdownFile(
-  absPath: string,
-  notesRoot: string
-): Promise<string> {
-  const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+async function resolveExternalMarkdownFile(absPath: string): Promise<string> {
+  const safePath = await realpath(resolve(absPath))
   if (extname(safePath).toLowerCase() !== '.md') {
     throw new Error('Selected file must be a Markdown file')
   }
 
+  const fileStat = await stat(safePath)
+  if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${absPath}`)
+  return safePath
+}
+
+async function fileRefForPickedMarkdownFile(
+  absPath: string,
+  notesRoot: string
+): Promise<WorkspaceFileRef> {
+  const safePath = await resolveExternalMarkdownFile(absPath)
   const resolvedRoot = await realpath(resolve(notesRoot))
-  return relative(resolvedRoot, safePath)
+  if (safePath === resolvedRoot || safePath.startsWith(resolvedRoot + sep)) {
+    return { sourcePath: relative(resolvedRoot, safePath).split(sep).join('/') }
+  }
+  return { externalPath: safePath }
+}
+
+async function fileRefForWorkspaceTab(tabId: string): Promise<WorkspaceFileRef> {
+  const fileRef = workspaceStore.fileRefForTab(tabId)
+  if (!fileRef) throw new Error('Workspace tab not found')
+  if (isWorkspaceSourceFileRef(fileRef)) return fileRef
+  return { externalPath: await resolveExternalMarkdownFile(fileRef.externalPath) }
+}
+
+async function readWorkspaceTabFile(tabId: string, notesRoot: string): Promise<string> {
+  const fileRef = await fileRefForWorkspaceTab(tabId)
+  if (isWorkspaceSourceFileRef(fileRef)) {
+    return readSourceFileSafe(fileRef.sourcePath, notesRoot)
+  }
+  return readFile(fileRef.externalPath, 'utf8')
 }
 
 function settingsPatchRequiresIndexerRestart(
@@ -101,8 +130,36 @@ export function registerIpc(): void {
     return workspaceStore.updateWindow(assertValidWorkspaceWindowPatch(patch))
   })
 
-  ipcMain.handle('workspace:open-file', (_event, input: unknown) => {
-    const next = workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+  ipcMain.handle('workspace:open-file', async (_event, input: unknown) => {
+    const next = await workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+    refreshAppMenu()
+    return next
+  })
+
+  ipcMain.handle('workspace:open-recent-file', async (_event, input: unknown) => {
+    const next = await workspaceStore.openRecentFile(assertValidWorkspaceOpenRecentFileInput(input))
+    refreshAppMenu()
+    return next
+  })
+
+  ipcMain.handle('workspace:open-native-file', async (event) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+      : await dialog.showOpenDialog({
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+    if (result.canceled || result.filePaths.length === 0) return workspaceStore.publicState()
+
+    const fileRef = await fileRefForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
+    const next = await workspaceStore.openPickedFile(fileRef)
     refreshAppMenu()
     return next
   })
@@ -119,8 +176,8 @@ export function registerIpc(): void {
     return workspaceStore.updateTabViewMode(assertValidWorkspaceUpdateTabViewModeInput(input))
   })
 
-  ipcMain.handle('workspace:record-recent', (_event, input: unknown) => {
-    const next = workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
+  ipcMain.handle('workspace:record-recent', async (_event, input: unknown) => {
+    const next = await workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
     refreshAppMenu()
     return next
   })
@@ -129,8 +186,8 @@ export function registerIpc(): void {
     return workspaceStore.setOutlineCollapsed(assertValidWorkspaceSetOutlineCollapsedInput(input))
   })
 
-  ipcMain.handle('workspace:prune-missing-file-refs', () => {
-    const next = workspaceStore.pruneMissingFileRefs()
+  ipcMain.handle('workspace:prune-missing-file-refs', async () => {
+    const next = await workspaceStore.pruneMissingFileRefs()
     refreshAppMenu()
     return next
   })
@@ -197,8 +254,7 @@ export function registerIpc(): void {
         })
     if (result.canceled || result.filePaths.length === 0) return null
 
-    const sourcePath = await sourcePathForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
-    return { sourcePath }
+    return fileRefForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
   })
 
   ipcMain.handle('indexer:get-status', () => indexerService.getStatus())
@@ -247,6 +303,17 @@ export function registerIpc(): void {
     }
   })
 
+  ipcMain.handle('tasks:toggle', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const result = await taskFactsService.toggle(notesRoot, assertValidTaskToggleInput(input))
+    if (result.ok) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('tasks:changed')
+      }
+    }
+    return result
+  })
+
   ipcMain.handle('files:read', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
@@ -258,6 +325,12 @@ export function registerIpc(): void {
     return readSourceFileSafe(sourcePath, notesRoot)
   })
 
+  ipcMain.handle('files:read-workspace-tab', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { tabId } = assertValidWorkspaceTabFileInput(input)
+    return readWorkspaceTabFile(tabId, notesRoot)
+  })
+
   ipcMain.handle('files:read-source-title', async (_event, input: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     const { sourcePath } = assertValidSourceFileInput(input)
@@ -266,8 +339,9 @@ export function registerIpc(): void {
 
   ipcMain.handle('files:watch', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
-    const safePath = await resolveAndAssertUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
+    const safePath = await resolveSourcePathUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.watch(safePath)
   })
 
@@ -276,12 +350,31 @@ export function registerIpc(): void {
     const { sourcePath } = assertValidSourceFileInput(input)
     const safePath = await resolveSourcePathUnderRoot(sourcePath, notesRoot)
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.watch(safePath)
     watchedViewerSourcePath = sourcePath
   })
 
+  ipcMain.handle('files:watch-workspace-tab', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { tabId } = assertValidWorkspaceTabFileInput(input)
+    const fileRef = await fileRefForWorkspaceTab(tabId)
+    const safePath = isWorkspaceSourceFileRef(fileRef)
+      ? await resolveSourcePathUnderRoot(fileRef.sourcePath, notesRoot)
+      : fileRef.externalPath
+
+    watchedViewerSourcePath = null
+    watchedViewerTabId = null
+    await viewerWatcher.watch(safePath)
+    watchedViewerTabId = tabId
+    if (isWorkspaceSourceFileRef(fileRef)) {
+      watchedViewerSourcePath = fileRef.sourcePath
+    }
+  })
+
   ipcMain.handle('files:unwatch', async () => {
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.stop()
   })
 
@@ -292,6 +385,11 @@ export function registerIpc(): void {
     if (sourcePath) {
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send('viewer:source-changed', sourcePath)
+      }
+    }
+    if (watchedViewerTabId) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('viewer:workspace-tab-changed', watchedViewerTabId)
       }
     }
     for (const win of BrowserWindow.getAllWindows()) {

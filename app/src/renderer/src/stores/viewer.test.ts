@@ -32,12 +32,21 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
 }
 
 function tab(overrides: Partial<WorkspaceFileTab>): WorkspaceFileTab {
+  if ('externalPath' in overrides && overrides.externalPath) {
+    return {
+      id: overrides.id ?? 'tab-a',
+      externalPath: overrides.externalPath,
+      title: overrides.title ?? 'external.md',
+      viewMode: overrides.viewMode ?? 'preview'
+    }
+  }
+
+  const sourceOverrides = overrides as Partial<Extract<WorkspaceFileTab, { sourcePath: string }>>
   return {
-    id: 'tab-a',
-    sourcePath: 'a.md',
-    title: 'a.md',
-    viewMode: 'preview',
-    ...overrides
+    id: sourceOverrides.id ?? 'tab-a',
+    sourcePath: sourceOverrides.sourcePath ?? 'a.md',
+    title: sourceOverrides.title ?? 'a.md',
+    viewMode: sourceOverrides.viewMode ?? 'preview'
   }
 }
 
@@ -50,11 +59,13 @@ async function flushAsync(): Promise<void> {
 
 describe('useViewerStore', () => {
   let sourceChangeHandler: ((sourcePath: string) => void) | null = null
+  let workspaceTabChangeHandler: ((tabId: string) => void) | null = null
   let treeChangeHandler: (() => void) | null = null
 
   beforeEach(() => {
     setActivePinia(createPinia())
     sourceChangeHandler = null
+    workspaceTabChangeHandler = null
     treeChangeHandler = null
   })
 
@@ -64,20 +75,26 @@ describe('useViewerStore', () => {
 
   function installRyteApi({
     files,
+    tasks,
     workspace
   }: {
     files?: Partial<Window['ryte']['files']>
+    tasks?: Partial<Window['ryte']['tasks']>
     workspace?: Partial<Window['ryte']['workspace']>
   }): void {
     vi.stubGlobal('window', {
       ryte: {
         files: {
           listTree: vi.fn().mockResolvedValue({ notesRoot: '/notes', paths: ['a.md', 'b.md'] }),
-          readSource: vi.fn().mockResolvedValue('# A\n'),
-          watchSource: vi.fn().mockResolvedValue(undefined),
+          readWorkspaceTab: vi.fn().mockResolvedValue('# A\n'),
+          watchWorkspaceTab: vi.fn().mockResolvedValue(undefined),
           unwatch: vi.fn().mockResolvedValue(undefined),
           onSourceChange: vi.fn((cb: (sourcePath: string) => void) => {
             sourceChangeHandler = cb
+            return vi.fn()
+          }),
+          onWorkspaceTabChange: vi.fn((cb: (tabId: string) => void) => {
+            workspaceTabChangeHandler = cb
             return vi.fn()
           }),
           onTreeChanged: vi.fn((cb: () => void) => {
@@ -85,6 +102,13 @@ describe('useViewerStore', () => {
             return vi.fn()
           }),
           ...files
+        },
+        tasks: {
+          list: vi.fn(),
+          refresh: vi.fn(),
+          toggle: vi.fn(),
+          onChanged: vi.fn(() => vi.fn()),
+          ...tasks
         },
         workspace: {
           getState: vi.fn().mockResolvedValue(workspaceState()),
@@ -105,11 +129,11 @@ describe('useViewerStore', () => {
 
   it('hydrates the active workspace tab through relative file APIs', async () => {
     const active = tab({ id: 'tab-a', sourcePath: 'a.md', title: 'a.md' })
-    const readSource = vi.fn().mockResolvedValue('# A\n')
-    const watchSource = vi.fn().mockResolvedValue(undefined)
+    const readWorkspaceTab = vi.fn().mockResolvedValue('# A\n')
+    const watchWorkspaceTab = vi.fn().mockResolvedValue(undefined)
 
     installRyteApi({
-      files: { readSource, watchSource },
+      files: { readWorkspaceTab, watchWorkspaceTab },
       workspace: {
         getState: vi.fn().mockResolvedValue(
           workspaceState({
@@ -125,10 +149,42 @@ describe('useViewerStore', () => {
     const viewer = useViewerStore()
     await viewer.hydrate()
 
-    expect(readSource).toHaveBeenCalledWith({ sourcePath: 'a.md' })
-    expect(watchSource).toHaveBeenCalledWith({ sourcePath: 'a.md' })
+    expect(readWorkspaceTab).toHaveBeenCalledWith({ tabId: 'tab-a' })
+    expect(watchWorkspaceTab).toHaveBeenCalledWith({ tabId: 'tab-a' })
     expect(viewer.sourcePath).toBe('a.md')
+    expect(viewer.displayPath).toBe('a.md')
     expect(viewer.content).toBe('# A\n')
+  })
+
+  it('hydrates an external workspace tab through tab-scoped file APIs', async () => {
+    const active = tab({
+      id: 'tab-external',
+      externalPath: '/Users/hynes/Desktop/outside.md',
+      title: 'outside.md'
+    })
+    const readWorkspaceTab = vi.fn().mockResolvedValue('# External\n')
+
+    installRyteApi({
+      files: { readWorkspaceTab },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+
+    expect(readWorkspaceTab).toHaveBeenCalledWith({ tabId: 'tab-external' })
+    expect(viewer.sourcePath).toBeNull()
+    expect(viewer.displayPath).toBe('/Users/hynes/Desktop/outside.md')
+    expect(viewer.content).toBe('# External\n')
   })
 
   it('updates active tab view mode through the workspace operation', async () => {
@@ -166,8 +222,8 @@ describe('useViewerStore', () => {
     const tabA = tab({ id: 'tab-a', sourcePath: 'a.md', title: 'a.md' })
     const tabB = tab({ id: 'tab-b', sourcePath: 'b.md', title: 'b.md' })
     let resolveA!: (content: string) => void
-    const readSource = vi.fn(({ sourcePath }: { sourcePath: string }) => {
-      if (sourcePath === 'a.md') {
+    const readWorkspaceTab = vi.fn(({ tabId }: { tabId: string }) => {
+      if (tabId === 'tab-a') {
         return new Promise<string>((resolve) => {
           resolveA = resolve
         })
@@ -176,7 +232,7 @@ describe('useViewerStore', () => {
     })
 
     installRyteApi({
-      files: { readSource },
+      files: { readWorkspaceTab },
       workspace: {
         getState: vi.fn().mockResolvedValue(workspaceState())
       }
@@ -204,10 +260,13 @@ describe('useViewerStore', () => {
 
   it('reloads the active tab when a matching relative source change event arrives', async () => {
     const active = tab({ id: 'tab-a', sourcePath: 'a.md', title: 'a.md' })
-    const readSource = vi.fn().mockResolvedValueOnce('# A\n').mockResolvedValueOnce('# A updated\n')
+    const readWorkspaceTab = vi
+      .fn()
+      .mockResolvedValueOnce('# A\n')
+      .mockResolvedValueOnce('# A updated\n')
 
     installRyteApi({
-      files: { readSource },
+      files: { readWorkspaceTab },
       workspace: {
         getState: vi.fn().mockResolvedValue(
           workspaceState({
@@ -232,6 +291,43 @@ describe('useViewerStore', () => {
     expect(viewer.content).toBe('# A updated\n')
   })
 
+  it('reloads the active tab when a matching workspace tab change event arrives', async () => {
+    const active = tab({
+      id: 'tab-external',
+      externalPath: '/Users/hynes/Desktop/outside.md',
+      title: 'outside.md'
+    })
+    const readWorkspaceTab = vi
+      .fn()
+      .mockResolvedValueOnce('# External\n')
+      .mockResolvedValueOnce('# External updated\n')
+
+    installRyteApi({
+      files: { readWorkspaceTab },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+
+    workspaceTabChangeHandler?.('other-tab')
+    await flushAsync()
+    expect(viewer.content).toBe('# External\n')
+
+    workspaceTabChangeHandler?.('tab-external')
+    await flushAsync()
+    expect(viewer.content).toBe('# External updated\n')
+  })
+
   it('prunes missing workspace refs before hydrating from the repaired active tab', async () => {
     const missing = tab({ id: 'tab-missing', sourcePath: 'missing.md', title: 'missing.md' })
     const repaired = tab({ id: 'tab-b', sourcePath: 'b.md', title: 'b.md' })
@@ -241,12 +337,12 @@ describe('useViewerStore', () => {
         activeTabId: repaired.id
       })
     )
-    const readSource = vi.fn().mockResolvedValue('# B\n')
+    const readWorkspaceTab = vi.fn().mockResolvedValue('# B\n')
 
     installRyteApi({
       files: {
         listTree: vi.fn().mockResolvedValue({ notesRoot: '/notes', paths: ['b.md'] }),
-        readSource
+        readWorkspaceTab
       },
       workspace: {
         getState: vi.fn().mockResolvedValue(
@@ -265,7 +361,7 @@ describe('useViewerStore', () => {
     await viewer.hydrate()
 
     expect(pruneMissingFileRefs).toHaveBeenCalledTimes(1)
-    expect(readSource).toHaveBeenCalledWith({ sourcePath: 'b.md' })
+    expect(readWorkspaceTab).toHaveBeenCalledWith({ tabId: 'tab-b' })
     expect(viewer.sourcePath).toBe('b.md')
     expect(viewer.content).toBe('# B\n')
   })
@@ -307,5 +403,93 @@ describe('useViewerStore', () => {
 
     expect(pruneMissingFileRefs).toHaveBeenCalledTimes(1)
     expect(viewer.sourcePath).toBe('b.md')
+  })
+
+  it('toggles a rendered task through the typed task API', async () => {
+    const active = tab({ id: 'tab-a', sourcePath: 'tasks.md', title: 'tasks.md' })
+    const toggle = vi.fn().mockResolvedValue({
+      ok: true,
+      markdown: '# Tasks\n\n- [x] Follow up\n',
+      task: {
+        id: 'task-1',
+        sourcePath: 'tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        rawLine: '- [x] Follow up',
+        normalizedText: 'Follow up',
+        headingPath: ['Tasks'],
+        occurrenceIndex: 0,
+        fingerprint: 'abc',
+        sourceMtimeMs: 1,
+        extractedAt: '2026-06-30T12:00:00.000Z'
+      }
+    })
+
+    installRyteApi({
+      files: {
+        listTree: vi.fn().mockResolvedValue({ notesRoot: '/notes', paths: ['tasks.md'] }),
+        readWorkspaceTab: vi.fn().mockResolvedValue('# Tasks\n\n- [ ] Follow up\n')
+      },
+      tasks: { toggle },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+    await viewer.toggleRenderedTask({ line: 3, checkboxColumn: 2, checked: true })
+
+    expect(toggle).toHaveBeenCalledWith({
+      sourcePath: 'tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
+    expect(viewer.content).toBe('# Tasks\n\n- [x] Follow up\n')
+    expect(viewer.error).toBeNull()
+  })
+
+  it('reloads the active tab when a rendered task toggle is stale', async () => {
+    const active = tab({ id: 'tab-a', sourcePath: 'tasks.md', title: 'tasks.md' })
+    const readWorkspaceTab = vi
+      .fn()
+      .mockResolvedValueOnce('# Tasks\n\n- [ ] Follow up\n')
+      .mockResolvedValueOnce('# Tasks\n\n- [ ] Updated task\n')
+    const toggle = vi.fn().mockResolvedValue({ ok: false, reason: 'source-line-changed' })
+
+    installRyteApi({
+      files: {
+        listTree: vi.fn().mockResolvedValue({ notesRoot: '/notes', paths: ['tasks.md'] }),
+        readWorkspaceTab
+      },
+      tasks: { toggle },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+    await viewer.toggleRenderedTask({ line: 3, checkboxColumn: 2, checked: true })
+
+    expect(readWorkspaceTab).toHaveBeenCalledTimes(2)
+    expect(viewer.content).toBe('# Tasks\n\n- [ ] Updated task\n')
   })
 })

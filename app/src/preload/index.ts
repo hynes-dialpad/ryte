@@ -3,15 +3,23 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
 import type { FileCatalogResponse, FileTreeResponse } from '../shared/files'
-import type { TaskFactsResponse, TaskListInput, TaskRefreshResponse } from '../shared/tasks'
+import type {
+  TaskFactsResponse,
+  TaskListInput,
+  TaskRefreshResponse,
+  TaskToggleInput,
+  TaskToggleResponse
+} from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFocusTabInput,
+  WorkspaceOpenRecentFileInput,
   WorkspaceOpenFileInput,
   WorkspaceRecordRecentInput,
   WorkspaceSetOutlineCollapsedInput,
   WorkspaceShellUpdate,
   WorkspaceState,
+  WorkspaceTabFileInput,
   WorkspaceUpdateTabViewModeInput,
   WorkspaceWindowUpdate
 } from '../shared/workspace'
@@ -79,6 +87,8 @@ export interface RyteApi {
     updateShell(patch: WorkspaceShellUpdate): Promise<WorkspaceState>
     updateWindow(patch: WorkspaceWindowUpdate): Promise<WorkspaceState>
     openFile(input: WorkspaceOpenFileInput): Promise<WorkspaceState>
+    openRecentFile(input: WorkspaceOpenRecentFileInput): Promise<WorkspaceState>
+    openNativeFile(): Promise<WorkspaceState>
     focusTab(input: WorkspaceFocusTabInput): Promise<WorkspaceState>
     closeTab(input: WorkspaceCloseTabInput): Promise<WorkspaceState>
     updateTabViewMode(input: WorkspaceUpdateTabViewModeInput): Promise<WorkspaceState>
@@ -88,7 +98,7 @@ export interface RyteApi {
   }
   dialog: {
     openFolder(): Promise<string | null>
-    openFile(): Promise<WorkspaceOpenFileInput | null>
+    openFile(): Promise<WorkspaceOpenRecentFileInput | null>
   }
   indexer: {
     triggerReindex(): Promise<void>
@@ -102,17 +112,21 @@ export interface RyteApi {
     read(absPath: string): Promise<string>
     readSource(input: WorkspaceOpenFileInput): Promise<string>
     readSourceTitle(input: WorkspaceOpenFileInput): Promise<string | null>
+    readWorkspaceTab(input: WorkspaceTabFileInput): Promise<string>
     watch(absPath: string): Promise<void>
     watchSource(input: WorkspaceOpenFileInput): Promise<void>
+    watchWorkspaceTab(input: WorkspaceTabFileInput): Promise<void>
     unwatch(): Promise<void>
     onChange(cb: (path: string) => void): () => void
     onSourceChange(cb: (sourcePath: string) => void): () => void
+    onWorkspaceTabChange(cb: (tabId: string) => void): () => void
     onTreeChanged(cb: () => void): () => void
     onCatalogChanged(cb: () => void): () => void
   }
   tasks: {
     list(input?: TaskListInput): Promise<TaskFactsResponse>
     refresh(): Promise<TaskRefreshResponse>
+    toggle(input: TaskToggleInput): Promise<TaskToggleResponse>
     onChanged(cb: () => void): () => void
   }
   search: {
@@ -146,6 +160,8 @@ const api: RyteApi = {
     updateShell: (patch) => ipcRenderer.invoke('workspace:update-shell', patch),
     updateWindow: (patch) => ipcRenderer.invoke('workspace:update-window', patch),
     openFile: (input) => ipcRenderer.invoke('workspace:open-file', input),
+    openRecentFile: (input) => ipcRenderer.invoke('workspace:open-recent-file', input),
+    openNativeFile: () => ipcRenderer.invoke('workspace:open-native-file'),
     focusTab: (input) => ipcRenderer.invoke('workspace:focus-tab', input),
     closeTab: (input) => ipcRenderer.invoke('workspace:close-tab', input),
     updateTabViewMode: (input) => ipcRenderer.invoke('workspace:update-tab-view-mode', input),
@@ -173,8 +189,10 @@ const api: RyteApi = {
     read: (absPath) => ipcRenderer.invoke('files:read', absPath),
     readSource: (input) => ipcRenderer.invoke('files:read-source', input),
     readSourceTitle: (input) => ipcRenderer.invoke('files:read-source-title', input),
+    readWorkspaceTab: (input) => ipcRenderer.invoke('files:read-workspace-tab', input),
     watch: (absPath) => ipcRenderer.invoke('files:watch', absPath),
     watchSource: (input) => ipcRenderer.invoke('files:watch-source', input),
+    watchWorkspaceTab: (input) => ipcRenderer.invoke('files:watch-workspace-tab', input),
     unwatch: () => ipcRenderer.invoke('files:unwatch'),
     onChange: (cb) => {
       const listener = (_: unknown, path: string): void => cb(path)
@@ -185,6 +203,11 @@ const api: RyteApi = {
       const listener = (_: unknown, sourcePath: string): void => cb(sourcePath)
       ipcRenderer.on('viewer:source-changed', listener)
       return () => ipcRenderer.removeListener('viewer:source-changed', listener)
+    },
+    onWorkspaceTabChange: (cb) => {
+      const listener = (_: unknown, tabId: string): void => cb(tabId)
+      ipcRenderer.on('viewer:workspace-tab-changed', listener)
+      return () => ipcRenderer.removeListener('viewer:workspace-tab-changed', listener)
     },
     onTreeChanged: (cb) => {
       const listener = (): void => cb()
@@ -200,6 +223,7 @@ const api: RyteApi = {
   tasks: {
     list: (input) => ipcRenderer.invoke('tasks:list', input),
     refresh: () => ipcRenderer.invoke('tasks:refresh'),
+    toggle: (input) => ipcRenderer.invoke('tasks:toggle', input),
     onChanged: (cb) => {
       const listener = (): void => cb()
       ipcRenderer.on('tasks:changed', listener)

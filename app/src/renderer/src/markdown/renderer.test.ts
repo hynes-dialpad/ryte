@@ -73,4 +73,45 @@ describe('render', () => {
     expect(html).toContain('shiki')
     expect(html).toMatch(/<span style="color:/)
   })
+
+  it('should keep markdown tasks non-interactive by default', async () => {
+    const html = await render('- [ ] Follow up')
+
+    expect(html).not.toContain('markdown-task-toggle')
+    expect(html).toContain('[ ] Follow up')
+  })
+
+  it('should render task markers as interactive controls when requested', async () => {
+    const html = await render('- [ ] Follow up\n- [x] Done', { interactiveTasks: true })
+
+    expect(html).toContain('class="markdown-task-toggle"')
+    expect(html).toContain('class="markdown-task-content"')
+    expect(html).toContain('data-task-line="1"')
+    expect(html).toContain('data-task-checkbox-column="2"')
+    expect(html).toContain('data-task-checked="false"')
+    expect(html).toContain('aria-label="Mark task complete"')
+    expect(html).toContain('data-task-line="2"')
+    expect(html).toContain('data-task-checked="true"')
+    expect(html).toContain('aria-label="Mark task incomplete"')
+    expect(html).not.toContain('[ ] Follow up')
+    expect(html).not.toContain('[x] Done')
+  })
+
+  it('should preserve original source line numbers after frontmatter', async () => {
+    const html = await render('---\ntitle: Tasks\n---\n- [ ] Follow up', {
+      interactiveTasks: true
+    })
+
+    expect(html).toContain('data-task-line="4"')
+  })
+
+  it('should not render task controls inside fenced code', async () => {
+    const html = await render('```\n- [ ] Not a task\n```\n\n- [ ] Real task', {
+      interactiveTasks: true
+    })
+
+    expect(html).not.toContain('data-task-line="2"')
+    expect(html).toContain('data-task-line="5"')
+    expect(html.match(/markdown-task-toggle/g)).toHaveLength(1)
+  })
 })

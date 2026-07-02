@@ -1,4 +1,4 @@
-import { isAbsolute, normalize, sep, win32 } from 'node:path'
+import { extname, isAbsolute, normalize, sep, win32 } from 'node:path'
 
 import type {
   DataFlowAcknowledgement,
@@ -7,14 +7,17 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
-import type { TaskListInput } from '../shared/tasks'
+import type { TaskListInput, TaskToggleInput } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
+  WorkspaceFileRef,
   WorkspaceFocusTabInput,
   WorkspaceOpenFileInput,
+  WorkspaceOpenRecentFileInput,
   WorkspaceRecordRecentInput,
   WorkspaceSetOutlineCollapsedInput,
   WorkspaceShellUpdate,
+  WorkspaceTabFileInput,
   WorkspaceUpdateTabViewModeInput,
   WorkspaceViewMode,
   WorkspaceWindowUpdate
@@ -34,6 +37,7 @@ const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
 const MAX_TAB_ID_LENGTH = 200
 const MAX_TASK_LIST_LIMIT = 200
+const MAX_TASK_SOURCE_LINE_LENGTH = 20000
 const REQUEST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_TAB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,199}$/
 
@@ -124,6 +128,29 @@ function assertValidWorkspaceSourcePath(value: unknown): string {
   return sourcePath
 }
 
+function assertValidWorkspaceExternalPath(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_PATH_LENGTH ||
+    value.includes('\0') ||
+    (!isAbsolute(value) && !win32.isAbsolute(value))
+  ) {
+    throw new Error('Invalid workspace external path')
+  }
+
+  const externalPath = normalize(value)
+  if (
+    externalPath.includes('\0') ||
+    (!isAbsolute(externalPath) && !win32.isAbsolute(externalPath)) ||
+    extname(externalPath).toLowerCase() !== '.md'
+  ) {
+    throw new Error('Invalid workspace external path')
+  }
+
+  return externalPath
+}
+
 function assertValidWorkspaceTabId(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -207,6 +234,34 @@ export function assertValidTaskListInput(value: unknown): TaskListInput {
   }
 
   return taskListInput
+}
+
+export function assertValidTaskToggleInput(value: unknown): TaskToggleInput {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'line', 'checkboxColumn', 'checked', 'expectedLine'],
+    'task toggle input'
+  )
+  const line = assertFiniteNumber(input.line, 'task line')
+  const checkboxColumn = assertFiniteNumber(input.checkboxColumn, 'task checkbox column')
+  if (!Number.isInteger(line) || line < 1) throw new Error('Invalid task line')
+  if (!Number.isInteger(checkboxColumn) || checkboxColumn < 0) {
+    throw new Error('Invalid task checkbox column')
+  }
+  if (
+    typeof input.expectedLine !== 'string' ||
+    input.expectedLine.length > MAX_TASK_SOURCE_LINE_LENGTH
+  ) {
+    throw new Error('Invalid task expected line')
+  }
+
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath),
+    line,
+    checkboxColumn,
+    checked: assertOptionalBoolean(input.checked, 'task checked'),
+    expectedLine: input.expectedLine
+  }
 }
 
 export function assertValidProviderId(value: unknown): ProviderId {
@@ -426,6 +481,37 @@ export function assertValidWorkspaceOpenFileInput(value: unknown): WorkspaceOpen
   const input = assertObjectWithKeys(value, ['sourcePath'], 'workspace open file input')
   return {
     sourcePath: assertValidWorkspaceSourcePath(input.sourcePath)
+  }
+}
+
+export function assertValidWorkspaceFileRefInput(value: unknown): WorkspaceFileRef {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'externalPath'],
+    'workspace file reference'
+  )
+  const hasSourcePath = input.sourcePath !== undefined
+  const hasExternalPath = input.externalPath !== undefined
+
+  if (hasSourcePath === hasExternalPath) {
+    throw new Error('Invalid workspace file reference')
+  }
+
+  return hasSourcePath
+    ? { sourcePath: assertValidWorkspaceSourcePath(input.sourcePath) }
+    : { externalPath: assertValidWorkspaceExternalPath(input.externalPath) }
+}
+
+export function assertValidWorkspaceOpenRecentFileInput(
+  value: unknown
+): WorkspaceOpenRecentFileInput {
+  return assertValidWorkspaceFileRefInput(value)
+}
+
+export function assertValidWorkspaceTabFileInput(value: unknown): WorkspaceTabFileInput {
+  const input = assertObjectWithKeys(value, ['tabId'], 'workspace tab file input')
+  return {
+    tabId: assertValidWorkspaceTabId(input.tabId)
   }
 }
 

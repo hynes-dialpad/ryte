@@ -128,7 +128,7 @@ function closeActiveTab(): void {
   const tab = workspace.activeTab
   if (!tab) return
 
-  void workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath }).catch(() => {
+  void workspace.closeTabToRecent({ tabId: tab.id }).catch(() => {
     // The workspace store owns the user-facing error state for failed closes.
   })
 }
@@ -137,7 +137,7 @@ function closeAllTabs(): void {
   const tabs = [...workspace.tabs]
   void (async () => {
     for (const tab of tabs) {
-      await workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath })
+      await workspace.closeTabToRecent({ tabId: tab.id })
     }
   })().catch(() => {
     // The workspace store owns the user-facing error state for failed closes.
@@ -339,6 +339,13 @@ function handleMenuCommand(command: AppMenuCommand): void {
 
   if (command.type === 'open-source-path') {
     void workspace.openExplicitFile({ sourcePath: command.sourcePath }).catch(() => {
+      // The workspace store owns the user-facing error state for failed opens.
+    })
+    return
+  }
+
+  if (command.type === 'open-recent-file') {
+    void workspace.openRecentFile(command.file).catch(() => {
       // The workspace store owns the user-facing error state for failed opens.
     })
     return

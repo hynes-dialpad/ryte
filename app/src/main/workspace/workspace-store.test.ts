@@ -32,6 +32,13 @@ describe('WorkspaceStore', () => {
     writeFileSync(path, '# Synthetic fixture\n', 'utf-8')
   }
 
+  function writeExternalNote(sourcePath = 'outside/external.md'): string {
+    const path = join(tempDir, sourcePath)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '# External synthetic fixture\n', 'utf-8')
+    return path
+  }
+
   it('returns defaults when no file exists', () => {
     expect(store().publicState()).toEqual(defaultWorkspaceState())
   })
@@ -120,6 +127,35 @@ describe('WorkspaceStore', () => {
     expect(second.activeTabId).toBe(second.tabs[1]?.id)
     expect(second.recents).toHaveLength(1)
     expect(second.recents[0]?.sourcePath).toBe('folder/a.md')
+  })
+
+  it('opens explicitly picked external markdown files without requiring notes-root membership', async () => {
+    const externalPath = writeExternalNote()
+    const workspace = store()
+
+    const first = await workspace.openPickedFile({ externalPath })
+    const firstTabId = first.tabs[0]?.id
+    expect(first.tabs).toHaveLength(1)
+    expect(first.tabs[0]).toMatchObject({
+      externalPath,
+      title: 'external.md',
+      viewMode: 'preview'
+    })
+    expect(first.activeTabId).toBe(firstTabId)
+    expect(first.recents).toHaveLength(1)
+    expect(first.recents[0]).toMatchObject({
+      externalPath,
+      title: 'external.md'
+    })
+
+    const focused = await workspace.openPickedFile({ externalPath })
+    expect(focused.tabs).toHaveLength(1)
+    expect(focused.activeTabId).toBe(firstTabId)
+
+    workspace.closeTab({ tabId: firstTabId! })
+    const reopened = await workspace.openRecentFile({ externalPath })
+    expect(reopened.tabs).toHaveLength(1)
+    expect(reopened.tabs[0]).toMatchObject({ externalPath })
   })
 
   it('focuses tabs and closes active tabs with next, previous, then null fallback', async () => {
@@ -222,18 +258,30 @@ describe('WorkspaceStore', () => {
 
   it('prunes missing tabs, recents, outline flags, and repairs the active tab', async () => {
     writeNote('keep.md')
+    const externalPath = writeExternalNote()
     writeFileSync(
       join(tempDir, 'workspace.json'),
       JSON.stringify({
         schemaVersion: 1,
         tabs: [
           { id: 'missing-tab', sourcePath: 'missing.md', title: 'missing.md', viewMode: 'preview' },
-          { id: 'keep-tab', sourcePath: 'keep.md', title: 'keep.md', viewMode: 'source' }
+          { id: 'keep-tab', sourcePath: 'keep.md', title: 'keep.md', viewMode: 'source' },
+          {
+            id: 'external-tab',
+            externalPath,
+            title: 'external.md',
+            viewMode: 'preview'
+          }
         ],
         activeTabId: 'missing-tab',
         recents: [
           { sourcePath: 'missing.md', title: 'missing.md', openedAt: '2026-05-21T12:00:00.000Z' },
-          { sourcePath: 'keep.md', title: 'keep.md', openedAt: '2026-05-21T12:01:00.000Z' }
+          { sourcePath: 'keep.md', title: 'keep.md', openedAt: '2026-05-21T12:01:00.000Z' },
+          {
+            externalPath,
+            title: 'external.md',
+            openedAt: '2026-05-21T12:02:00.000Z'
+          }
         ],
         outlineCollapsedByPath: {
           'missing.md': true,
@@ -245,9 +293,12 @@ describe('WorkspaceStore', () => {
 
     const state = await store().pruneMissingFileRefs()
 
-    expect(state.tabs.map((tab) => tab.id)).toEqual(['keep-tab'])
+    expect(state.tabs.map((tab) => tab.id)).toEqual(['keep-tab', 'external-tab'])
     expect(state.activeTabId).toBe('keep-tab')
-    expect(state.recents.map((recent) => recent.sourcePath)).toEqual(['keep.md'])
+    expect(state.recents).toEqual([
+      { sourcePath: 'keep.md', title: 'keep.md', openedAt: '2026-05-21T12:01:00.000Z' },
+      { externalPath, title: 'external.md', openedAt: '2026-05-21T12:02:00.000Z' }
+    ])
     expect(state.outlineCollapsedByPath).toEqual({ 'keep.md': false })
   })
 

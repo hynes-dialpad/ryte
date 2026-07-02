@@ -6,6 +6,10 @@ import { isSafeLinkTarget, sanitizeRenderedHtml } from './sanitizer'
 
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/
 const MERMAID_LANGUAGE = 'mermaid'
+const FENCE_RE = /^( {0,3})(`{3,}|~{3,})/
+const TASK_RE = /^(\s*(?:[-+*]|\d+[.)])\s+)\[( |x|X)\](\s+.*?|\s*)$/
+const FRONTMATTER_DELIMITER_RE = /^(---|\.\.\.)\s*$/
+const TASK_INLINE_MARKER_RE = /^\[( |x|X)\]\s?/
 
 // Languages that are pre-loaded at init so they're available synchronously
 // for the markdown-it highlight callback. All are JS grammar files — no WASM.
@@ -32,6 +36,25 @@ const PRELOAD_LANGS = [
 
 let mdPromise: Promise<MarkdownIt> | null = null
 
+interface RenderOptions {
+  interactiveTasks?: boolean
+}
+
+interface RenderEnv {
+  lineOffset?: number
+  taskMarkers?: Map<number, RenderedTaskMarker>
+}
+
+interface RenderedTaskMarker {
+  line: number
+  checkboxColumn: number
+  checked: boolean
+}
+
+interface SourceLine {
+  text: string
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -42,6 +65,112 @@ function escapeHtml(value: string): string {
 
 function renderMermaidFence(content: string): string {
   return `<pre class="mermaid" data-mermaid-pending="true">${escapeHtml(content)}</pre>\n`
+}
+
+function splitLines(markdown: string): SourceLine[] {
+  if (markdown.length === 0) return []
+
+  const lines: SourceLine[] = []
+  let start = 0
+  for (let index = 0; index < markdown.length; index += 1) {
+    const char = markdown[index]
+    if (char !== '\n' && char !== '\r') continue
+
+    lines.push({ text: markdown.slice(start, index) })
+    if (char === '\r' && markdown[index + 1] === '\n') index += 1
+    start = index + 1
+  }
+
+  if (start < markdown.length) {
+    lines.push({ text: markdown.slice(start) })
+  }
+
+  return lines
+}
+
+function stripFrontmatterForRender(text: string): { text: string; lineOffset: number } {
+  const match = FRONTMATTER_RE.exec(text)
+  if (!match) return { text, lineOffset: 0 }
+
+  return {
+    text: text.slice(match[0].length),
+    lineOffset: (match[0].match(/\n/g) ?? []).length
+  }
+}
+
+function startsWithFrontmatter(lines: SourceLine[]): boolean {
+  return lines[0]?.text.trim() === '---'
+}
+
+function findTaskMarkers(markdown: string): Map<number, RenderedTaskMarker> {
+  const markers = new Map<number, RenderedTaskMarker>()
+  const lines = splitLines(markdown)
+  let inFrontmatter = startsWithFrontmatter(lines)
+  let inFence = false
+  let fenceMarker: string | null = null
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index]?.text ?? ''
+    const line = index + 1
+
+    if (inFrontmatter) {
+      if (index > 0 && FRONTMATTER_DELIMITER_RE.test(rawLine.trim())) {
+        inFrontmatter = false
+      }
+      continue
+    }
+
+    const fence = FENCE_RE.exec(rawLine)
+    if (fence) {
+      const marker = fence[2]![0]!
+      if (!inFence) {
+        inFence = true
+        fenceMarker = marker
+      } else if (fenceMarker === marker) {
+        inFence = false
+        fenceMarker = null
+      }
+      continue
+    }
+
+    if (inFence) continue
+
+    const task = TASK_RE.exec(rawLine)
+    if (!task) continue
+
+    markers.set(line, {
+      line,
+      checkboxColumn: task[1]!.length,
+      checked: task[2]!.toLowerCase() === 'x'
+    })
+  }
+
+  return markers
+}
+
+function renderTaskButton(task: RenderedTaskMarker): string {
+  const checked = task.checked ? 'true' : 'false'
+  const label = task.checked ? 'Mark task incomplete' : 'Mark task complete'
+  return [
+    '<span class="markdown-task-line" data-task-checked="',
+    checked,
+    '">',
+    '<button type="button" class="markdown-task-toggle" aria-label="',
+    label,
+    '" aria-pressed="',
+    checked,
+    '" data-task-line="',
+    String(task.line),
+    '" data-task-checkbox-column="',
+    String(task.checkboxColumn),
+    '" data-task-checked="',
+    checked,
+    '"></button><span class="markdown-task-content">'
+  ].join('')
+}
+
+function renderTaskContentClose(): string {
+  return '</span></span>'
 }
 
 async function getMd(): Promise<MarkdownIt> {
@@ -83,6 +212,33 @@ async function getMd(): Promise<MarkdownIt> {
         }
         return defaultFence(tokens, idx, options, env, self)
       }
+      md.core.ruler.after('inline', 'ryte_task_controls', (state) => {
+        const env = state.env as RenderEnv
+        if (!env.taskMarkers || env.taskMarkers.size === 0) return
+
+        for (const token of state.tokens) {
+          if (token.type !== 'inline') continue
+          const sourceLine =
+            token.map?.[0] !== undefined ? token.map[0] + (env.lineOffset ?? 0) + 1 : null
+          const task = sourceLine ? env.taskMarkers.get(sourceLine) : undefined
+          if (!task || !token.children) continue
+
+          const firstTextTokenIndex = token.children.findIndex(
+            (child) => child.type === 'text' && TASK_INLINE_MARKER_RE.test(child.content)
+          )
+          const firstTextToken = token.children[firstTextTokenIndex]
+          if (!firstTextToken) continue
+
+          firstTextToken.content = firstTextToken.content.replace(TASK_INLINE_MARKER_RE, '')
+
+          const taskOpen = new state.Token('html_inline', '', 0)
+          taskOpen.content = renderTaskButton(task)
+          const taskClose = new state.Token('html_inline', '', 0)
+          taskClose.content = renderTaskContentClose()
+          token.children.splice(firstTextTokenIndex, 0, taskOpen)
+          token.children.push(taskClose)
+        }
+      })
       return md
     })().catch((err) => {
       // Reset so the next render attempt retries rather than caching a rejected promise.
@@ -93,8 +249,12 @@ async function getMd(): Promise<MarkdownIt> {
   return mdPromise
 }
 
-export async function render(text: string): Promise<string> {
+export async function render(text: string, options: RenderOptions = {}): Promise<string> {
   const md = await getMd()
-  const stripped = text.replace(FRONTMATTER_RE, '')
-  return sanitizeRenderedHtml(md.render(stripped))
+  const stripped = stripFrontmatterForRender(text)
+  const env: RenderEnv = {
+    lineOffset: stripped.lineOffset,
+    taskMarkers: options.interactiveTasks ? findTaskMarkers(text) : undefined
+  }
+  return sanitizeRenderedHtml(md.render(stripped.text, env))
 }

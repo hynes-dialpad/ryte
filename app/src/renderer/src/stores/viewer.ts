@@ -1,8 +1,51 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
-import type { WorkspaceViewMode } from '../../../shared/workspace'
+import {
+  isWorkspaceSourceFileRef,
+  workspaceFileDisplayPath,
+  workspaceFileKey,
+  type WorkspaceViewMode
+} from '../../../shared/workspace'
 import { useWorkspaceStore } from './workspace'
+
+interface RenderedTaskToggleInput {
+  line: number
+  checkboxColumn: number
+  checked: boolean
+}
+
+function sourceLineAt(markdown: string, line: number): string | null {
+  if (line < 1) return null
+
+  let currentLine = 1
+  let start = 0
+  for (let index = 0; index < markdown.length; index += 1) {
+    const char = markdown[index]
+    if (char !== '\n' && char !== '\r') continue
+
+    if (currentLine === line) return markdown.slice(start, index)
+    if (char === '\r' && markdown[index + 1] === '\n') index += 1
+    start = index + 1
+    currentLine += 1
+  }
+
+  if (currentLine === line && start <= markdown.length) return markdown.slice(start)
+  return null
+}
+
+function taskToggleFailureMessage(reason: string): string {
+  switch (reason) {
+    case 'source-line-changed':
+      return 'Task changed on disk before it could be updated. Reloaded the file.'
+    case 'missing-file':
+      return 'Task file no longer exists.'
+    case 'invalid-source':
+      return 'Task file is outside the notes folder.'
+    default:
+      return 'Task changed before it could be updated. Reloaded the file.'
+  }
+}
 
 export const useViewerStore = defineStore('viewer', () => {
   const workspace = useWorkspaceStore()
@@ -14,7 +57,12 @@ export const useViewerStore = defineStore('viewer', () => {
 
   const activeTab = computed(() => workspace.activeTab)
   const activeTabId = computed(() => activeTab.value?.id ?? null)
-  const sourcePath = computed(() => activeTab.value?.sourcePath ?? null)
+  const sourcePath = computed(() =>
+    activeTab.value && isWorkspaceSourceFileRef(activeTab.value) ? activeTab.value.sourcePath : null
+  )
+  const displayPath = computed(() =>
+    activeTab.value ? workspaceFileDisplayPath(activeTab.value) : null
+  )
   const viewMode = computed<WorkspaceViewMode>(() => activeTab.value?.viewMode ?? 'preview')
   const sourceMode = computed(() => viewMode.value === 'source')
 
@@ -24,17 +72,17 @@ export const useViewerStore = defineStore('viewer', () => {
   let stopActiveTabWatch: (() => void) | null = null
 
   function sourcePathExists(paths: string[]): boolean {
-    return !sourcePath.value || paths.includes(sourcePath.value)
+    const tab = activeTab.value
+    if (!tab || !isWorkspaceSourceFileRef(tab)) return true
+    return paths.includes(tab.sourcePath)
   }
 
-  function isCurrentRequest(
-    requestId: number,
-    tabId: string,
-    requestedSourcePath: string
-  ): boolean {
+  function isCurrentRequest(requestId: number, tabId: string, requestedFileKey: string): boolean {
     const tab = activeTab.value
     return (
-      requestId === contentRequestId && tab?.id === tabId && tab.sourcePath === requestedSourcePath
+      requestId === contentRequestId &&
+      tab?.id === tabId &&
+      workspaceFileKey(tab) === requestedFileKey
     )
   }
 
@@ -75,16 +123,17 @@ export const useViewerStore = defineStore('viewer', () => {
     error.value = null
 
     try {
-      const nextContent = await window.ryte.files.readSource({ sourcePath: tab.sourcePath })
-      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+      const requestedFileKey = workspaceFileKey(tab)
+      const nextContent = await window.ryte.files.readWorkspaceTab({ tabId: tab.id })
+      if (!isCurrentRequest(requestId, tab.id, requestedFileKey)) return
 
-      await window.ryte.files.watchSource({ sourcePath: tab.sourcePath })
-      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+      await window.ryte.files.watchWorkspaceTab({ tabId: tab.id })
+      if (!isCurrentRequest(requestId, tab.id, requestedFileKey)) return
 
       content.value = nextContent
       error.value = null
     } catch (e) {
-      if (!isCurrentRequest(requestId, tab.id, tab.sourcePath)) return
+      if (!isCurrentRequest(requestId, tab.id, workspaceFileKey(tab))) return
       error.value = e instanceof Error ? e.message : String(e)
       content.value = ''
       try {
@@ -110,16 +159,28 @@ export const useViewerStore = defineStore('viewer', () => {
       }
     })
 
+    const unsubscribeWorkspaceTabChange = window.ryte.files.onWorkspaceTabChange((changedTabId) => {
+      if (changedTabId === activeTabId.value) {
+        void loadActiveTab()
+      }
+    })
+
     unsubscribeTreeChange = window.ryte.files.onTreeChanged(() => {
       void refreshTree()
     })
 
     stopActiveTabWatch = watch(
-      () => [activeTabId.value, sourcePath.value] as const,
+      () => [activeTabId.value, displayPath.value] as const,
       () => {
         void loadActiveTab()
       }
     )
+
+    const originalStopActiveTabWatch = stopActiveTabWatch
+    stopActiveTabWatch = () => {
+      originalStopActiveTabWatch?.()
+      unsubscribeWorkspaceTabChange()
+    }
 
     await loadActiveTab()
   }
@@ -134,6 +195,41 @@ export const useViewerStore = defineStore('viewer', () => {
     await setViewMode(sourceMode.value ? 'preview' : 'source')
   }
 
+  async function toggleRenderedTask(input: RenderedTaskToggleInput): Promise<void> {
+    const currentSourcePath = sourcePath.value
+    if (!currentSourcePath) {
+      error.value = 'Tasks can only be updated for files in the notes folder.'
+      return
+    }
+
+    const expectedLine = sourceLineAt(content.value, input.line)
+    if (expectedLine === null) {
+      error.value = 'Task line is no longer available.'
+      return
+    }
+
+    try {
+      const result = await window.ryte.tasks.toggle({
+        sourcePath: currentSourcePath,
+        line: input.line,
+        checkboxColumn: input.checkboxColumn,
+        checked: input.checked,
+        expectedLine
+      })
+
+      if (result.ok) {
+        content.value = result.markdown
+        error.value = null
+        return
+      }
+
+      error.value = taskToggleFailureMessage(result.reason)
+      await loadActiveTab()
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   return {
     tree,
     notesRoot,
@@ -143,13 +239,15 @@ export const useViewerStore = defineStore('viewer', () => {
     activeTab,
     activeTabId,
     sourcePath,
-    selectedPath: sourcePath,
+    displayPath,
+    selectedPath: displayPath,
     viewMode,
     sourceMode,
     hydrate,
     refreshTree,
     loadActiveTab,
     setViewMode,
-    toggleSourceMode
+    toggleSourceMode,
+    toggleRenderedTask
   }
 })

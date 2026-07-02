@@ -10,6 +10,7 @@ import {
 } from 'vue'
 
 import { useWorkspaceStore } from '../stores/workspace'
+import { workspaceFileDisplayPath, type WorkspaceFileTab } from '../../../shared/workspace'
 import IconClose from './icons/IconClose.vue'
 import {
   WORKSPACE_TABPANEL_ID,
@@ -167,6 +168,10 @@ function tabAccessibleLabel(title: string, sourcePath: string): string {
   return title === sourcePath ? title : `${title}, ${sourcePath}`
 }
 
+function tabDisplayPath(tab: WorkspaceFileTab): string {
+  return workspaceFileDisplayPath(tab)
+}
+
 function announce(message: string): void {
   screenReaderStatus.value = ''
   void nextTick(() => {
@@ -214,7 +219,7 @@ function focusTab(
     }
     if (options.announceSelection) {
       const selectedTab = workspace.tabs.find((tab) => tab.id === tabId)
-      if (selectedTab) announce(`Selected ${selectedTab.sourcePath}`)
+      if (selectedTab) announce(`Selected ${tabDisplayPath(selectedTab)}`)
     }
   })
 }
@@ -237,7 +242,7 @@ function closeTabWithFocusRecovery(
     }
   })
   if (closingTab && options.announceClose) {
-    announce(`Closed ${closingTab.sourcePath}`)
+    announce(`Closed ${tabDisplayPath(closingTab)}`)
   }
 }
 
@@ -331,11 +336,11 @@ function onGlobalKeydown(event: KeyboardEvent): void {
             role="tab"
             :aria-selected="workspace.activeTabId === tab.id"
             :aria-controls="tabPanelId()"
-            :aria-label="tabAccessibleLabel(tab.title, tab.sourcePath)"
+            :aria-label="tabAccessibleLabel(tab.title, tabDisplayPath(tab))"
             aria-describedby="workspace-tabs-instructions"
             aria-keyshortcuts="ArrowLeft ArrowRight Home End Delete Backspace Enter Space Meta+W Meta+Shift+[ Meta+Shift+]"
             :tabindex="tabIndex(tab.id)"
-            :title="tab.sourcePath"
+            :title="tabDisplayPath(tab)"
             @click="focusTab(tab.id)"
             @keydown="onTabKeydown($event, tab.id)"
           >
@@ -344,8 +349,8 @@ function onGlobalKeydown(event: KeyboardEvent): void {
           <button
             type="button"
             class="tab-close"
-            :aria-label="`Close ${tab.sourcePath}`"
-            :title="`Close ${tab.sourcePath}`"
+            :aria-label="`Close ${tabDisplayPath(tab)}`"
+            :title="`Close ${tabDisplayPath(tab)}`"
             tabindex="-1"
             @click="closeTab($event, tab.id)"
           >

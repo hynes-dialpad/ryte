@@ -4,7 +4,10 @@ import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
   clampSidebarWidth,
-  shouldAutoCollapseSidebar
+  shouldAutoCollapseSidebar,
+  workspaceFileDisplayPath,
+  workspaceFileKey,
+  workspaceFileTitle
 } from './workspace'
 
 describe('workspace shell policy', () => {
@@ -23,5 +26,13 @@ describe('workspace shell policy', () => {
   it('auto-collapses below the small viewport threshold', () => {
     expect(shouldAutoCollapseSidebar(639)).toBe(true)
     expect(shouldAutoCollapseSidebar(640)).toBe(false)
+  })
+
+  it('derives stable display metadata for source and external file refs', () => {
+    expect(workspaceFileKey({ sourcePath: 'folder/a.md' })).toBe('source:folder/a.md')
+    expect(workspaceFileKey({ externalPath: '/tmp/outside.md' })).toBe('external:/tmp/outside.md')
+    expect(workspaceFileDisplayPath({ sourcePath: 'folder/a.md' })).toBe('folder/a.md')
+    expect(workspaceFileDisplayPath({ externalPath: '/tmp/outside.md' })).toBe('/tmp/outside.md')
+    expect(workspaceFileTitle({ externalPath: '/tmp/outside.md' })).toBe('outside.md')
   })
 })

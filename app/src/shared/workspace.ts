@@ -14,6 +14,18 @@ export const WORKSPACE_RECENTS_LIMIT = 25
 export type WorkspaceViewMode = 'preview' | 'source'
 export type WorkspaceSidebarMode = 'files' | 'home'
 
+export interface WorkspaceSourceFileRef {
+  sourcePath: string
+  externalPath?: never
+}
+
+export interface WorkspaceExternalFileRef {
+  externalPath: string
+  sourcePath?: never
+}
+
+export type WorkspaceFileRef = WorkspaceSourceFileRef | WorkspaceExternalFileRef
+
 export interface WindowBounds {
   x: number
   y: number
@@ -33,15 +45,13 @@ export interface WorkspaceWindowState {
   fullscreen: boolean
 }
 
-export interface WorkspaceFileTab {
+export type WorkspaceFileTab = WorkspaceFileRef & {
   id: string
-  sourcePath: string
   title: string
   viewMode: WorkspaceViewMode
 }
 
-export interface WorkspaceRecentFile {
-  sourcePath: string
+export type WorkspaceRecentFile = WorkspaceFileRef & {
   title: string
   openedAt: string
 }
@@ -68,7 +78,15 @@ export interface WorkspaceWindowUpdate {
   fullscreen?: boolean
 }
 
-export interface WorkspaceOpenFileInput {
+export type WorkspaceOpenFileInput = WorkspaceSourceFileRef
+
+export type WorkspaceOpenRecentFileInput = WorkspaceFileRef
+
+export interface WorkspaceTabFileInput {
+  tabId: string
+}
+
+export interface WorkspaceRecordRecentInput {
   sourcePath: string
 }
 
@@ -85,13 +103,35 @@ export interface WorkspaceUpdateTabViewModeInput {
   viewMode: WorkspaceViewMode
 }
 
-export interface WorkspaceRecordRecentInput {
-  sourcePath: string
-}
-
 export interface WorkspaceSetOutlineCollapsedInput {
   sourcePath: string
   collapsed: boolean
+}
+
+export function isWorkspaceSourceFileRef(file: WorkspaceFileRef): file is WorkspaceSourceFileRef {
+  return typeof file.sourcePath === 'string'
+}
+
+export function isWorkspaceExternalFileRef(
+  file: WorkspaceFileRef
+): file is WorkspaceExternalFileRef {
+  return typeof file.externalPath === 'string'
+}
+
+export function workspaceFileDisplayPath(file: WorkspaceFileRef): string {
+  return isWorkspaceSourceFileRef(file) ? file.sourcePath : file.externalPath
+}
+
+export function workspaceFileKey(file: WorkspaceFileRef): string {
+  return isWorkspaceSourceFileRef(file)
+    ? `source:${file.sourcePath}`
+    : `external:${file.externalPath}`
+}
+
+export function workspaceFileTitle(file: WorkspaceFileRef): string {
+  const displayPath = workspaceFileDisplayPath(file)
+  const parts = displayPath.split(/[\\/]+/).filter(Boolean)
+  return parts.at(-1) ?? displayPath
 }
 
 export function clampSidebarWidth(width: number, viewportWidth: number): number {

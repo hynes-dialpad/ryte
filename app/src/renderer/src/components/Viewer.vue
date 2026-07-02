@@ -16,7 +16,7 @@ const proseEl = ref<HTMLElement | null>(null)
 const sourceEl = ref<HTMLElement | null>(null)
 
 const filenameDisplay = computed(() => {
-  return viewer.sourcePath ?? ''
+  return viewer.displayPath ?? ''
 })
 const activeTabPanelLabelledBy = computed(() =>
   workspace.activeTabId ? getWorkspaceTabDomId(workspace.activeTabId) : undefined
@@ -27,7 +27,7 @@ async function updateRender(text: string): Promise<void> {
     renderedHtml.value = renderCache.get(text)!
     return
   }
-  const html = await render(text)
+  const html = await render(text, { interactiveTasks: true })
   renderCache.set(text, html)
   // Bound cache to avoid unbounded growth on many file edits in one session.
   if (renderCache.size > 50) {
@@ -95,6 +95,23 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
+function onRenderedClick(event: MouseEvent): void {
+  const target = event.target instanceof Element ? event.target : null
+  const button = target?.closest<HTMLButtonElement>('.markdown-task-toggle')
+  if (!button || !proseEl.value?.contains(button)) return
+
+  const line = Number(button.dataset.taskLine)
+  const checkboxColumn = Number(button.dataset.taskCheckboxColumn)
+  const isChecked = button.dataset.taskChecked === 'true'
+  if (!Number.isInteger(line) || !Number.isInteger(checkboxColumn)) return
+
+  event.preventDefault()
+  button.disabled = true
+  void viewer.toggleRenderedTask({ line, checkboxColumn, checked: !isChecked }).finally(() => {
+    button.disabled = false
+  })
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
 })
@@ -112,8 +129,8 @@ onUnmounted(() => {
     :aria-labelledby="activeTabPanelLabelledBy"
     :aria-label="activeTabPanelLabelledBy ? undefined : 'Markdown viewer'"
   >
-    <header v-if="viewer.sourcePath" class="viewer-toolbar">
-      <span class="filename" :title="viewer.sourcePath">{{ filenameDisplay }}</span>
+    <header v-if="viewer.displayPath" class="viewer-toolbar">
+      <span class="filename" :title="viewer.displayPath">{{ filenameDisplay }}</span>
       <button type="button" class="toggle" @click="togglePreservingScroll()">
         {{ viewer.sourceMode ? 'Rendered' : 'Source' }}
         <span class="shortcut">⌘E</span>
@@ -130,7 +147,7 @@ onUnmounted(() => {
       <p>Render failed</p>
       <p class="error-detail">{{ renderError }}</p>
     </div>
-    <p v-else-if="!viewer.sourcePath" class="empty">Select a file to view</p>
+    <p v-else-if="!viewer.displayPath" class="empty">Select a file to view</p>
     <p v-else-if="viewer.loading" class="empty">Loading…</p>
     <pre
       v-else-if="viewer.sourceMode"
@@ -142,6 +159,7 @@ onUnmounted(() => {
       v-else
       ref="proseEl"
       class="prose ryte-scrollbar ryte-scrollbar--y"
+      @click="onRenderedClick"
       v-html="renderedHtml"
     ></article>
     <!-- eslint-enable vue/no-v-html -->
@@ -305,6 +323,65 @@ onUnmounted(() => {
 
 .prose :deep(li) {
   margin: 0.25em 0;
+}
+
+.prose :deep(.markdown-task-line) {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55em;
+}
+
+.prose :deep(.markdown-task-toggle) {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 0.25em;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  vertical-align: -0.12em;
+  position: relative;
+}
+
+.prose :deep(.markdown-task-toggle:hover),
+.prose :deep(.markdown-task-toggle:focus-visible) {
+  border-color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.prose :deep(.markdown-task-toggle:focus-visible) {
+  outline: 2px solid rgba(80, 158, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.prose :deep(.markdown-task-toggle[data-task-checked='true']) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.prose :deep(.markdown-task-toggle[data-task-checked='true']::after) {
+  content: '';
+  position: absolute;
+  left: 0.24em;
+  top: 0.1em;
+  width: 0.35em;
+  height: 0.6em;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(42deg);
+}
+
+.prose :deep(.markdown-task-toggle:disabled) {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.prose :deep(.markdown-task-line[data-task-checked='true'] .markdown-task-content) {
+  color: rgba(255, 255, 255, 0.55);
+  text-decoration: line-through;
 }
 
 .prose :deep(a) {

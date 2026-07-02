@@ -1,6 +1,11 @@
 import type { FileCatalogEntry } from '../../../shared/files'
 import type { MarkdownTaskFact } from '../../../shared/tasks'
-import type { WorkspaceFileTab, WorkspaceRecentFile } from '../../../shared/workspace'
+import {
+  isWorkspaceSourceFileRef,
+  type WorkspaceFileTab,
+  type WorkspaceRecentFile,
+  type WorkspaceSourceFileRef
+} from '../../../shared/workspace'
 
 export type HomeSmartGroupId = 'tasks' | 'briefing' | 'plans' | 'recent'
 
@@ -42,7 +47,16 @@ interface HomeSidebarModelInput {
   activeTaskFingerprint?: string | null
 }
 
+type SourceWorkspaceRecentFile = WorkspaceRecentFile & WorkspaceSourceFileRef
+
+function isSourceWorkspaceRecentFile(
+  recent: WorkspaceRecentFile
+): recent is SourceWorkspaceRecentFile {
+  return isWorkspaceSourceFileRef(recent)
+}
+
 interface HomeSidebarModelContext extends HomeSidebarModelInput {
+  recents: SourceWorkspaceRecentFile[]
   activeSourcePath: string | null
   activeTaskFingerprint: string | null
   catalogFilesBySourcePath: Map<string, FileCatalogEntry>
@@ -251,15 +265,18 @@ const HOME_SMART_GROUP_DEFINITIONS: HomeSmartGroupDefinition[] = [
 
 export function buildHomeSidebarModel(input: HomeSidebarModelInput): HomeSidebarModel {
   const activeTab = input.tabs.find((tab) => tab.id === input.activeTabId) ?? null
-  const activeSourcePath = activeTab?.sourcePath ?? null
+  const activeSourcePath =
+    activeTab && isWorkspaceSourceFileRef(activeTab) ? activeTab.sourcePath : null
+  const sourceRecents = input.recents.filter(isSourceWorkspaceRecentFile)
   const context: HomeSidebarModelContext = {
     ...input,
+    recents: sourceRecents,
     taskFacts: input.taskFacts ?? [],
     activeTaskFingerprint: input.activeTaskFingerprint ?? null,
     activeSourcePath,
     catalogFilesBySourcePath: new Map(input.catalogFiles.map((file) => [file.sourcePath, file])),
     recentOpenedAtMsBySourcePath: new Map(
-      input.recents.flatMap((recent) => {
+      sourceRecents.flatMap((recent) => {
         const openedAtMs = recentOpenedAtMs(recent)
         return openedAtMs === null ? [] : [[recent.sourcePath, openedAtMs]]
       })

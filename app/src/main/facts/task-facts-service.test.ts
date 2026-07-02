@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -68,5 +68,40 @@ describe('TaskFactsService', () => {
       (await service.list(tempDir, { checked: true })).tasks.map((task) => task.normalizedText)
     ).toEqual(['Three'])
     expect((await service.list(tempDir, { limit: -1 })).tasks).toHaveLength(0)
+  })
+
+  it('toggles a task marker in a synthetic markdown file', async () => {
+    const filePath = join(tempDir, 'tasks.md')
+    writeFileSync(filePath, '# Tasks\n\n- [ ] Follow up\n')
+
+    const service = new TaskFactsService()
+    const result = await service.toggle(tempDir, {
+      sourcePath: 'tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
+
+    expect(result).toMatchObject({ ok: true })
+    expect(readFileSync(filePath, 'utf-8')).toBe('# Tasks\n\n- [x] Follow up\n')
+    expect((await service.list(tempDir, { checked: false })).tasks).toHaveLength(0)
+  })
+
+  it('rejects toggles when the expected source line changed', async () => {
+    const filePath = join(tempDir, 'tasks.md')
+    writeFileSync(filePath, '# Tasks\n\n- [ ] Updated task\n')
+
+    const service = new TaskFactsService()
+    const result = await service.toggle(tempDir, {
+      sourcePath: 'tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
+
+    expect(result).toEqual({ ok: false, reason: 'source-line-changed' })
+    expect(readFileSync(filePath, 'utf-8')).toBe('# Tasks\n\n- [ ] Updated task\n')
   })
 })

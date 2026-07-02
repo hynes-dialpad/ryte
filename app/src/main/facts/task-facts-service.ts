@@ -1,9 +1,16 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { relative, sep } from 'node:path'
 
-import type { MarkdownTaskFact, TaskFactsResponse, TaskListInput } from '../../shared/tasks'
+import type {
+  MarkdownTaskFact,
+  TaskFactsResponse,
+  TaskListInput,
+  TaskToggleInput,
+  TaskToggleResponse
+} from '../../shared/tasks'
 import { walkNotes } from '../indexing/walker'
-import { extractMarkdownTaskFacts } from './task-extractor'
+import { resolveSourcePathUnderRoot } from '../viewer/file-reader'
+import { extractMarkdownTaskFacts, toggleMarkdownTask } from './task-extractor'
 
 const TASK_FACTS_CONCURRENCY = 16
 const DEFAULT_TASK_LIMIT = 50
@@ -53,6 +60,29 @@ function normalizeLimit(limit: number | undefined): number {
   return Math.max(0, Math.min(MAX_TASK_LIMIT, Math.floor(limit)))
 }
 
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error
+}
+
+function sourceLineAt(markdown: string, line: number): string | null {
+  if (line < 1) return null
+
+  let currentLine = 1
+  let start = 0
+  for (let index = 0; index < markdown.length; index += 1) {
+    const char = markdown[index]
+    if (char !== '\n' && char !== '\r') continue
+
+    if (currentLine === line) return markdown.slice(start, index)
+    if (char === '\r' && markdown[index + 1] === '\n') index += 1
+    start = index + 1
+    currentLine += 1
+  }
+
+  if (currentLine === line && start <= markdown.length) return markdown.slice(start)
+  return null
+}
+
 export class TaskFactsService {
   private snapshot: TaskFactsSnapshot | null = null
   private stale = true
@@ -97,6 +127,59 @@ export class TaskFactsService {
       notesRoot: snapshot.notesRoot,
       tasks,
       refreshedAt: snapshot.refreshedAt
+    }
+  }
+
+  async toggle(notesRoot: string, input: TaskToggleInput): Promise<TaskToggleResponse> {
+    let safePath: string
+    try {
+      safePath = await resolveSourcePathUnderRoot(input.sourcePath, notesRoot)
+    } catch {
+      return { ok: false, reason: 'invalid-source' }
+    }
+
+    try {
+      const [metadata, markdown] = await Promise.all([stat(safePath), readFile(safePath, 'utf-8')])
+
+      if (sourceLineAt(markdown, input.line) !== input.expectedLine) {
+        return { ok: false, reason: 'source-line-changed' }
+      }
+
+      const extractedAt = new Date().toISOString()
+      const currentTask = extractMarkdownTaskFacts({
+        markdown,
+        sourcePath: input.sourcePath,
+        sourceMtimeMs: metadata.mtimeMs,
+        extractedAt
+      }).find((task) => task.line === input.line && task.checkboxColumn === input.checkboxColumn)
+
+      if (!currentTask) return { ok: false, reason: 'checkbox-missing' }
+
+      const result = toggleMarkdownTask({
+        markdown,
+        task: currentTask,
+        checked: input.checked,
+        extractedAt
+      })
+      if (!result.ok) return result
+
+      await writeFile(safePath, result.markdown, 'utf-8')
+      const nextMetadata = await stat(safePath)
+      this.markStale()
+      return {
+        ok: true,
+        markdown: result.markdown,
+        task: {
+          ...result.task,
+          sourceMtimeMs: nextMetadata.mtimeMs,
+          extractedAt
+        }
+      }
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        return { ok: false, reason: 'missing-file' }
+      }
+      throw error
     }
   }
 

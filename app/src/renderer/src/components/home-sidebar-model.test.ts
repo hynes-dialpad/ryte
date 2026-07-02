@@ -201,6 +201,43 @@ describe('buildHomeSidebarModel', () => {
     expect(model.groups.find((group) => group.id === 'recent')?.items).toEqual([])
   })
 
+  it('excludes external workspace recents from notes-backed home groups', () => {
+    const model = buildHomeSidebarModel({
+      activeTabId: 'external-tab',
+      catalogFiles: [
+        catalogEntry({
+          sourcePath: 'docs/overview.md',
+          title: 'Overview',
+          searchableText: 'overview docs/overview.md'
+        })
+      ],
+      recents: [
+        {
+          externalPath: '/Users/hynes/Desktop/outside.md',
+          title: 'outside.md',
+          openedAt: '2026-05-26T13:00:00.000Z'
+        },
+        {
+          sourcePath: 'docs/overview.md',
+          title: 'overview.md',
+          openedAt: '2026-05-26T12:00:00.000Z'
+        }
+      ],
+      tabs: [
+        {
+          id: 'external-tab',
+          externalPath: '/Users/hynes/Desktop/outside.md',
+          title: 'outside.md',
+          viewMode: 'preview'
+        }
+      ]
+    })
+
+    expect(
+      model.groups.find((group) => group.id === 'recent')?.items.map((item) => item.sourcePath)
+    ).toEqual(['docs/overview.md'])
+  })
+
   it('selects one task row by fingerprint instead of highlighting every task from the active file', () => {
     const model = buildHomeSidebarModel({
       activeTabId: 'tab-a',

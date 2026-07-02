@@ -1,7 +1,13 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 
 import { APP_MENU_COMMAND_CHANNEL, type AppMenuCommand } from '../shared/app-menu'
-import type { WorkspaceRecentFile } from '../shared/workspace'
+import {
+  isWorkspaceSourceFileRef,
+  workspaceFileDisplayPath,
+  workspaceFileTitle,
+  type WorkspaceOpenRecentFileInput,
+  type WorkspaceRecentFile
+} from '../shared/workspace'
 import { workspaceStore } from './workspace/workspace-store'
 
 const APP_NAME = 'ryte'
@@ -17,17 +23,14 @@ function sendMenuCommand(command: AppMenuCommand): void {
   targetWindow()?.webContents.send(APP_MENU_COMMAND_CHANNEL, command)
 }
 
-function sourcePathLabel(sourcePath: string): string {
-  return (
-    sourcePath
-      .split(/[\\/]+/)
-      .filter(Boolean)
-      .at(-1) ?? sourcePath
-  )
+function recentLabel(recent: WorkspaceRecentFile): string {
+  return recent.title || workspaceFileTitle(recent)
 }
 
-function recentLabel(recent: WorkspaceRecentFile): string {
-  return recent.title || sourcePathLabel(recent.sourcePath)
+function recentFileInput(recent: WorkspaceRecentFile): WorkspaceOpenRecentFileInput {
+  return isWorkspaceSourceFileRef(recent)
+    ? { sourcePath: recent.sourcePath }
+    : { externalPath: recent.externalPath }
 }
 
 function recentMenuItems(): MenuItemConstructorOptions[] {
@@ -38,8 +41,8 @@ function recentMenuItems(): MenuItemConstructorOptions[] {
 
   return recents.map((recent) => ({
     label: recentLabel(recent),
-    toolTip: recent.sourcePath,
-    click: () => sendMenuCommand({ type: 'open-source-path', sourcePath: recent.sourcePath })
+    toolTip: workspaceFileDisplayPath(recent),
+    click: () => sendMenuCommand({ type: 'open-recent-file', file: recentFileInput(recent) })
   }))
 }
 

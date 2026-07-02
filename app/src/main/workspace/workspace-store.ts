@@ -3,6 +3,7 @@ import { mkdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import {
   basename,
   dirname,
+  extname,
   isAbsolute,
   join,
   normalize,
@@ -21,11 +22,17 @@ import {
   SIDEBAR_MIN_WIDTH,
   WORKSPACE_RECENTS_LIMIT,
   WORKSPACE_SCHEMA_VERSION,
+  isWorkspaceExternalFileRef,
+  isWorkspaceSourceFileRef,
+  workspaceFileKey,
+  workspaceFileTitle,
   type WindowBounds,
   type WorkspaceCloseTabInput,
+  type WorkspaceFileRef,
   type WorkspaceFileTab,
   type WorkspaceFocusTabInput,
   type WorkspaceOpenFileInput,
+  type WorkspaceOpenRecentFileInput,
   type WorkspaceRecentFile,
   type WorkspaceRecordRecentInput,
   type WorkspaceSidebarMode,
@@ -140,10 +147,40 @@ function normalizeSourcePath(value: unknown): string | null {
   return normalized
 }
 
+function normalizeExternalPath(value: unknown): string | null {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.includes('\0') ||
+    (!isAbsolute(value) && !win32.isAbsolute(value))
+  ) {
+    return null
+  }
+
+  const externalPath = normalize(value)
+  if (extname(externalPath).toLowerCase() !== '.md') return null
+  return externalPath
+}
+
+function normalizeFileRef(value: unknown): WorkspaceFileRef | null {
+  if (!isObject(value)) return null
+  const sourcePath = normalizeSourcePath(value.sourcePath)
+  const externalPath = normalizeExternalPath(value.externalPath)
+  if (sourcePath && !externalPath) return { sourcePath }
+  if (externalPath && !sourcePath) return { externalPath }
+  return null
+}
+
 function requireSourcePath(value: string): string {
   const sourcePath = normalizeSourcePath(value)
   if (!sourcePath) throw new Error('Invalid workspace source path')
   return sourcePath
+}
+
+function requireFileRef(input: WorkspaceOpenRecentFileInput): WorkspaceFileRef {
+  const fileRef = normalizeFileRef(input)
+  if (!fileRef) throw new Error('Invalid workspace file reference')
+  return fileRef
 }
 
 function normalizeTabId(value: unknown): string | null {
@@ -167,11 +204,6 @@ function isWorkspaceSidebarMode(value: unknown): value is WorkspaceSidebarMode {
   return value === 'files' || value === 'home'
 }
 
-function titleFromSourcePath(sourcePath: string): string {
-  const parts = sourcePath.split(/[\\/]+/).filter(Boolean)
-  return parts.at(-1) ?? sourcePath
-}
-
 function normalizeTabs(value: unknown): WorkspaceFileTab[] {
   if (!Array.isArray(value)) return []
   const tabs: WorkspaceFileTab[] = []
@@ -180,13 +212,13 @@ function normalizeTabs(value: unknown): WorkspaceFileTab[] {
   for (const item of value) {
     if (!isObject(item)) continue
     const id = normalizeTabId(item.id)
-    const sourcePath = normalizeSourcePath(item.sourcePath)
-    if (!id || !sourcePath || !isWorkspaceViewMode(item.viewMode) || seenIds.has(id)) continue
+    const fileRef = normalizeFileRef(item)
+    if (!id || !fileRef || !isWorkspaceViewMode(item.viewMode) || seenIds.has(id)) continue
     seenIds.add(id)
     tabs.push({
       id,
-      sourcePath,
-      title: titleFromSourcePath(sourcePath),
+      ...fileRef,
+      title: workspaceFileTitle(fileRef),
       viewMode: item.viewMode
     })
   }
@@ -202,17 +234,17 @@ function normalizeOpenedAt(value: unknown): string | null {
 function normalizeRecents(value: unknown): WorkspaceRecentFile[] {
   if (!Array.isArray(value)) return []
   const recents: WorkspaceRecentFile[] = []
-  const seenPaths = new Set<string>()
+  const seenFiles = new Set<string>()
 
   for (const item of value) {
     if (!isObject(item)) continue
-    const sourcePath = normalizeSourcePath(item.sourcePath)
+    const fileRef = normalizeFileRef(item)
     const openedAt = normalizeOpenedAt(item.openedAt)
-    if (!sourcePath || !openedAt || seenPaths.has(sourcePath)) continue
-    seenPaths.add(sourcePath)
+    if (!fileRef || !openedAt || seenFiles.has(workspaceFileKey(fileRef))) continue
+    seenFiles.add(workspaceFileKey(fileRef))
     recents.push({
-      sourcePath,
-      title: titleFromSourcePath(sourcePath),
+      ...fileRef,
+      title: workspaceFileTitle(fileRef),
       openedAt
     })
     if (recents.length >= WORKSPACE_RECENTS_LIMIT) break
@@ -239,14 +271,18 @@ function repairActiveTabId(value: unknown, tabs: WorkspaceFileTab[]): string | n
   return tabs[0]?.id ?? null
 }
 
-function recordRecentInState(state: WorkspaceState, sourcePath: string): WorkspaceRecentFile[] {
+function recordRecentInState(
+  state: WorkspaceState,
+  fileRef: WorkspaceFileRef
+): WorkspaceRecentFile[] {
+  const key = workspaceFileKey(fileRef)
   return [
     {
-      sourcePath,
-      title: titleFromSourcePath(sourcePath),
+      ...fileRef,
+      title: workspaceFileTitle(fileRef),
       openedAt: new Date().toISOString()
     },
-    ...state.recents.filter((recent) => recent.sourcePath !== sourcePath)
+    ...state.recents.filter((recent) => workspaceFileKey(recent) !== key)
   ].slice(0, WORKSPACE_RECENTS_LIMIT)
 }
 
@@ -371,23 +407,68 @@ export class WorkspaceStore {
 
   async openFile(input: WorkspaceOpenFileInput): Promise<WorkspaceState> {
     const sourcePath = requireSourcePath(input.sourcePath)
-    await this.assertExistingSourceFile(sourcePath)
+    return this.openFileRef({ sourcePath }, { focusExisting: false, requireRecent: false })
+  }
 
+  async openRecentFile(input: WorkspaceOpenRecentFileInput): Promise<WorkspaceState> {
+    const fileRef = requireFileRef(input)
+    return this.openFileRef(fileRef, { focusExisting: true, requireRecent: true })
+  }
+
+  async openPickedFile(input: WorkspaceFileRef): Promise<WorkspaceState> {
+    const fileRef = requireFileRef(input)
+    return this.openFileRef(fileRef, { focusExisting: true, requireRecent: false })
+  }
+
+  private async openFileRef(
+    fileRef: WorkspaceFileRef,
+    options: { focusExisting: boolean; requireRecent: boolean }
+  ): Promise<WorkspaceState> {
+    await this.assertExistingFileRef(fileRef)
     const current = this.load()
+    if (
+      options.requireRecent &&
+      !current.recents.some((recent) => workspaceFileKey(recent) === workspaceFileKey(fileRef))
+    ) {
+      throw new Error('Workspace recent file not found')
+    }
+
+    const existingTab = options.focusExisting
+      ? current.tabs.find((tab) => workspaceFileKey(tab) === workspaceFileKey(fileRef))
+      : null
+    if (existingTab) {
+      const next: WorkspaceState = {
+        ...current,
+        activeTabId: existingTab.id,
+        recents: recordRecentInState(current, fileRef)
+      }
+      this.persist(next)
+      return this.publicState()
+    }
+
     const tab: WorkspaceFileTab = {
       id: randomUUID(),
-      sourcePath,
-      title: titleFromSourcePath(sourcePath),
+      ...fileRef,
+      title: workspaceFileTitle(fileRef),
       viewMode: 'preview'
     }
     const next: WorkspaceState = {
       ...current,
       tabs: [...current.tabs, tab],
       activeTabId: tab.id,
-      recents: recordRecentInState(current, sourcePath)
+      recents: recordRecentInState(current, fileRef)
     }
     this.persist(next)
     return this.publicState()
+  }
+
+  fileRefForTab(tabIdInput: string): WorkspaceFileRef | null {
+    const tabId = requireTabId(tabIdInput)
+    const tab = this.load().tabs.find((candidate) => candidate.id === tabId)
+    if (!tab) return null
+    return isWorkspaceSourceFileRef(tab)
+      ? { sourcePath: tab.sourcePath }
+      : { externalPath: tab.externalPath }
   }
 
   focusTab(input: WorkspaceFocusTabInput): WorkspaceState {
@@ -447,7 +528,7 @@ export class WorkspaceStore {
     const current = this.load()
     const next: WorkspaceState = {
       ...current,
-      recents: recordRecentInState(current, sourcePath)
+      recents: recordRecentInState(current, { sourcePath })
     }
     this.persist(next)
     return this.publicState()
@@ -472,7 +553,17 @@ export class WorkspaceStore {
   async pruneMissingFileRefs(): Promise<WorkspaceState> {
     const current = this.load()
     const existingPaths = await this.currentSourcePathSet()
-    const tabs = current.tabs.filter((tab) => existingPaths.has(tab.sourcePath))
+    const tabs: WorkspaceFileTab[] = []
+    const recents: WorkspaceRecentFile[] = []
+
+    for (const tab of current.tabs) {
+      if (await this.fileRefExists(tab, existingPaths)) tabs.push(tab)
+    }
+
+    for (const recent of current.recents) {
+      if (await this.fileRefExists(recent, existingPaths)) recents.push(recent)
+    }
+
     const outlineCollapsedByPath: Record<string, boolean> = {}
 
     for (const [sourcePath, collapsed] of Object.entries(current.outlineCollapsedByPath)) {
@@ -483,7 +574,7 @@ export class WorkspaceStore {
       ...current,
       tabs,
       activeTabId: repairActiveTabId(current.activeTabId, tabs),
-      recents: current.recents.filter((recent) => existingPaths.has(recent.sourcePath)),
+      recents,
       outlineCollapsedByPath
     }
     this.persist(next)
@@ -591,6 +682,50 @@ export class WorkspaceStore {
 
     const fileStat = await stat(resolvedTarget)
     if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${sourcePath}`)
+  }
+
+  private async assertExistingExternalFile(externalPath: string): Promise<void> {
+    let resolvedTarget: string
+    try {
+      resolvedTarget = await realpath(resolve(externalPath))
+    } catch {
+      throw new Error(`Workspace file not found: ${externalPath}`)
+    }
+
+    if (extname(resolvedTarget).toLowerCase() !== '.md') {
+      throw new Error('Selected file must be a Markdown file')
+    }
+
+    const fileStat = await stat(resolvedTarget)
+    if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${externalPath}`)
+  }
+
+  private async assertExistingFileRef(fileRef: WorkspaceFileRef): Promise<void> {
+    if (isWorkspaceSourceFileRef(fileRef)) {
+      await this.assertExistingSourceFile(fileRef.sourcePath)
+      return
+    }
+
+    if (isWorkspaceExternalFileRef(fileRef)) {
+      await this.assertExistingExternalFile(fileRef.externalPath)
+      return
+    }
+
+    throw new Error('Invalid workspace file reference')
+  }
+
+  private async fileRefExists(
+    fileRef: WorkspaceFileRef,
+    existingSourcePaths: Set<string>
+  ): Promise<boolean> {
+    if (isWorkspaceSourceFileRef(fileRef)) return existingSourcePaths.has(fileRef.sourcePath)
+
+    try {
+      await this.assertExistingExternalFile(fileRef.externalPath)
+      return true
+    } catch {
+      return false
+    }
   }
 
   private async currentSourcePathSet(): Promise<Set<string>> {

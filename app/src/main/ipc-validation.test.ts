@@ -8,12 +8,16 @@ import {
   assertValidSourceFileInput,
   assertValidSettingsPatch,
   assertValidTaskListInput,
+  assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFileRefInput,
   assertValidWorkspaceFocusTabInput,
   assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
@@ -35,6 +39,21 @@ describe('ipc validation', () => {
       checked: false,
       limit: 25
     })
+    expect(
+      assertValidTaskToggleInput({
+        sourcePath: 'folder/tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toEqual({
+      sourcePath: 'folder/tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
   })
 
   it('rejects malformed primitive inputs', () => {
@@ -50,6 +69,36 @@ describe('ipc validation', () => {
     )
     expect(() => assertValidTaskListInput({ checked: 'false' })).toThrow('Invalid task checked')
     expect(() => assertValidTaskListInput({ limit: 201 })).toThrow('Invalid task list limit')
+    expect(() => assertValidTaskToggleInput({ arbitrary: true })).toThrow(
+      'Invalid task toggle input key'
+    )
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: '../tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid workspace source path')
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: 'tasks.md',
+        line: 0,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid task line')
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: 'tasks.md',
+        line: 3,
+        checkboxColumn: -1,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid task checkbox column')
   })
 
   it('accepts a narrow settings patch', () => {
@@ -134,6 +183,16 @@ describe('ipc validation', () => {
     expect(assertValidWorkspaceOpenFileInput({ sourcePath: 'folder/a.md' })).toEqual({
       sourcePath: 'folder/a.md'
     })
+    expect(assertValidWorkspaceFileRefInput({ sourcePath: 'folder/a.md' })).toEqual({
+      sourcePath: 'folder/a.md'
+    })
+    expect(assertValidWorkspaceFileRefInput({ externalPath: '/tmp/outside.md' })).toEqual({
+      externalPath: '/tmp/outside.md'
+    })
+    expect(assertValidWorkspaceOpenRecentFileInput({ externalPath: '/tmp/outside.md' })).toEqual({
+      externalPath: '/tmp/outside.md'
+    })
+    expect(assertValidWorkspaceTabFileInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(assertValidWorkspaceFocusTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(assertValidWorkspaceCloseTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(
@@ -169,6 +228,21 @@ describe('ipc validation', () => {
     expect(() =>
       assertValidWorkspaceOpenFileInput({ sourcePath: 'a.md', arbitrary: true })
     ).toThrow('Invalid workspace open file input key')
+    expect(() =>
+      assertValidWorkspaceFileRefInput({
+        sourcePath: 'a.md',
+        externalPath: '/tmp/a.md'
+      })
+    ).toThrow('Invalid workspace file reference')
+    expect(() => assertValidWorkspaceFileRefInput({ externalPath: '/tmp/a.txt' })).toThrow(
+      'Invalid workspace external path'
+    )
+    expect(() => assertValidWorkspaceFileRefInput({ externalPath: 'relative.md' })).toThrow(
+      'Invalid workspace external path'
+    )
+    expect(() =>
+      assertValidWorkspaceFileRefInput({ externalPath: '/tmp/a.md', arbitrary: true })
+    ).toThrow('Invalid workspace file reference key')
     expect(() => assertValidWorkspaceRecordRecentInput({ sourcePath: 'a\0.md' })).toThrow(
       'Invalid workspace source path'
     )
@@ -188,6 +262,9 @@ describe('ipc validation', () => {
       'Invalid workspace tab id'
     )
     expect(() => assertValidWorkspaceCloseTabInput({ tabId: '../tab' })).toThrow(
+      'Invalid workspace tab id'
+    )
+    expect(() => assertValidWorkspaceTabFileInput({ tabId: '../tab' })).toThrow(
       'Invalid workspace tab id'
     )
     expect(() =>
