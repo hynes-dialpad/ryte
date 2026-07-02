@@ -1,0 +1,126 @@
+app/src/renderer/src/stores/workspace.ts
+  s_398952194ab3e7::t_f9c0ffe1ba29c6 89-95,97-101,238
+  s_398952194ab3e7::t_2dae2569dbc4d9 10,12-13,15,19,74-75,80-81,84,96,192,201,209-211,220-222,233-234,236,239-252,255-256,279-286,305,377
+app/src/main/facts/task-facts-service.test.ts
+  s_398952194ab3e7::t_decddd3f53cfc5 1,72-106
+app/src/main/ipc.ts
+  s_398952194ab3e7::t_59f469d5cb831d 133-140,162,179-180,189-190
+  s_398952194ab3e7::t_8afcdfae324b4f 141-161,257,315,328-333,342,344,353,358-374,377,390-392,394
+  s_398952194ab3e7::t_865cb208935b74 2,25,29,50,52-53,58-67,69-85,87
+  s_398952194ab3e7::t_ed73b786920fce 86
+  s_398952194ab3e7::t_8a850fde4445d4 3,21,306-314,393
+  s_398952194ab3e7::t_906633c1cef2f3 46
+  s_398952194ab3e7::t_3f8ce556db507c 316
+app/src/renderer/src/components/StatusBar.vue
+  s_398952194ab3e7::t_a07fb6ce6db50e 5,8,45-46,66-67,80-81,85
+app/src/shared/app-menu.ts
+  s_398952194ab3e7::t_43ae0722cb0d99 1,8
+app/src/renderer/src/components/home-sidebar-model.ts
+  s_398952194ab3e7::t_906633c1cef2f3 268-269
+  s_398952194ab3e7::t_9450e2100b6c8f 6-7,50-51,59
+  s_398952194ab3e7::t_f858cdf84af695 3-5,8,273,279
+  s_398952194ab3e7::t_b15a68f40db244 52-57,270
+app/src/renderer/src/stores/workspace.test.ts
+  s_398952194ab3e7::t_8be82c44130d9d 333-335
+  s_398952194ab3e7::t_652cc45fd487c0 350-352,354
+  s_398952194ab3e7::t_9e671ca0322acb 332,337-340,342-343,345-348,355,357-363,365-366
+  s_398952194ab3e7::t_1f2940bf084632 28,31,263,276-280,287,292,295,299,301-304,310,312-313,316,318-319,326,331,336,341,344,349,353,356,364,392,423
+app/src/main/workspace/workspace-store.ts
+  s_398952194ab3e7::t_97b2a5d9da3b47 429-432,465-473,556-566,577,687-729
+  s_398952194ab3e7::t_e3c37fa00a7f8e 160-162
+  s_398952194ab3e7::t_906633c1cef2f3 274-277
+  s_398952194ab3e7::t_7910fa420a4d60 6,25-28,31,35,150-159,163-173,180-185,215-216,220-221,237,241,243-244,246-247
+  s_398952194ab3e7::t_15977aec2f9676 278,281-282,285,410-421,423-427,433-448,451-452,459,531
+  s_398952194ab3e7::t_1416b7b5c3a5ec 730
+app/src/shared/workspace.test.ts
+  s_398952194ab3e7::t_a2b6bc4b5a280f 7-10,30-36
+  s_398952194ab3e7::t_959a69b441013d 37
+app/src/shared/workspace.ts
+  s_398952194ab3e7::t_93d04b0e237a47 115-117,126-128
+  s_398952194ab3e7::t_fab5ca737961f8 17-28,48,54,81-89,111-114,118-125,129-135
+  s_398952194ab3e7::t_6df950b86677ff 136
+app/src/main/workspace/workspace-store.test.ts
+  s_398952194ab3e7::t_e93cae832bfaa4 35-41,132-160,261,268-274,279-284,296,298-301
+app/src/preload/index.ts
+  s_398952194ab3e7::t_9f135ae708f00e 16,22,90-91,101,115,118,122,163-164,192,195,207-210
+  s_398952194ab3e7::t_45a16fed8f01d2 7-12,129,226
+  s_398952194ab3e7::t_ed0b0398cc4ba4 6
+  s_398952194ab3e7::t_36b2fbeef5ee44 211
+app/src/main/ipc-validation.ts
+  s_398952194ab3e7::t_a51b1963166615 1,13,16,20,131-153,265,487-516
+  s_398952194ab3e7::t_4df02adf36b6c4 10,40,239-264
+  s_398952194ab3e7::t_9c368fcb353d55 266
+  s_398952194ab3e7::t_a7158588ccc196 517
+app/src/renderer/src/stores/viewer.ts
+  s_398952194ab3e7::t_34c4f33a45053d 4-9,60-65,75-77,80,83-85,126-128,130-131,136,162-167,173,179-183,200-203,242-243
+  s_398952194ab3e7::t_da982d6b5ca15e 12-49,198-199,204-231,250-251
+  s_398952194ab3e7::t_71683cbc6c0927 184
+  s_398952194ab3e7::t_5ba18c1e7ec5e6 232
+app/src/renderer/src/components/Viewer.vue
+  s_398952194ab3e7::t_ce43f7a7c31670 110-112
+  s_398952194ab3e7::t_0078b169780f4b 19,132-133,150
+  s_398952194ab3e7::t_97b55829954b21 30,98-109,113-114,162,328-385
+  s_398952194ab3e7::t_443f124509a1d3 386
+app/src/main/ipc-validation.test.ts
+  s_398952194ab3e7::t_2dd60b001fcade 11,42-56,72-101
+  s_398952194ab3e7::t_1ab01b46eee108 13,16,20,186-195,231-245,267,269
+  s_398952194ab3e7::t_411daa8dcfc332 268
+app/src/main/app-menu.ts
+  s_398952194ab3e7::t_a77e404a635739 4-10,26-27,30-33,44-45
+app/src/main/facts/task-facts-service.ts
+  s_398952194ab3e7::t_9aafc24ed92990 1,4-10,12-13,63-85,133-141,143-153,155-184
+  s_398952194ab3e7::t_ce43f7a7c31670 142,154
+  s_398952194ab3e7::t_54e2c4cfc90810 185
+app/src/renderer/src/App.vue
+  s_398952194ab3e7::t_c9c68e31657b52 131,140,347-348
+  s_398952194ab3e7::t_e2bd256e216596 349-351
+  s_398952194ab3e7::t_daff778c4548cf 352-353
+app/src/renderer/src/components/WorkspaceTabs.vue
+  s_398952194ab3e7::t_0fa72d2f6da137 13,171-174,222,245,339,343,352-353
+app/src/renderer/src/components/home-sidebar-model.test.ts
+  s_398952194ab3e7::t_da92f15e477f83 204-240
+app/src/renderer/src/markdown/renderer.test.ts
+  s_398952194ab3e7::t_413fd6928522ae 113
+  s_398952194ab3e7::t_020eed59bfb2db 76-112,114-116
+app/src/renderer/src/stores/viewer.test.ts
+  s_398952194ab3e7::t_871e70f26e50d0 35-43,62,68,89-90,96-97,132-133,136,152-153,155,159-189,225-226,235,263-266,269,294-330,340,345,364,432,464,473,492
+  s_398952194ab3e7::t_1e2cea224ba739 430-431,433,471-472,474
+  s_398952194ab3e7::t_55f8aa452f8e9a 78,82,106-112,407-429,434-463,465-470,475-491,493-494
+  s_398952194ab3e7::t_cba188c9d22004 44,46-49
+  s_398952194ab3e7::t_036d6819ae127b 98-99
+app/src/renderer/src/markdown/renderer.ts
+  s_398952194ab3e7::t_4b627c76ac0dff 9-12,39-57,70-171,174,252,254-259
+  s_398952194ab3e7::t_caf707d97d4ef7 172-173
+  s_398952194ab3e7::t_fc8d3f592a1e31 175
+  s_398952194ab3e7::t_3cee8081f5d715 215-241
+app/src/shared/tasks.ts
+  s_398952194ab3e7::t_0ab423e8c6703c 32-60
+app/src/main/indexing/indexer.ts
+  s_c3687f2376805d::t_a773d905a8234b 4,61-62,69,73,91-92,94-104,106,108,114,116,119
+app/src/main/indexing/indexer-streaming.test.ts
+  s_398952194ab3e7::t_e052a6c0b77e05 1-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "180e7161f97e61519a6b8ad4605dc62e6e477e18",
+  "prompts": {},
+  "sessions": {
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    },
+    "s_c3687f2376805d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13fe-89ef-73c2-8c26-605b6474bf90",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
