@@ -1,0 +1,114 @@
+docs/branch-workflow.md
+  s_398952194ab3e7::t_58cecd237d3936 26-32
+app/src/renderer/src/stores/workspace.ts
+  s_398952194ab3e7::t_3580a9c3de3214 94-96
+  s_398952194ab3e7::t_3aac623591616c 20-21,44-47,84-93,159-163,201-207,422,433
+  s_398952194ab3e7::t_613961fc336034 170
+  s_398952194ab3e7::t_a82f1263625d70 9-10,28,56,374-380,427,445
+  s_398952194ab3e7::t_fcdc4dd19471f4 97-100,164-165,208-216,381-383
+app/src/renderer/src/stores/workspace.test.ts
+  s_398952194ab3e7::t_b8ff08910879df 15-18,110-146
+  s_398952194ab3e7::t_2c5ff60cfa050e 27,494,503-507,534-536
+  s_16919354fc7057::t_992384528819d8 147-148,537
+app/src/main/app-menu.ts
+  s_398952194ab3e7::t_be88312de0a4ba 126-130
+  s_398952194ab3e7::t_4d251eb5997fa4 125
+app/src/renderer/src/App.vue
+  s_398952194ab3e7::t_852032bc4bf1f4 374-378
+  s_398952194ab3e7::t_bd782d6bd92b9c 534
+app/src/main/ipc.ts
+  s_398952194ab3e7::t_1701f5d0392713 24,135-136
+  s_398952194ab3e7::t_8cd6f2957506f1 29,195-196
+  s_398952194ab3e7::t_d1820c4156dca8 137-138
+  s_398952194ab3e7::t_2914cb21d408d4 197-198
+app/src/main/ipc-validation.ts
+  s_398952194ab3e7::t_4bf3a31aaa4e6f 20,40,504,594-609
+  s_398952194ab3e7::t_7f6db24dfa8058 15,483-503
+  s_398952194ab3e7::t_208298bc627be7 505-507
+  s_398952194ab3e7::t_cfbccd1f6da443 610
+app/src/shared/workspace.ts
+  s_398952194ab3e7::t_ac7d5e633bdf8d 1,7-10,76,95,127-130,165-172
+  s_398952194ab3e7::t_abf640f2ffe324 46-50,71,92-94
+  s_398952194ab3e7::t_0986dbe0c00a91 96
+app/src/main/workspace/workspace-store.test.ts
+  s_398952194ab3e7::t_5683bee590047d 7,10-13,63-77,363-366,372,377,382-385,419-422
+  s_398952194ab3e7::t_9548f3e94d63e2 8-9,280-290,402-403,418,436
+app/src/renderer/src/components/Viewer.vue
+  s_398952194ab3e7::t_fd81b74457bd0a 313,421
+  s_398952194ab3e7::t_f7ca4b93d07ef0 12-16,27-28,31,41-60,62-67,70-76,80-88,217-272,280,314-315,318-321,329-333,335-344,346-358,360,371-375,379-386
+  s_398952194ab3e7::t_b39808ad9f6864 5-9
+  s_398952194ab3e7::t_c31eadfceafc5c 22,24,29,39-40,61,68-69,79,92-94,97-98,107-108,116,125,131,183-205,207-214,216,273-274,310-312,316-317,322-328,334,345,359,361-370,376-378,387-397,410-412,414,417,420,422-426,430-431,447-449,451-453,455,458,467-468,472,474-475,480-481,487-495,501,504-506,508,513,519-521,523-526,528-535,537,542-548,615
+  s_398952194ab3e7::t_613961fc336034 77-78
+  s_398952194ab3e7::t_0d195b2cdb05d9 162-163,276,281
+  s_398952194ab3e7::t_efc5b2006c99bb 206,215
+  s_398952194ab3e7::t_e52c3ae475bad5 418-419,429,432-434,436-446,454,456-457,460-466,469-471,473,476-479,482-486,496-500,503,507,511-512,517-518,522,527,536,538-541,549-571
+  s_398952194ab3e7::t_e86bdce351e192 30
+app/src/preload/index.ts
+  s_398952194ab3e7::t_49deac36feec69 21,100,175
+  s_398952194ab3e7::t_0ac6cba4658adf 16,91,166
+app/src/renderer/src/components/Sidebar.vue
+  s_398952194ab3e7::t_761e9c926aefc2 3,49,51-54,146-154,174,176,181-193,195-204,209-244,253,257,301-362,411-413,415-419,429-430,432,462
+  s_398952194ab3e7::t_c68212e4844fda 159-162,168-173,194
+  s_398952194ab3e7::t_b82ea34eca215f 363-369,410,414
+app/src/main/ipc-validation.test.ts
+  s_398952194ab3e7::t_2b1d21bb7a0dc2 20,240,298-306
+  s_398952194ab3e7::t_f356f4e87891ca 15,166-177,194-200
+app/src/renderer/src/stores/viewer.test.ts
+  s_398952194ab3e7::t_38801954a8b537 33
+  s_398952194ab3e7::t_3671d4fa46f7bf 21-24
+app/src/shared/workspace.test.ts
+  s_398952194ab3e7::t_3808fd4a7a6f96 4-6,9,30-33
+  s_398952194ab3e7::t_e54dd45ee9128f 34-35
+README.md
+  s_398952194ab3e7::t_58cecd237d3936 52
+app/src/shared/app-menu.ts
+  s_398952194ab3e7::t_acf3fc02bb3b03 15
+app/src/renderer/src/markdown/renderer.ts
+  s_398952194ab3e7::t_b85971af53657f 2,200
+  s_398952194ab3e7::t_e5f4398c15a757 44-54,58,189-199,201-207,274-297,309-315,318,321-326
+app/src/renderer/src/markdown/renderer.test.ts
+  s_398952194ab3e7::t_4101b386fb3dc2 3,8,12-24
+  s_398952194ab3e7::t_4daba60bf04136 51
+  s_0230cd894eb1d4::t_7ed2972a5457fe 25-26
+app/package.json
+  s_398952194ab3e7::t_58cecd237d3936 25
+app/src/main/workspace/workspace-store.ts
+  s_398952194ab3e7::t_6441a93f6b7775 25-26,44,98,133-136,362,615-619
+  s_398952194ab3e7::t_c7583af752a121 36-37,74-80,93,137-141,292-308,332,348-351,439-448,453,623
+  s_398952194ab3e7::t_dea2c0464ddf6a 449-452
+  s_398952194ab3e7::t_0df0568be50584 454
+  s_398952194ab3e7::t_535c977ac5ab72 620-622
+  s_398952194ab3e7::t_74d76a8ea4dfd9 624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "02c301f318722b808a097f0bb2a78135950f80b0",
+  "prompts": {},
+  "sessions": {
+    "s_0230cd894eb1d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13f3-bfd6-7bb0-af08-d2aa09c8d1d5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    },
+    "s_16919354fc7057": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60bb5300-27cf-405b-ac2a-e8b7c9083693",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    },
+    "s_398952194ab3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50ab-612b-7333-8a24-92ffdce139e6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
