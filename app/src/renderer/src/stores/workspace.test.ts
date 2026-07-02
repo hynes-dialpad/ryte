@@ -12,6 +12,10 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
       sidebarWidth: 360,
       activeSidebar: 'files'
     },
+    library: {
+      expandedFolders: null,
+      scrollTop: 0
+    },
     window: {
       bounds: null,
       maximized: false,
@@ -20,6 +24,7 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     tabs: [],
     activeTabId: null,
     recents: [],
+    outlineWidth: 216,
     outlineCollapsedByPath: {},
     ...overrides
   }
@@ -100,6 +105,45 @@ describe('useWorkspaceStore', () => {
     await expect(update).rejects.toThrow('Invalid workspace shell patch')
     expect(store.state).toEqual(initial)
     expect(store.error).toBe('Invalid workspace shell patch')
+  })
+
+  it('applies library patches optimistically before IPC resolves', async () => {
+    const initial = workspaceState()
+    const persisted = workspaceState({
+      library: {
+        expandedFolders: ['docs', 'sessions/2026-07-02'],
+        scrollTop: 340
+      }
+    })
+    let resolveUpdate: (state: WorkspaceState) => void = () => {}
+
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      updateLibrary: vi.fn(
+        () =>
+          new Promise<WorkspaceState>((resolve) => {
+            resolveUpdate = resolve
+          })
+      )
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    const update = store.updateLibrary({
+      expandedFolders: ['docs', 'sessions/2026-07-02'],
+      scrollTop: 340.4
+    })
+    expect(store.library).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02'],
+      scrollTop: 340
+    })
+
+    resolveUpdate(persisted)
+    await update
+
+    expect(store.state).toEqual(persisted)
+    expect(store.error).toBeNull()
   })
 
   it('creates a temporary optimistic tab for openFile and reconciles returned state', async () => {
@@ -447,6 +491,7 @@ describe('useWorkspaceStore', () => {
     })
     const outlined = workspaceState({
       ...recent,
+      outlineWidth: 260,
       outlineCollapsedByPath: { 'c.md': true }
     })
     installWorkspaceApi({
@@ -455,7 +500,11 @@ describe('useWorkspaceStore', () => {
       updateTabViewMode: vi.fn().mockResolvedValue(updatedViewMode),
       closeTab: vi.fn().mockResolvedValue(closed),
       recordRecent: vi.fn().mockResolvedValue(recent),
-      setOutlineCollapsed: vi.fn().mockResolvedValue(outlined)
+      setOutlineCollapsed: vi.fn().mockResolvedValue({
+        ...recent,
+        outlineCollapsedByPath: { 'c.md': true }
+      }),
+      setOutlineWidth: vi.fn().mockResolvedValue(outlined)
     })
 
     const store = useWorkspaceStore()
@@ -481,6 +530,10 @@ describe('useWorkspaceStore', () => {
     const outline = store.setOutlineCollapsed({ sourcePath: 'c.md', collapsed: true })
     expect(store.outlineCollapsedByPath).toEqual({ 'c.md': true })
     await outline
+
+    const outlineWidth = store.setOutlineWidth({ width: 260 })
+    expect(store.outlineWidth).toBe(260)
+    await outlineWidth
 
     expect(store.state).toEqual(outlined)
   })

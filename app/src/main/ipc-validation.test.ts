@@ -12,10 +12,12 @@ import {
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFileRefInput,
   assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceLibraryPatch,
   assertValidWorkspaceOpenFileInput,
   assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
+  assertValidWorkspaceSetOutlineWidthInput,
   assertValidWorkspaceShellPatch,
   assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
@@ -161,6 +163,18 @@ describe('ipc validation', () => {
     })
   })
 
+  it('accepts narrow workspace library patches', () => {
+    expect(
+      assertValidWorkspaceLibraryPatch({
+        expandedFolders: ['./docs', 'sessions/2026-07-02/plans'],
+        scrollTop: 420
+      })
+    ).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02/plans'],
+      scrollTop: 420
+    })
+  })
+
   it('rejects unexpected workspace keys and invalid dimensions', () => {
     expect(() => assertValidWorkspaceShellPatch({ arbitrary: true })).toThrow(
       'Invalid workspace shell key'
@@ -177,6 +191,13 @@ describe('ipc validation', () => {
     expect(() =>
       assertValidWorkspaceWindowPatch({ bounds: { x: 0, y: 0, width: 0, height: 100 } })
     ).toThrow('Invalid window bounds')
+    expect(() => assertValidWorkspaceLibraryPatch({ arbitrary: true })).toThrow(
+      'Invalid workspace library key'
+    )
+    expect(() => assertValidWorkspaceLibraryPatch({ expandedFolders: ['../escape'] })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() => assertValidWorkspaceLibraryPatch({ scrollTop: -1 })).toThrow('Invalid scrollTop')
   })
 
   it('accepts narrow workspace operation payloads', () => {
@@ -216,6 +237,7 @@ describe('ipc validation', () => {
       sourcePath: 'folder/a.md',
       collapsed: false
     })
+    expect(assertValidWorkspaceSetOutlineWidthInput({ width: 240 })).toEqual({ width: 240 })
   })
 
   it('rejects invalid workspace operation source paths and unknown keys', () => {
@@ -273,5 +295,14 @@ describe('ipc validation', () => {
     expect(() =>
       assertValidWorkspaceSetOutlineCollapsedInput({ sourcePath: 'a.md', collapsed: 'yes' })
     ).toThrow('Invalid workspace outline state')
+    expect(() => assertValidWorkspaceSetOutlineWidthInput({ width: -1 })).toThrow(
+      'Invalid workspace outline width'
+    )
+    expect(() =>
+      assertValidWorkspaceSetOutlineWidthInput({ width: Number.POSITIVE_INFINITY })
+    ).toThrow('Invalid workspace outline width')
+    expect(() => assertValidWorkspaceSetOutlineWidthInput({ width: 240, extra: true })).toThrow(
+      'Invalid workspace outline width input key: extra'
+    )
   })
 })

@@ -2,18 +2,33 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { renderMermaidDiagrams } from '../markdown/mermaid'
-import { render } from '../markdown/renderer'
+import {
+  renderDocument,
+  type MarkdownOutlineItem,
+  type RenderedMarkdownDocument
+} from '../markdown/renderer'
 import { useViewerStore } from '../stores/viewer'
 import { useWorkspaceStore } from '../stores/workspace'
+import {
+  DOCUMENT_OUTLINE_COLLAPSED_WIDTH,
+  clampDocumentOutlineWidth
+} from '../../../shared/workspace'
+import IconSidebar from './icons/IconSidebar.vue'
 import { WORKSPACE_TABPANEL_ID, getWorkspaceTabDomId } from './workspace-tab-keyboard'
 
 const viewer = useViewerStore()
 const workspace = useWorkspaceStore()
 const renderedHtml = ref<string>('')
+const documentOutline = ref<MarkdownOutlineItem[]>([])
 const renderError = ref<string | null>(null)
-const renderCache = new Map<string, string>()
+const renderCache = new Map<string, RenderedMarkdownDocument>()
 const proseEl = ref<HTMLElement | null>(null)
 const sourceEl = ref<HTMLElement | null>(null)
+const fallbackOutlineCollapsed = ref(false)
+const dragOutlineWidth = ref<number | null>(null)
+const activeOutlineId = ref('overview')
+
+let _stopOutlineResize: (() => void) | undefined
 
 const filenameDisplay = computed(() => {
   return viewer.displayPath ?? ''
@@ -21,14 +36,66 @@ const filenameDisplay = computed(() => {
 const activeTabPanelLabelledBy = computed(() =>
   workspace.activeTabId ? getWorkspaceTabDomId(workspace.activeTabId) : undefined
 )
+const sectionOutline = computed(() =>
+  documentOutline.value.filter((item) => item.level >= 2 && item.level <= 4)
+)
+const outlineParentById = computed(() => {
+  const parents = new Map<string, string>()
+  let currentSectionId: string | null = null
+
+  for (const item of sectionOutline.value) {
+    if (item.level === 2) {
+      currentSectionId = item.id
+      parents.set(item.id, item.id)
+    } else if (currentSectionId) {
+      parents.set(item.id, currentSectionId)
+    }
+  }
+
+  return parents
+})
+const activeSectionId = computed(() =>
+  activeOutlineId.value === 'overview'
+    ? null
+    : (outlineParentById.value.get(activeOutlineId.value) ?? null)
+)
+const visibleSectionOutline = computed(() =>
+  sectionOutline.value.filter((item) => {
+    if (item.level === 2) return true
+    return outlineParentById.value.get(item.id) === activeSectionId.value
+  })
+)
+const hasDocumentOutline = computed(
+  () => !viewer.sourceMode && !viewer.loading && !viewer.error && sectionOutline.value.length > 0
+)
+const outlineSourcePath = computed(() => viewer.sourcePath)
+const isOutlineCollapsed = computed(() => {
+  const sourcePath = outlineSourcePath.value
+  if (!sourcePath) return fallbackOutlineCollapsed.value
+  return workspace.outlineCollapsedByPath[sourcePath] === true
+})
+const documentOutlineWidth = computed(
+  () => dragOutlineWidth.value ?? clampDocumentOutlineWidth(workspace.outlineWidth)
+)
+const documentOutlineStyle = computed(() => {
+  const width = isOutlineCollapsed.value
+    ? DOCUMENT_OUTLINE_COLLAPSED_WIDTH
+    : documentOutlineWidth.value
+  return {
+    width: `${width}px`,
+    flexBasis: `${width}px`
+  }
+})
 
 async function updateRender(text: string): Promise<void> {
   if (renderCache.has(text)) {
-    renderedHtml.value = renderCache.get(text)!
+    const cached = renderCache.get(text)!
+    renderedHtml.value = cached.html
+    documentOutline.value = cached.outline
     return
   }
-  const html = await render(text, { interactiveTasks: true })
-  renderCache.set(text, html)
+  const document = await renderDocument(text, { interactiveTasks: true })
+  renderCache.set(text, document)
   // Bound cache to avoid unbounded growth on many file edits in one session.
   if (renderCache.size > 50) {
     const firstKey = renderCache.keys().next().value
@@ -37,7 +104,8 @@ async function updateRender(text: string): Promise<void> {
   // Only commit the result if the content hasn't changed in the meantime
   // (user may have switched files while we were rendering).
   if (text === viewer.content) {
-    renderedHtml.value = html
+    renderedHtml.value = document.html
+    documentOutline.value = document.outline
   }
 }
 
@@ -45,6 +113,7 @@ async function hydrateRenderedContent(): Promise<void> {
   await nextTick()
   if (viewer.sourceMode || !proseEl.value) return
   await renderMermaidDiagrams(proseEl.value)
+  updateActiveOutline()
 }
 
 watch(
@@ -53,11 +122,13 @@ watch(
     renderError.value = null
     if (!next) {
       renderedHtml.value = ''
+      documentOutline.value = []
       return
     }
     updateRender(next).catch((err) => {
       renderError.value = err instanceof Error ? err.message : String(err)
       renderedHtml.value = ''
+      documentOutline.value = []
     })
   },
   { immediate: true }
@@ -88,11 +159,8 @@ async function togglePreservingScroll(): Promise<void> {
   }
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if ((event.metaKey || event.ctrlKey) && event.key === 'e') {
-    event.preventDefault()
-    void togglePreservingScroll()
-  }
+function onToggleSourceMode(): void {
+  void togglePreservingScroll()
 }
 
 function onRenderedClick(event: MouseEvent): void {
@@ -112,12 +180,105 @@ function onRenderedClick(event: MouseEvent): void {
   })
 }
 
+function updateActiveOutline(): void {
+  const scrollEl = proseEl.value
+  if (!scrollEl) return
+
+  const scrollTop = scrollEl.scrollTop
+  let activeId = 'overview'
+
+  for (const item of sectionOutline.value) {
+    const heading = scrollEl.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`)
+    if (!heading) continue
+    if (heading.offsetTop <= scrollTop + 32) {
+      activeId = item.id
+    }
+  }
+
+  activeOutlineId.value = activeId
+}
+
+function onRenderedScroll(): void {
+  updateActiveOutline()
+}
+
+function scrollToOverview(): void {
+  proseEl.value?.scrollTo({ top: 0, behavior: 'auto' })
+  activeOutlineId.value = 'overview'
+}
+
+function scrollToHeading(id: string): void {
+  const scrollEl = proseEl.value
+  const heading = scrollEl?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+  if (!scrollEl || !heading) return
+
+  scrollEl.scrollTo({ top: Math.max(heading.offsetTop - 8, 0), behavior: 'auto' })
+  activeOutlineId.value = id
+}
+
+function setOutlineCollapsed(collapsed: boolean): void {
+  const sourcePath = outlineSourcePath.value
+  if (!sourcePath) {
+    fallbackOutlineCollapsed.value = collapsed
+    return
+  }
+
+  void workspace.setOutlineCollapsed({ sourcePath, collapsed })
+}
+
+function toggleDocumentOutline(): void {
+  setOutlineCollapsed(!isOutlineCollapsed.value)
+}
+
+function startOutlineResize(event: PointerEvent): void {
+  if (isOutlineCollapsed.value) return
+
+  event.preventDefault()
+  const startX = event.clientX
+  const startWidth = documentOutlineWidth.value
+  let latestClientX = startX
+  let resizeFrame: number | null = null
+  dragOutlineWidth.value = startWidth
+
+  const applyMove = (): void => {
+    resizeFrame = null
+    dragOutlineWidth.value = clampDocumentOutlineWidth(startWidth + latestClientX - startX)
+  }
+
+  const onMove = (moveEvent: PointerEvent): void => {
+    latestClientX = moveEvent.clientX
+    if (resizeFrame === null) {
+      resizeFrame = window.requestAnimationFrame(applyMove)
+    }
+  }
+
+  const onUp = (upEvent: PointerEvent): void => {
+    const width = clampDocumentOutlineWidth(startWidth + upEvent.clientX - startX)
+    _stopOutlineResize?.()
+    dragOutlineWidth.value = null
+    void workspace.setOutlineWidth({ width })
+  }
+
+  _stopOutlineResize = () => {
+    if (resizeFrame !== null) {
+      window.cancelAnimationFrame(resizeFrame)
+      resizeFrame = null
+    }
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    _stopOutlineResize = undefined
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp, { once: true })
+}
+
 onMounted(() => {
-  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('ryte:toggle-source-mode', onToggleSourceMode)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown)
+  _stopOutlineResize?.()
+  window.removeEventListener('ryte:toggle-source-mode', onToggleSourceMode)
 })
 </script>
 
@@ -129,14 +290,6 @@ onUnmounted(() => {
     :aria-labelledby="activeTabPanelLabelledBy"
     :aria-label="activeTabPanelLabelledBy ? undefined : 'Markdown viewer'"
   >
-    <header v-if="viewer.displayPath" class="viewer-toolbar">
-      <span class="filename" :title="viewer.displayPath">{{ filenameDisplay }}</span>
-      <button type="button" class="toggle" @click="togglePreservingScroll()">
-        {{ viewer.sourceMode ? 'Rendered' : 'Source' }}
-        <span class="shortcut">⌘E</span>
-      </button>
-    </header>
-
     <div v-if="viewer.error" class="error">
       <p>
         Could not open <code>{{ filenameDisplay }}</code>
@@ -154,15 +307,94 @@ onUnmounted(() => {
       ref="sourceEl"
       class="source ryte-scrollbar ryte-scrollbar--y"
     ><code>{{ viewer.content }}</code></pre>
-    <!-- eslint-disable vue/no-v-html -- markdown-it has html:false; shiki output is generator-produced -->
-    <article
-      v-else
-      ref="proseEl"
-      class="prose ryte-scrollbar ryte-scrollbar--y"
-      @click="onRenderedClick"
-      v-html="renderedHtml"
-    ></article>
-    <!-- eslint-enable vue/no-v-html -->
+    <div v-else class="document-view">
+      <aside
+        v-if="hasDocumentOutline"
+        class="document-outline ryte-scrollbar ryte-scrollbar--y"
+        :class="{ 'document-outline--collapsed': isOutlineCollapsed }"
+        :style="documentOutlineStyle"
+        aria-label="Document sections"
+      >
+        <div
+          v-if="!isOutlineCollapsed"
+          class="document-outline-overview-row"
+          :class="{ 'document-outline-item--active': activeOutlineId === 'overview' }"
+        >
+          <button
+            type="button"
+            class="document-outline-item document-outline-item--overview"
+            :aria-current="activeOutlineId === 'overview' ? 'location' : undefined"
+            @click="scrollToOverview"
+          >
+            <span
+              class="document-outline-marker"
+              :class="{ 'document-outline-marker--active': activeOutlineId === 'overview' }"
+              aria-hidden="true"
+            ></span>
+            <span class="document-outline-title">Overview</span>
+          </button>
+          <button
+            type="button"
+            class="document-outline-collapse-button"
+            aria-label="Hide document sections"
+            aria-controls="document-outline-list"
+            :aria-expanded="true"
+            @click="toggleDocumentOutline"
+          >
+            <IconSidebar />
+          </button>
+        </div>
+        <button
+          v-else
+          type="button"
+          class="document-outline-expand-button"
+          aria-label="Show document sections"
+          aria-controls="document-outline-list"
+          :aria-expanded="false"
+          @click="toggleDocumentOutline"
+        >
+          <IconSidebar />
+        </button>
+        <nav v-if="!isOutlineCollapsed" id="document-outline-list" class="document-outline-list">
+          <button
+            v-for="item in visibleSectionOutline"
+            :key="item.id"
+            type="button"
+            class="document-outline-item"
+            :class="[
+              `document-outline-item--level-${item.level}`,
+              { 'document-outline-item--active': activeOutlineId === item.id }
+            ]"
+            :aria-current="activeOutlineId === item.id ? 'location' : undefined"
+            @click="scrollToHeading(item.id)"
+          >
+            <span
+              class="document-outline-marker"
+              :class="{ 'document-outline-marker--active': activeOutlineId === item.id }"
+              aria-hidden="true"
+            ></span>
+            <span class="document-outline-title">{{ item.text }}</span>
+          </button>
+        </nav>
+        <div
+          v-if="!isOutlineCollapsed"
+          class="document-outline-resize"
+          role="separator"
+          aria-label="Resize document sections"
+          aria-orientation="vertical"
+          @pointerdown="startOutlineResize"
+        ></div>
+      </aside>
+      <!-- eslint-disable vue/no-v-html -- markdown-it has html:false; shiki output is generator-produced -->
+      <article
+        ref="proseEl"
+        class="prose ryte-scrollbar ryte-scrollbar--y"
+        @click="onRenderedClick"
+        @scroll.passive="onRenderedScroll"
+        v-html="renderedHtml"
+      ></article>
+      <!-- eslint-enable vue/no-v-html -->
+    </div>
   </section>
 </template>
 
@@ -175,48 +407,168 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.viewer-toolbar {
+.document-view {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.5);
-  flex-shrink: 0;
-}
-
-.filename {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 60%;
 }
 
-.toggle {
-  background: transparent;
-  color: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-  padding: 0.25rem 0.55rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-  font-family: inherit;
-  display: inline-flex;
+.document-outline {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 1.35rem 0.75rem 1.5rem;
+  overflow: auto;
+}
+
+.document-outline--collapsed {
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
+.document-outline-overview-row {
+  width: 100%;
+  min-height: 2rem;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
+  border-radius: 0.35rem;
+  background: transparent;
 }
 
-.toggle:hover {
-  background: rgba(255, 255, 255, 0.06);
+.document-outline-overview-row:hover,
+.document-outline-overview-row:focus-within,
+.document-outline-overview-row.document-outline-item--active {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.document-outline-item {
+  width: 100%;
+  min-height: 1.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.55rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.58);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.document-outline-overview-row .document-outline-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.document-outline-item:hover,
+.document-outline-item:focus-visible,
+.document-outline-item--active {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.document-outline-overview-row .document-outline-item:hover,
+.document-outline-overview-row .document-outline-item:focus-visible,
+.document-outline-overview-row .document-outline-item--active {
+  background: transparent;
+}
+
+.document-outline-item:focus-visible,
+.document-outline-collapse-button:focus-visible,
+.document-outline-expand-button:focus-visible {
+  outline: 2px solid rgba(80, 158, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.document-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.55rem;
+}
+
+.document-outline-collapse-button,
+.document-outline-expand-button {
+  width: 1.85rem;
+  height: 1.85rem;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.document-outline-collapse-button:hover,
+.document-outline-expand-button:hover {
+  background: rgba(255, 255, 255, 0.07);
   color: white;
 }
 
-.shortcut {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.4);
+.document-outline-expand-button {
+  margin: 0 auto;
+}
+
+.document-outline-item--level-3 {
+  padding-left: 1.35rem;
+  font-size: 0.775rem;
+}
+
+.document-outline-item--level-4 {
+  padding-left: 2.15rem;
+  font-size: 0.75rem;
+}
+
+.document-outline-marker {
+  width: 0.35rem;
+  height: 0.35rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  opacity: 0;
+  background: currentColor;
+}
+
+.document-outline-marker--active {
+  opacity: 1;
+}
+
+.document-outline-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-outline-resize {
+  position: absolute;
+  top: 0;
+  right: -0.25rem;
+  bottom: 0;
+  width: 0.5rem;
+  cursor: col-resize;
+}
+
+.document-outline-resize::after {
+  content: '';
+  position: absolute;
+  top: 0.75rem;
+  right: 0.2rem;
+  bottom: 0.75rem;
+  width: 1px;
+  background: transparent;
+}
+
+.document-outline-resize:hover::after {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .empty,
@@ -260,6 +612,7 @@ onUnmounted(() => {
 
 .prose {
   flex: 1;
+  min-width: 0;
   overflow: auto;
   padding: 2rem 2.5rem 4rem;
   max-width: 100%;

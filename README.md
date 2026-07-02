@@ -49,6 +49,7 @@ cd app
 nvm use 22.14.0
 pnpm check:node
 pnpm validate      # full local validation: node, lint, typecheck, test, build
+pnpm qa:local      # validate, smoke the indexer, then launch the built app
 pnpm dev          # start with hot-reload
 pnpm test         # unit tests (vitest)
 pnpm typecheck    # tsc + vue-tsc

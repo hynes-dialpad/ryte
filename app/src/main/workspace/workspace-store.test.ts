@@ -4,7 +4,13 @@ import { dirname, join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH } from '../../shared/workspace'
+import {
+  DOCUMENT_OUTLINE_DEFAULT_WIDTH,
+  DOCUMENT_OUTLINE_MAX_WIDTH,
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  WORKSPACE_SCHEMA_VERSION
+} from '../../shared/workspace'
 import { WorkspaceStore, defaultWorkspaceState } from './workspace-store'
 
 let tempDir: string
@@ -52,6 +58,21 @@ describe('WorkspaceStore', () => {
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
     expect(state.shell.activeSidebar).toBe('home')
+  })
+
+  it('persists library tree state updates', () => {
+    const workspace = store()
+    workspace.updateLibrary({
+      expandedFolders: ['docs', './sessions/2026-07-02/plans', 'docs'],
+      scrollTop: 482.6
+    })
+    workspace.flushSync()
+
+    const state = store().publicState()
+    expect(state.library).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02/plans'],
+      scrollTop: 483
+    })
   })
 
   it('updates the in-memory shell state before debounced persistence flushes', () => {
@@ -256,6 +277,17 @@ describe('WorkspaceStore', () => {
     })
   })
 
+  it('persists clamped outline width', () => {
+    const workspace = store()
+    const state = workspace.setOutlineWidth({ width: DOCUMENT_OUTLINE_MAX_WIDTH + 100 })
+
+    expect(state.outlineWidth).toBe(DOCUMENT_OUTLINE_MAX_WIDTH)
+    workspace.flushSync()
+    expect(JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8'))).toMatchObject({
+      outlineWidth: DOCUMENT_OUTLINE_MAX_WIDTH
+    })
+  })
+
   it('prunes missing tabs, recents, outline flags, and repairs the active tab', async () => {
     writeNote('keep.md')
     const externalPath = writeExternalNote()
@@ -328,21 +360,29 @@ describe('WorkspaceStore', () => {
     })
     expect(state.window.bounds).toBeNull()
     expect(state.window.maximized).toBe(false)
+    expect(state.library).toEqual({
+      expandedFolders: null,
+      scrollTop: 0
+    })
 
     const saved = JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8')) as {
       schemaVersion: number
       shell: { sidebarWidth: number; activeSidebar: string }
     }
-    expect(saved.schemaVersion).toBe(2)
+    expect(saved.schemaVersion).toBe(WORKSPACE_SCHEMA_VERSION)
     expect(saved.shell.sidebarWidth).toBe(SIDEBAR_MIN_WIDTH)
     expect(saved.shell.activeSidebar).toBe('files')
   })
 
-  it('migrates valid tabs, recents, and outline flags while dropping malformed entries', () => {
+  it('migrates valid tabs, recents, outline flags, and library state while dropping malformed entries', () => {
     writeFileSync(
       join(tempDir, 'workspace.json'),
       JSON.stringify({
         schemaVersion: 1,
+        library: {
+          expandedFolders: ['docs', '../escape', 'sessions/2026-07-02'],
+          scrollTop: 55.4
+        },
         tabs: [
           { id: 'valid-tab', sourcePath: 'valid.md', title: 'Old', viewMode: 'source' },
           { id: 'bad-source', sourcePath: '../escape.md', title: 'Bad', viewMode: 'preview' },
@@ -359,7 +399,8 @@ describe('WorkspaceStore', () => {
           'valid.md': true,
           '../escape.md': true,
           'bad.md': 'yes'
-        }
+        },
+        outlineWidth: 999
       }),
       'utf-8'
     )
@@ -374,6 +415,11 @@ describe('WorkspaceStore', () => {
       { sourcePath: 'valid.md', title: 'valid.md', openedAt: '2026-05-21T12:00:00.000Z' }
     ])
     expect(state.outlineCollapsedByPath).toEqual({ 'valid.md': true })
+    expect(state.outlineWidth).toBe(DOCUMENT_OUTLINE_MAX_WIDTH)
+    expect(state.library).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02'],
+      scrollTop: 55
+    })
   })
 
   it('recovers invalid workspace JSON to defaults', () => {
@@ -387,6 +433,7 @@ describe('WorkspaceStore', () => {
 
   it('keeps a sensible default sidebar width for fresh state', () => {
     expect(store().publicState().shell.sidebarWidth).toBe(SIDEBAR_DEFAULT_WIDTH)
+    expect(store().publicState().outlineWidth).toBe(DOCUMENT_OUTLINE_DEFAULT_WIDTH)
   })
 
   it('flushes debounced writes asynchronously', async () => {

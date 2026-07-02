@@ -1,12 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
-import { render } from './renderer'
+import { render, renderDocument } from './renderer'
 
 describe('render', () => {
   it('should render a heading and paragraph', async () => {
     const html = await render('# Hello\n\nWorld')
-    expect(html).toContain('<h1>Hello</h1>')
+    expect(html).toContain('<h1 id="hello">Hello</h1>')
     expect(html).toContain('<p>World</p>')
+  })
+
+  it('should expose a document outline from headings', async () => {
+    const document = await renderDocument('# Title\n\n## Status\n\n### Detail\n\n## Status')
+
+    expect(document.html).toContain('<h1 id="title">Title</h1>')
+    expect(document.html).toContain('<h2 id="status">Status</h2>')
+    expect(document.html).toContain('<h3 id="detail">Detail</h3>')
+    expect(document.html).toContain('<h2 id="status-2">Status</h2>')
+    expect(document.outline).toEqual([
+      { id: 'title', level: 1, text: 'Title' },
+      { id: 'status', level: 2, text: 'Status' },
+      { id: 'detail', level: 3, text: 'Detail' },
+      { id: 'status-2', level: 2, text: 'Status' }
+    ])
   })
 
   it('should syntax-highlight fenced code blocks', async () => {
@@ -33,7 +48,7 @@ describe('render', () => {
 
   it('should strip YAML frontmatter before rendering', async () => {
     const html = await render('---\nfoo: bar\n---\n# H')
-    expect(html).toContain('<h1>H</h1>')
+    expect(html).toContain('<h1 id="h">H</h1>')
     expect(html).not.toContain('foo: bar')
   })
 

@@ -1,9 +1,13 @@
-export const WORKSPACE_SCHEMA_VERSION = 2
+export const WORKSPACE_SCHEMA_VERSION = 4
 
 export const SIDEBAR_DEFAULT_WIDTH = 360
 export const SIDEBAR_MIN_WIDTH = 164
 export const SIDEBAR_MAX_VIEWPORT_FRACTION = 0.5
 export const SIDEBAR_AUTO_COLLAPSE_WIDTH = 640
+export const DOCUMENT_OUTLINE_DEFAULT_WIDTH = 216
+export const DOCUMENT_OUTLINE_MIN_WIDTH = 140
+export const DOCUMENT_OUTLINE_MAX_WIDTH = 360
+export const DOCUMENT_OUTLINE_COLLAPSED_WIDTH = 44
 
 export const DEFAULT_WINDOW_WIDTH = 1460
 export const DEFAULT_WINDOW_HEIGHT = 980
@@ -39,6 +43,11 @@ export interface WorkspaceShellState {
   activeSidebar: WorkspaceSidebarMode
 }
 
+export interface WorkspaceLibraryState {
+  expandedFolders: string[] | null
+  scrollTop: number
+}
+
 export interface WorkspaceWindowState {
   bounds: WindowBounds | null
   maximized: boolean
@@ -59,10 +68,12 @@ export type WorkspaceRecentFile = WorkspaceFileRef & {
 export interface WorkspaceState {
   schemaVersion: typeof WORKSPACE_SCHEMA_VERSION
   shell: WorkspaceShellState
+  library: WorkspaceLibraryState
   window: WorkspaceWindowState
   tabs: WorkspaceFileTab[]
   activeTabId: string | null
   recents: WorkspaceRecentFile[]
+  outlineWidth: number
   outlineCollapsedByPath: Record<string, boolean>
 }
 
@@ -76,6 +87,11 @@ export interface WorkspaceWindowUpdate {
   bounds?: WindowBounds | null
   maximized?: boolean
   fullscreen?: boolean
+}
+
+export interface WorkspaceLibraryUpdate {
+  expandedFolders?: string[]
+  scrollTop?: number
 }
 
 export type WorkspaceOpenFileInput = WorkspaceSourceFileRef
@@ -106,6 +122,10 @@ export interface WorkspaceUpdateTabViewModeInput {
 export interface WorkspaceSetOutlineCollapsedInput {
   sourcePath: string
   collapsed: boolean
+}
+
+export interface WorkspaceSetOutlineWidthInput {
+  width: number
 }
 
 export function isWorkspaceSourceFileRef(file: WorkspaceFileRef): file is WorkspaceSourceFileRef {
@@ -141,4 +161,12 @@ export function clampSidebarWidth(width: number, viewportWidth: number): number 
 
 export function shouldAutoCollapseSidebar(viewportWidth: number): boolean {
   return viewportWidth < SIDEBAR_AUTO_COLLAPSE_WIDTH
+}
+
+export function clampDocumentOutlineWidth(width: number): number {
+  if (!Number.isFinite(width)) return DOCUMENT_OUTLINE_DEFAULT_WIDTH
+  return Math.min(
+    Math.max(Math.round(width), DOCUMENT_OUTLINE_MIN_WIDTH),
+    DOCUMENT_OUTLINE_MAX_WIDTH
+  )
 }

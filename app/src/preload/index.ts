@@ -13,10 +13,12 @@ import type {
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFocusTabInput,
+  WorkspaceLibraryUpdate,
   WorkspaceOpenRecentFileInput,
   WorkspaceOpenFileInput,
   WorkspaceRecordRecentInput,
   WorkspaceSetOutlineCollapsedInput,
+  WorkspaceSetOutlineWidthInput,
   WorkspaceShellUpdate,
   WorkspaceState,
   WorkspaceTabFileInput,
@@ -86,6 +88,7 @@ export interface RyteApi {
     getState(): Promise<WorkspaceState>
     updateShell(patch: WorkspaceShellUpdate): Promise<WorkspaceState>
     updateWindow(patch: WorkspaceWindowUpdate): Promise<WorkspaceState>
+    updateLibrary(patch: WorkspaceLibraryUpdate): Promise<WorkspaceState>
     openFile(input: WorkspaceOpenFileInput): Promise<WorkspaceState>
     openRecentFile(input: WorkspaceOpenRecentFileInput): Promise<WorkspaceState>
     openNativeFile(): Promise<WorkspaceState>
@@ -94,6 +97,7 @@ export interface RyteApi {
     updateTabViewMode(input: WorkspaceUpdateTabViewModeInput): Promise<WorkspaceState>
     recordRecent(input: WorkspaceRecordRecentInput): Promise<WorkspaceState>
     setOutlineCollapsed(input: WorkspaceSetOutlineCollapsedInput): Promise<WorkspaceState>
+    setOutlineWidth(input: WorkspaceSetOutlineWidthInput): Promise<WorkspaceState>
     pruneMissingFileRefs(): Promise<WorkspaceState>
   }
   dialog: {
@@ -159,6 +163,7 @@ const api: RyteApi = {
     getState: () => ipcRenderer.invoke('workspace:get-state'),
     updateShell: (patch) => ipcRenderer.invoke('workspace:update-shell', patch),
     updateWindow: (patch) => ipcRenderer.invoke('workspace:update-window', patch),
+    updateLibrary: (patch) => ipcRenderer.invoke('workspace:update-library', patch),
     openFile: (input) => ipcRenderer.invoke('workspace:open-file', input),
     openRecentFile: (input) => ipcRenderer.invoke('workspace:open-recent-file', input),
     openNativeFile: () => ipcRenderer.invoke('workspace:open-native-file'),
@@ -167,6 +172,7 @@ const api: RyteApi = {
     updateTabViewMode: (input) => ipcRenderer.invoke('workspace:update-tab-view-mode', input),
     recordRecent: (input) => ipcRenderer.invoke('workspace:record-recent', input),
     setOutlineCollapsed: (input) => ipcRenderer.invoke('workspace:set-outline-collapsed', input),
+    setOutlineWidth: (input) => ipcRenderer.invoke('workspace:set-outline-width', input),
     pruneMissingFileRefs: () => ipcRenderer.invoke('workspace:prune-missing-file-refs')
   },
   dialog: {

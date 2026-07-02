@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import { resolveFileIconName, type FileIconName } from './file-icon-resolver'
 import IconChevronRight from './icons/IconChevronRight.vue'
@@ -46,7 +46,12 @@ const emit = defineEmits<{
 }>()
 const expanded = ref<Set<string>>(new Set())
 const focusedIndex = ref(0)
+const treeHasFocus = ref(false)
 const rootEl = ref<HTMLElement | null>(null)
+let activeSourcePathInitialized = false
+let libraryScrollRestored = false
+let restoringLibraryScroll = false
+let scrollPersistTimer: number | null = null
 
 function buildTree(paths: string[]): TreeNode[] {
   const root: TreeNode = {
@@ -139,21 +144,102 @@ const treeConnectors = computed<TreeConnector[]>(() => {
 })
 
 watch(
+  () => workspace.library.expandedFolders,
+  (savedExpandedFolders) => {
+    if (savedExpandedFolders === null) return
+    expanded.value = new Set(savedExpandedFolders)
+  },
+  { immediate: true }
+)
+
+watch(
   tree,
   (next) => {
     if (next.length === 0) return
+    if (workspace.library.expandedFolders !== null) {
+      if (viewer.sourcePath) expandAncestorsForSourcePath(viewer.sourcePath)
+      return
+    }
     // Default-expand all root-level folders so the user sees structure on first load.
     const nextExpanded = new Set(expanded.value)
     for (const node of next) {
       if (node.isFolder) nextExpanded.add(node.relPath)
     }
+    if (viewer.sourcePath) {
+      const parts = viewer.sourcePath.split('/')
+      parts.pop()
+      for (let index = 0; index < parts.length; index += 1) {
+        nextExpanded.add(parts.slice(0, index + 1).join('/'))
+      }
+    }
     expanded.value = nextExpanded
+    persistExpandedFolders(nextExpanded)
   },
   { immediate: true }
 )
 
+watch(
+  visibleRows,
+  () => {
+    void restoreLibraryScroll()
+    syncFocusedIndexToSelectedRow()
+  },
+  { immediate: true, flush: 'post' }
+)
+
+watch(
+  () => viewer.sourcePath,
+  (sourcePath) => {
+    if (!sourcePath) return
+    if (tree.value.length === 0) return
+    expandAncestorsForSourcePath(sourcePath)
+    syncFocusedIndexToSelectedRow()
+    if (activeSourcePathInitialized) {
+      void scrollSelectedIntoView()
+    }
+    activeSourcePathInitialized = true
+  },
+  { immediate: true, flush: 'post' }
+)
+
 function isExpanded(node: TreeNode): boolean {
   return expanded.value.has(node.relPath)
+}
+
+function sameStringList(left: string[] | null, right: string[]): boolean {
+  if (left === null || left.length !== right.length) return false
+  return left.every((value, index) => value === right[index])
+}
+
+function sortedExpandedFolders(next: Set<string>): string[] {
+  return [...next].sort((a, b) => a.localeCompare(b))
+}
+
+function persistExpandedFolders(next: Set<string>): void {
+  const expandedFolders = sortedExpandedFolders(next)
+  if (sameStringList(workspace.library.expandedFolders, expandedFolders)) return
+  void workspace.updateLibrary({ expandedFolders }).catch(() => {
+    // The workspace store owns the user-facing error state for persistence failures.
+  })
+}
+
+function expandAncestorsForSourcePath(sourcePath: string): void {
+  const parts = sourcePath.split('/')
+  parts.pop()
+  if (parts.length === 0) return
+
+  const next = new Set(expanded.value)
+  let changed = false
+  for (let index = 0; index < parts.length; index += 1) {
+    const ancestor = parts.slice(0, index + 1).join('/')
+    if (next.has(ancestor)) continue
+    next.add(ancestor)
+    changed = true
+  }
+
+  if (!changed) return
+  expanded.value = next
+  persistExpandedFolders(next)
 }
 
 function toggle(node: TreeNode): void {
@@ -164,9 +250,11 @@ function toggle(node: TreeNode): void {
     next.add(node.relPath)
   }
   expanded.value = next
+  persistExpandedFolders(next)
 }
 
 function onRowClick(node: TreeNode, index: number): void {
+  rootEl.value?.focus({ preventScroll: true })
   focusedIndex.value = index
   if (node.isFolder) {
     toggle(node)
@@ -210,6 +298,75 @@ async function scrollFocusedIntoView(): Promise<void> {
   el?.scrollIntoView({ block: 'nearest' })
 }
 
+async function scrollSelectedIntoView(): Promise<void> {
+  await nextTick()
+  const sourcePath = viewer.sourcePath
+  if (!sourcePath) return
+  const selectedIndex = visibleRows.value.findIndex(
+    (row) => !row.isFolder && row.relPath === sourcePath
+  )
+  if (selectedIndex === -1) return
+  const el = rootEl.value?.querySelector<HTMLElement>(`[data-row-index="${selectedIndex}"]`)
+  el?.scrollIntoView({ block: 'nearest' })
+}
+
+function syncFocusedIndexToSelectedRow(): void {
+  const sourcePath = viewer.sourcePath
+  if (!sourcePath) return
+  const selectedIndex = visibleRows.value.findIndex(
+    (row) => !row.isFolder && row.relPath === sourcePath
+  )
+  if (selectedIndex !== -1) focusedIndex.value = selectedIndex
+}
+
+async function restoreLibraryScroll(): Promise<void> {
+  if (libraryScrollRestored || !rootEl.value || visibleRows.value.length === 0) return
+  await nextTick()
+  if (!rootEl.value) return
+  restoringLibraryScroll = true
+  rootEl.value.scrollTop = workspace.library.scrollTop
+  libraryScrollRestored = true
+  window.setTimeout(() => {
+    restoringLibraryScroll = false
+  }, 0)
+}
+
+function persistLibraryScroll(): void {
+  const scrollTop = Math.round(rootEl.value?.scrollTop ?? 0)
+  if (scrollTop === workspace.library.scrollTop) return
+  void workspace.updateLibrary({ scrollTop }).catch(() => {
+    // The workspace store owns the user-facing error state for persistence failures.
+  })
+}
+
+function onScroll(): void {
+  if (restoringLibraryScroll) return
+  if (scrollPersistTimer !== null) {
+    window.clearTimeout(scrollPersistTimer)
+  }
+  scrollPersistTimer = window.setTimeout(() => {
+    scrollPersistTimer = null
+    persistLibraryScroll()
+  }, 150)
+}
+
+function onFocusIn(): void {
+  treeHasFocus.value = true
+}
+
+function onFocusOut(event: FocusEvent): void {
+  const nextTarget = event.relatedTarget
+  if (nextTarget instanceof Node && rootEl.value?.contains(nextTarget)) return
+  treeHasFocus.value = false
+}
+
+function onDocumentPointerDown(event: PointerEvent): void {
+  const target = event.target
+  if (target instanceof Node && rootEl.value?.contains(target)) return
+  treeHasFocus.value = false
+  rootEl.value?.blur()
+}
+
 function onKeydown(event: KeyboardEvent): void {
   const rows = visibleRows.value
   if (rows.length === 0) return
@@ -250,7 +407,16 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => {
-  // Hydration is done in App.vue before mount; nothing to fetch here.
+  document.addEventListener('pointerdown', onDocumentPointerDown, true)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  if (scrollPersistTimer !== null) {
+    window.clearTimeout(scrollPersistTimer)
+    scrollPersistTimer = null
+  }
+  persistLibraryScroll()
 })
 </script>
 
@@ -260,7 +426,10 @@ onMounted(() => {
     class="sidebar ryte-scrollbar ryte-scrollbar--y"
     :aria-label="'Notes file tree'"
     tabindex="0"
+    @focusin="onFocusIn"
+    @focusout="onFocusOut"
     @keydown="onKeydown"
+    @scroll="onScroll"
   >
     <div class="sidebar-search">
       <SidebarSearchButton @search="emit('openSearch')" />
@@ -290,7 +459,7 @@ onMounted(() => {
             {
               folder: node.isFolder,
               file: !node.isFolder,
-              focused: focusedIndex === index,
+              focused: treeHasFocus && focusedIndex === index,
               selected: !node.isFolder && viewer.sourcePath === node.relPath
             }
           ]"

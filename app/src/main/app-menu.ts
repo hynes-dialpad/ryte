@@ -123,6 +123,12 @@ function viewMenu(): MenuItemConstructorOptions {
       },
       { type: 'separator' },
       {
+        label: 'View Source',
+        accelerator: `${commandKey}+E`,
+        click: () => sendMenuCommand({ type: 'toggle-source-mode' })
+      },
+      { type: 'separator' },
+      {
         label: 'Next',
         accelerator: `${commandKey}+Shift+]`,
         click: () => sendMenuCommand({ type: 'focus-next-tab' })

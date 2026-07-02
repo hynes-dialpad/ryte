@@ -22,6 +22,8 @@ import {
   SIDEBAR_MIN_WIDTH,
   WORKSPACE_RECENTS_LIMIT,
   WORKSPACE_SCHEMA_VERSION,
+  DOCUMENT_OUTLINE_DEFAULT_WIDTH,
+  clampDocumentOutlineWidth,
   isWorkspaceExternalFileRef,
   isWorkspaceSourceFileRef,
   workspaceFileKey,
@@ -31,12 +33,15 @@ import {
   type WorkspaceFileRef,
   type WorkspaceFileTab,
   type WorkspaceFocusTabInput,
+  type WorkspaceLibraryState,
+  type WorkspaceLibraryUpdate,
   type WorkspaceOpenFileInput,
   type WorkspaceOpenRecentFileInput,
   type WorkspaceRecentFile,
   type WorkspaceRecordRecentInput,
   type WorkspaceSidebarMode,
   type WorkspaceSetOutlineCollapsedInput,
+  type WorkspaceSetOutlineWidthInput,
   type WorkspaceShellState,
   type WorkspaceShellUpdate,
   type WorkspaceState,
@@ -66,6 +71,13 @@ function defaultShellState(): WorkspaceShellState {
   }
 }
 
+function defaultLibraryState(): WorkspaceLibraryState {
+  return {
+    expandedFolders: null,
+    scrollTop: 0
+  }
+}
+
 function defaultWindowState(): WorkspaceWindowState {
   return {
     bounds: null,
@@ -78,10 +90,12 @@ export function defaultWorkspaceState(): WorkspaceState {
   return {
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     shell: defaultShellState(),
+    library: defaultLibraryState(),
     window: defaultWindowState(),
     tabs: [],
     activeTabId: null,
     recents: [],
+    outlineWidth: DOCUMENT_OUTLINE_DEFAULT_WIDTH,
     outlineCollapsedByPath: {}
   }
 }
@@ -113,6 +127,15 @@ function normalizeBounds(value: unknown): WindowBounds | null {
 function normalizeSidebarWidth(value: unknown): number {
   if (!finiteNumber(value)) return SIDEBAR_DEFAULT_WIDTH
   if (value < SIDEBAR_MIN_WIDTH) return SIDEBAR_MIN_WIDTH
+  return Math.round(value)
+}
+
+function normalizeDocumentOutlineWidth(value: unknown): number {
+  return finiteNumber(value) ? clampDocumentOutlineWidth(value) : DOCUMENT_OUTLINE_DEFAULT_WIDTH
+}
+
+function normalizeScrollTop(value: unknown): number {
+  if (!finiteNumber(value) || value < 0) return 0
   return Math.round(value)
 }
 
@@ -266,6 +289,23 @@ function normalizeOutlineCollapsedByPath(value: unknown): Record<string, boolean
   return collapsedByPath
 }
 
+function normalizeExpandedFolders(value: unknown): string[] | null {
+  if (value === null || value === undefined) return null
+  if (!Array.isArray(value)) return null
+
+  const expandedFolders: string[] = []
+  const seenFolders = new Set<string>()
+
+  for (const rawPath of value) {
+    const sourcePath = normalizeSourcePath(rawPath)
+    if (!sourcePath || seenFolders.has(sourcePath)) continue
+    seenFolders.add(sourcePath)
+    expandedFolders.push(sourcePath)
+  }
+
+  return expandedFolders
+}
+
 function repairActiveTabId(value: unknown, tabs: WorkspaceFileTab[]): string | null {
   if (typeof value === 'string' && tabs.some((tab) => tab.id === value)) return value
   return tabs[0]?.id ?? null
@@ -289,6 +329,7 @@ function recordRecentInState(
 function normalizeWorkspace(parsed: LegacyWorkspaceFile): WorkspaceState {
   const defaults = defaultWorkspaceState()
   const shell: Partial<WorkspaceShellState> = isObject(parsed.shell) ? parsed.shell : {}
+  const library: Partial<WorkspaceLibraryState> = isObject(parsed.library) ? parsed.library : {}
   const window: Partial<WorkspaceWindowState> = isObject(parsed.window) ? parsed.window : {}
   const tabs = normalizeTabs(parsed.tabs)
 
@@ -304,6 +345,10 @@ function normalizeWorkspace(parsed: LegacyWorkspaceFile): WorkspaceState {
         ? shell.activeSidebar
         : defaults.shell.activeSidebar
     },
+    library: {
+      expandedFolders: normalizeExpandedFolders(library.expandedFolders),
+      scrollTop: normalizeScrollTop(library.scrollTop)
+    },
     window: {
       bounds: normalizeBounds(window.bounds),
       maximized:
@@ -314,6 +359,7 @@ function normalizeWorkspace(parsed: LegacyWorkspaceFile): WorkspaceState {
     tabs,
     activeTabId: repairActiveTabId(parsed.activeTabId, tabs),
     recents: normalizeRecents(parsed.recents),
+    outlineWidth: normalizeDocumentOutlineWidth(parsed.outlineWidth),
     outlineCollapsedByPath: normalizeOutlineCollapsedByPath(parsed.outlineCollapsedByPath)
   }
 }
@@ -384,6 +430,22 @@ export class WorkspaceStore {
           ? { sidebarWidth: normalizeSidebarWidth(patch.sidebarWidth) }
           : {}),
         ...(patch.activeSidebar !== undefined ? { activeSidebar: patch.activeSidebar } : {})
+      }
+    }
+    this.persist(next)
+    return this.publicState()
+  }
+
+  updateLibrary(patch: WorkspaceLibraryUpdate): WorkspaceState {
+    const current = this.load()
+    const next: WorkspaceState = {
+      ...current,
+      library: {
+        ...current.library,
+        ...(patch.expandedFolders !== undefined
+          ? { expandedFolders: normalizeExpandedFolders(patch.expandedFolders) ?? [] }
+          : {}),
+        ...(patch.scrollTop !== undefined ? { scrollTop: normalizeScrollTop(patch.scrollTop) } : {})
       }
     }
     this.persist(next)
@@ -545,6 +607,16 @@ export class WorkspaceStore {
         ...current.outlineCollapsedByPath,
         [sourcePath]: input.collapsed
       }
+    }
+    this.persist(next)
+    return this.publicState()
+  }
+
+  setOutlineWidth(input: WorkspaceSetOutlineWidthInput): WorkspaceState {
+    const current = this.load()
+    const next: WorkspaceState = {
+      ...current,
+      outlineWidth: clampDocumentOutlineWidth(input.width)
     }
     this.persist(next)
     return this.publicState()

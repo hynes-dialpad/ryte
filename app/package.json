@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "smoke:indexer": "node scripts/run-indexer-smoke.mjs",
     "smoke:indexer:notes": "node --import tsx scripts/smoke-indexer.ts",
+    "qa:local": "pnpm validate && pnpm smoke:indexer && pnpm start",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "node scripts/check-node-version.mjs && npm run typecheck && electron-vite build",

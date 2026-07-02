@@ -371,6 +371,11 @@ function handleMenuCommand(command: AppMenuCommand): void {
     return
   }
 
+  if (command.type === 'toggle-source-mode') {
+    window.dispatchEvent(new Event('ryte:toggle-source-mode'))
+    return
+  }
+
   runAppShortcutAction(command)
 }
 
@@ -526,6 +531,7 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
 
 .shell-sidebar.collapsed {
   width: var(--shell-rail-width);
+  background: transparent;
 }
 
 .shell-chrome {

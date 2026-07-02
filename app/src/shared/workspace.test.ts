@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DOCUMENT_OUTLINE_DEFAULT_WIDTH,
+  DOCUMENT_OUTLINE_MAX_WIDTH,
+  DOCUMENT_OUTLINE_MIN_WIDTH,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
+  clampDocumentOutlineWidth,
   clampSidebarWidth,
   shouldAutoCollapseSidebar,
   workspaceFileDisplayPath,
@@ -21,6 +25,12 @@ describe('workspace shell policy', () => {
 
   it('caps sidebar width at half the viewport', () => {
     expect(clampSidebarWidth(900, 1280)).toBe(640)
+  })
+
+  it('clamps document outline width to stable resize bounds', () => {
+    expect(clampDocumentOutlineWidth(Number.NaN)).toBe(DOCUMENT_OUTLINE_DEFAULT_WIDTH)
+    expect(clampDocumentOutlineWidth(12)).toBe(DOCUMENT_OUTLINE_MIN_WIDTH)
+    expect(clampDocumentOutlineWidth(999)).toBe(DOCUMENT_OUTLINE_MAX_WIDTH)
   })
 
   it('auto-collapses below the small viewport threshold', () => {

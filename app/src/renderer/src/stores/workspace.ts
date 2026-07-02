@@ -6,6 +6,8 @@ import {
   SIDEBAR_MIN_WIDTH,
   WORKSPACE_RECENTS_LIMIT,
   WORKSPACE_SCHEMA_VERSION,
+  DOCUMENT_OUTLINE_DEFAULT_WIDTH,
+  clampDocumentOutlineWidth,
   clampSidebarWidth,
   isWorkspaceSourceFileRef,
   shouldAutoCollapseSidebar,
@@ -15,12 +17,15 @@ import {
   type WorkspaceFileRef,
   type WorkspaceFileTab,
   type WorkspaceFocusTabInput,
+  type WorkspaceLibraryState,
+  type WorkspaceLibraryUpdate,
   type WorkspaceOpenFileInput,
   type WorkspaceOpenRecentFileInput,
   type WorkspaceRecordRecentInput,
   type WorkspaceSidebarMode,
   type WorkspaceShellState,
   type WorkspaceSetOutlineCollapsedInput,
+  type WorkspaceSetOutlineWidthInput,
   type WorkspaceShellUpdate,
   type WorkspaceState,
   type WorkspaceUpdateTabViewModeInput
@@ -36,6 +41,10 @@ function defaultRendererWorkspaceState(): WorkspaceState {
       sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
       activeSidebar: 'files'
     },
+    library: {
+      expandedFolders: null,
+      scrollTop: 0
+    },
     window: {
       bounds: null,
       maximized: false,
@@ -44,6 +53,7 @@ function defaultRendererWorkspaceState(): WorkspaceState {
     tabs: [],
     activeTabId: null,
     recents: [],
+    outlineWidth: DOCUMENT_OUTLINE_DEFAULT_WIDTH,
     outlineCollapsedByPath: {}
   }
 }
@@ -67,6 +77,23 @@ function applyOptimisticShellPatch(
         ? { sidebarWidth: normalizeOptimisticSidebarWidth(patch.sidebarWidth) }
         : {}),
       ...(patch.activeSidebar !== undefined ? { activeSidebar: patch.activeSidebar } : {})
+    }
+  }
+}
+
+function applyOptimisticLibraryPatch(
+  current: WorkspaceState | null,
+  patch: WorkspaceLibraryUpdate
+): WorkspaceState {
+  const base = current ?? defaultRendererWorkspaceState()
+  return {
+    ...base,
+    library: {
+      ...base.library,
+      ...(patch.expandedFolders !== undefined ? { expandedFolders: patch.expandedFolders } : {}),
+      ...(patch.scrollTop !== undefined
+        ? { scrollTop: Math.max(0, Math.round(patch.scrollTop)) }
+        : {})
     }
   }
 }
@@ -129,10 +156,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         activeSidebar: 'files'
       }
   )
+  const library = computed<WorkspaceLibraryState>(
+    () =>
+      state.value?.library ?? {
+        expandedFolders: null,
+        scrollTop: 0
+      }
+  )
   const tabs = computed(() => state.value?.tabs ?? [])
   const activeTabId = computed(() => state.value?.activeTabId ?? null)
   const activeTab = computed(() => tabs.value.find((tab) => tab.id === activeTabId.value) ?? null)
   const recents = computed(() => state.value?.recents ?? [])
+  const outlineWidth = computed(() => state.value?.outlineWidth ?? DOCUMENT_OUTLINE_DEFAULT_WIDTH)
   const outlineCollapsedByPath = computed(() => state.value?.outlineCollapsedByPath ?? {})
 
   async function hydrate(): Promise<void> {
@@ -154,6 +189,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     error.value = null
     try {
       state.value = await window.ryte.workspace.updateShell(patch)
+    } catch (e) {
+      state.value = previousState
+      error.value = e instanceof Error ? e.message : String(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateLibrary(patch: WorkspaceLibraryUpdate): Promise<void> {
+    const previousState = state.value
+    state.value = applyOptimisticLibraryPatch(state.value, patch)
+    loading.value = true
+    error.value = null
+    try {
+      state.value = await window.ryte.workspace.updateLibrary(patch)
     } catch (e) {
       state.value = previousState
       error.value = e instanceof Error ? e.message : String(e)
@@ -320,6 +371,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     )
   }
 
+  async function setOutlineWidth(input: WorkspaceSetOutlineWidthInput): Promise<void> {
+    await runOptimisticWorkspaceOperation(
+      (base) => ({
+        ...base,
+        outlineWidth: clampDocumentOutlineWidth(input.width)
+      }),
+      () => window.ryte.workspace.setOutlineWidth(input)
+    )
+  }
+
   async function pruneMissingFileRefs(): Promise<void> {
     const previousState = state.value
     loading.value = true
@@ -358,15 +419,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     state,
     shell,
+    library,
     tabs,
     activeTabId,
     activeTab,
     recents,
+    outlineWidth,
     outlineCollapsedByPath,
     loading,
     error,
     hydrate,
     updateShell,
+    updateLibrary,
     openFile,
     focusTab,
     closeTab,
@@ -378,6 +442,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateTabViewMode,
     recordRecent,
     setOutlineCollapsed,
+    setOutlineWidth,
     pruneMissingFileRefs,
     setSidebarCollapsed,
     setSidebarWidth,

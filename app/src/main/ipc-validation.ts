@@ -12,10 +12,12 @@ import type {
   WorkspaceCloseTabInput,
   WorkspaceFileRef,
   WorkspaceFocusTabInput,
+  WorkspaceLibraryUpdate,
   WorkspaceOpenFileInput,
   WorkspaceOpenRecentFileInput,
   WorkspaceRecordRecentInput,
   WorkspaceSetOutlineCollapsedInput,
+  WorkspaceSetOutlineWidthInput,
   WorkspaceShellUpdate,
   WorkspaceTabFileInput,
   WorkspaceUpdateTabViewModeInput,
@@ -35,6 +37,7 @@ const MAX_PATH_LENGTH = 4096
 const MAX_QUERY_LENGTH = 2000
 const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
+const MAX_DOCUMENT_OUTLINE_WIDTH = 1000
 const MAX_TAB_ID_LENGTH = 200
 const MAX_TASK_LIST_LIMIT = 200
 const MAX_TASK_SOURCE_LINE_LENGTH = 20000
@@ -477,6 +480,31 @@ export function assertValidWorkspaceWindowPatch(value: unknown): WorkspaceWindow
   return patch
 }
 
+export function assertValidWorkspaceLibraryPatch(value: unknown): WorkspaceLibraryUpdate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace library patch')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'expandedFolders' && key !== 'scrollTop') {
+      throw new Error(`Invalid workspace library key: ${key}`)
+    }
+  }
+  const patch: WorkspaceLibraryUpdate = {}
+  if ('expandedFolders' in input) {
+    if (!Array.isArray(input.expandedFolders)) throw new Error('Invalid expandedFolders')
+    patch.expandedFolders = input.expandedFolders.map((folder) =>
+      assertValidWorkspaceSourcePath(folder)
+    )
+  }
+  if ('scrollTop' in input) {
+    const scrollTop = assertFiniteNumber(input.scrollTop, 'scrollTop')
+    if (scrollTop < 0) throw new Error('Invalid scrollTop')
+    patch.scrollTop = scrollTop
+  }
+  return patch
+}
+
 export function assertValidWorkspaceOpenFileInput(value: unknown): WorkspaceOpenFileInput {
   const input = assertObjectWithKeys(value, ['sourcePath'], 'workspace open file input')
   return {
@@ -561,5 +589,22 @@ export function assertValidWorkspaceSetOutlineCollapsedInput(
   return {
     sourcePath: assertValidWorkspaceSourcePath(input.sourcePath),
     collapsed: input.collapsed
+  }
+}
+
+export function assertValidWorkspaceSetOutlineWidthInput(
+  value: unknown
+): WorkspaceSetOutlineWidthInput {
+  const input = assertObjectWithKeys(value, ['width'], 'workspace outline width input')
+  if (
+    typeof input.width !== 'number' ||
+    !Number.isFinite(input.width) ||
+    input.width <= 0 ||
+    input.width > MAX_DOCUMENT_OUTLINE_WIDTH
+  ) {
+    throw new Error('Invalid workspace outline width')
+  }
+  return {
+    width: input.width
   }
 }

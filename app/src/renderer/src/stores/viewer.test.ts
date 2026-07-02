@@ -18,6 +18,10 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
       sidebarWidth: 360,
       activeSidebar: 'files'
     },
+    library: {
+      expandedFolders: null,
+      scrollTop: 0
+    },
     window: {
       bounds: null,
       maximized: false,
@@ -26,6 +30,7 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     tabs: [],
     activeTabId: null,
     recents: [],
+    outlineWidth: 216,
     outlineCollapsedByPath: {},
     ...overrides
   }

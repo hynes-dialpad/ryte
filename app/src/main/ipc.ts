@@ -21,10 +21,12 @@ import {
   assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
   assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceLibraryPatch,
   assertValidWorkspaceOpenFileInput,
   assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
+  assertValidWorkspaceSetOutlineWidthInput,
   assertValidWorkspaceShellPatch,
   assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
@@ -130,6 +132,10 @@ export function registerIpc(): void {
     return workspaceStore.updateWindow(assertValidWorkspaceWindowPatch(patch))
   })
 
+  ipcMain.handle('workspace:update-library', (_event, patch: unknown) => {
+    return workspaceStore.updateLibrary(assertValidWorkspaceLibraryPatch(patch))
+  })
+
   ipcMain.handle('workspace:open-file', async (_event, input: unknown) => {
     const next = await workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
     refreshAppMenu()
@@ -184,6 +190,10 @@ export function registerIpc(): void {
 
   ipcMain.handle('workspace:set-outline-collapsed', (_event, input: unknown) => {
     return workspaceStore.setOutlineCollapsed(assertValidWorkspaceSetOutlineCollapsedInput(input))
+  })
+
+  ipcMain.handle('workspace:set-outline-width', (_event, input: unknown) => {
+    return workspaceStore.setOutlineWidth(assertValidWorkspaceSetOutlineWidthInput(input))
   })
 
   ipcMain.handle('workspace:prune-missing-file-refs', async () => {

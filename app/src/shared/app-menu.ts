@@ -12,4 +12,5 @@ export type AppMenuCommand =
   | { type: 'focus-previous-tab' }
   | { type: 'select-sidebar'; sidebar: WorkspaceSidebarMode }
   | { type: 'toggle-sidebar' }
+  | { type: 'toggle-source-mode' }
   | { type: 'open-settings' }

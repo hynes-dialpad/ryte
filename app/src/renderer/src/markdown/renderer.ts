@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import type Token from 'markdown-it/lib/token.mjs'
 import { fromHighlighter } from '@shikijs/markdown-it/core'
 import { createHighlighter, createJavaScriptRegexEngine } from 'shiki'
 
@@ -40,9 +41,21 @@ interface RenderOptions {
   interactiveTasks?: boolean
 }
 
+export interface MarkdownOutlineItem {
+  id: string
+  level: number
+  text: string
+}
+
+export interface RenderedMarkdownDocument {
+  html: string
+  outline: MarkdownOutlineItem[]
+}
+
 interface RenderEnv {
   lineOffset?: number
   taskMarkers?: Map<number, RenderedTaskMarker>
+  outline?: MarkdownOutlineItem[]
 }
 
 interface RenderedTaskMarker {
@@ -173,6 +186,25 @@ function renderTaskContentClose(): string {
   return '</span></span>'
 }
 
+function slugifyHeading(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || 'section'
+}
+
+function inlineTokenText(token: Token): string {
+  if (token.children) {
+    return token.children.map(inlineTokenText).join('')
+  }
+
+  return token.content
+}
+
 async function getMd(): Promise<MarkdownIt> {
   if (!mdPromise) {
     mdPromise = (async () => {
@@ -239,6 +271,30 @@ async function getMd(): Promise<MarkdownIt> {
           token.children.push(taskClose)
         }
       })
+      md.core.ruler.after('inline', 'ryte_heading_ids', (state) => {
+        const env = state.env as RenderEnv
+        const usedSlugs = new Map<string, number>()
+
+        for (let index = 0; index < state.tokens.length; index += 1) {
+          const token = state.tokens[index]
+          if (token.type !== 'heading_open') continue
+
+          const inlineToken = state.tokens[index + 1]
+          if (!inlineToken || inlineToken.type !== 'inline') continue
+
+          const level = Number(token.tag.slice(1))
+          const text = inlineTokenText(inlineToken).replace(/\s+/g, ' ').trim()
+          if (!Number.isInteger(level) || level < 1 || level > 6 || !text) continue
+
+          const slug = slugifyHeading(text)
+          const count = usedSlugs.get(slug) ?? 0
+          usedSlugs.set(slug, count + 1)
+          const id = count === 0 ? slug : `${slug}-${count + 1}`
+
+          token.attrSet('id', id)
+          env.outline?.push({ id, level, text })
+        }
+      })
       return md
     })().catch((err) => {
       // Reset so the next render attempt retries rather than caching a rejected promise.
@@ -250,11 +306,23 @@ async function getMd(): Promise<MarkdownIt> {
 }
 
 export async function render(text: string, options: RenderOptions = {}): Promise<string> {
+  return (await renderDocument(text, options)).html
+}
+
+export async function renderDocument(
+  text: string,
+  options: RenderOptions = {}
+): Promise<RenderedMarkdownDocument> {
   const md = await getMd()
   const stripped = stripFrontmatterForRender(text)
+  const outline: MarkdownOutlineItem[] = []
   const env: RenderEnv = {
     lineOffset: stripped.lineOffset,
-    taskMarkers: options.interactiveTasks ? findTaskMarkers(text) : undefined
+    taskMarkers: options.interactiveTasks ? findTaskMarkers(text) : undefined,
+    outline
   }
-  return sanitizeRenderedHtml(md.render(stripped.text, env))
+  return {
+    html: sanitizeRenderedHtml(md.render(stripped.text, env)),
+    outline
+  }
 }
