@@ -2,7 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type { PublicSettingsState, SettingsUpdate } from '../main/settings/settings-store'
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
-import type { FileCatalogResponse, FileTreeResponse } from '../shared/files'
+import type {
+  FileCatalogResponse,
+  FileRenameInput,
+  FileRenameResult,
+  FileTrashResult,
+  FileTreeResponse
+} from '../shared/files'
 import type {
   TaskFactsResponse,
   TaskListInput,
@@ -12,6 +18,7 @@ import type {
 } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
+  WorkspaceFileRef,
   WorkspaceFocusTabInput,
   WorkspaceLibraryUpdate,
   WorkspaceOpenRecentFileInput,
@@ -113,6 +120,11 @@ export interface RyteApi {
   files: {
     listTree(): Promise<FileTreeResponse>
     listCatalog(): Promise<FileCatalogResponse>
+    copyContent(input: WorkspaceFileRef): Promise<void>
+    copyPath(input: WorkspaceFileRef): Promise<void>
+    showInFinder(input: WorkspaceFileRef): Promise<void>
+    rename(input: FileRenameInput): Promise<FileRenameResult>
+    moveToTrash(input: WorkspaceFileRef): Promise<FileTrashResult>
     read(absPath: string): Promise<string>
     readSource(input: WorkspaceOpenFileInput): Promise<string>
     readSourceTitle(input: WorkspaceOpenFileInput): Promise<string | null>
@@ -192,6 +204,11 @@ const api: RyteApi = {
   files: {
     listTree: () => ipcRenderer.invoke('files:list-tree'),
     listCatalog: () => ipcRenderer.invoke('files:list-catalog'),
+    copyContent: (input) => ipcRenderer.invoke('files:copy-content', input),
+    copyPath: (input) => ipcRenderer.invoke('files:copy-path', input),
+    showInFinder: (input) => ipcRenderer.invoke('files:show-in-finder', input),
+    rename: (input) => ipcRenderer.invoke('files:rename', input),
+    moveToTrash: (input) => ipcRenderer.invoke('files:move-to-trash', input),
     read: (absPath) => ipcRenderer.invoke('files:read', absPath),
     readSource: (input) => ipcRenderer.invoke('files:read-source', input),
     readSourceTitle: (input) => ipcRenderer.invoke('files:read-source-title', input),

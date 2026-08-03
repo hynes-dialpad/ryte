@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   assertValidAbsolutePath,
+  assertValidFileRenameInput,
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
@@ -167,11 +168,19 @@ describe('ipc validation', () => {
     expect(
       assertValidWorkspaceLibraryPatch({
         expandedFolders: ['./docs', 'sessions/2026-07-02/plans'],
-        scrollTop: 420
+        scrollTop: 420,
+        folderSortModes: {
+          docs: 'za',
+          sessions: 'recency'
+        }
       })
     ).toEqual({
       expandedFolders: ['docs', 'sessions/2026-07-02/plans'],
-      scrollTop: 420
+      scrollTop: 420,
+      folderSortModes: {
+        docs: 'za',
+        sessions: 'recency'
+      }
     })
   })
 
@@ -198,9 +207,22 @@ describe('ipc validation', () => {
       'Invalid workspace source path'
     )
     expect(() => assertValidWorkspaceLibraryPatch({ scrollTop: -1 })).toThrow('Invalid scrollTop')
+    expect(() =>
+      assertValidWorkspaceLibraryPatch({ folderSortModes: { 'sessions/2026-07-02': 'za' } })
+    ).toThrow('Invalid workspace top-level folder path')
+    expect(() =>
+      assertValidWorkspaceLibraryPatch({ folderSortModes: { sessions: 'newest' } })
+    ).toThrow('Invalid workspace folder sort mode')
   })
 
   it('accepts narrow workspace operation payloads', () => {
+    expect(assertValidFileRenameInput({ sourcePath: 'folder/a.md', name: 'renamed.md' })).toEqual({
+      sourcePath: 'folder/a.md',
+      name: 'renamed.md'
+    })
+    expect(
+      assertValidFileRenameInput({ externalPath: '/tmp/outside.md', name: 'renamed.md' })
+    ).toEqual({ externalPath: '/tmp/outside.md', name: 'renamed.md' })
     expect(assertValidWorkspaceOpenFileInput({ sourcePath: 'folder/a.md' })).toEqual({
       sourcePath: 'folder/a.md'
     })
@@ -241,6 +263,15 @@ describe('ipc validation', () => {
   })
 
   it('rejects invalid workspace operation source paths and unknown keys', () => {
+    expect(() => assertValidFileRenameInput({ sourcePath: 'a.md', name: '../renamed.md' })).toThrow(
+      'Invalid file name'
+    )
+    expect(() => assertValidFileRenameInput({ sourcePath: 'a.md', name: 'renamed.txt' })).toThrow(
+      'Invalid file name'
+    )
+    expect(() =>
+      assertValidFileRenameInput({ sourcePath: 'a.md', name: 'renamed.md', extra: true })
+    ).toThrow('Invalid file rename input key')
     expect(() => assertValidWorkspaceOpenFileInput({ sourcePath: '/tmp/a.md' })).toThrow(
       'Invalid workspace source path'
     )

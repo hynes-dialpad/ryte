@@ -14,7 +14,8 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     },
     library: {
       expandedFolders: null,
-      scrollTop: 0
+      scrollTop: 0,
+      folderSortModes: {}
     },
     window: {
       bounds: null,
@@ -30,10 +31,14 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
   }
 }
 
-function installWorkspaceApi(workspace: Partial<Window['ryte']['workspace']>): void {
+function installWorkspaceApi(
+  workspace: Partial<Window['ryte']['workspace']>,
+  files: Partial<Window['ryte']['files']> = {}
+): void {
   vi.stubGlobal('window', {
     ryte: {
-      workspace
+      workspace,
+      files
     }
   })
 }
@@ -112,7 +117,10 @@ describe('useWorkspaceStore', () => {
     const persisted = workspaceState({
       library: {
         expandedFolders: ['docs', 'sessions/2026-07-02'],
-        scrollTop: 340
+        scrollTop: 340,
+        folderSortModes: {
+          sessions: 'za'
+        }
       }
     })
     let resolveUpdate: (state: WorkspaceState) => void = () => {}
@@ -132,11 +140,17 @@ describe('useWorkspaceStore', () => {
 
     const update = store.updateLibrary({
       expandedFolders: ['docs', 'sessions/2026-07-02'],
-      scrollTop: 340.4
+      scrollTop: 340.4,
+      folderSortModes: {
+        sessions: 'za'
+      }
     })
     expect(store.library).toEqual({
       expandedFolders: ['docs', 'sessions/2026-07-02'],
-      scrollTop: 340
+      scrollTop: 340,
+      folderSortModes: {
+        sessions: 'za'
+      }
     })
 
     resolveUpdate(persisted)
@@ -406,6 +420,47 @@ describe('useWorkspaceStore', () => {
 
     expect(store.state).toEqual(initial)
     expect(store.error).toBe('Selected file must be a Markdown file')
+  })
+
+  it('delegates file actions and applies rename and trash workspace results', async () => {
+    const tab = {
+      id: 'tab-a',
+      sourcePath: 'folder/a.md',
+      title: 'a.md',
+      viewMode: 'preview' as const
+    }
+    const initial = workspaceState({ tabs: [tab], activeTabId: tab.id })
+    const renamedFile = { sourcePath: 'folder/renamed.md' }
+    const renamed = workspaceState({
+      tabs: [{ ...tab, ...renamedFile, title: 'renamed.md' }],
+      activeTabId: tab.id
+    })
+    const trashed = workspaceState({ tabs: [], activeTabId: null })
+    const copyContent = vi.fn().mockResolvedValue(undefined)
+    const copyPath = vi.fn().mockResolvedValue(undefined)
+    const showInFinder = vi.fn().mockResolvedValue(undefined)
+    const rename = vi.fn().mockResolvedValue({ file: renamedFile, workspace: renamed })
+    const moveToTrash = vi.fn().mockResolvedValue({ trashed: true, workspace: trashed })
+    installWorkspaceApi(
+      { getState: vi.fn().mockResolvedValue(initial) },
+      { copyContent, copyPath, showInFinder, rename, moveToTrash }
+    )
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+    await store.copyFile({ sourcePath: 'folder/a.md' })
+    await store.copyFilePath({ sourcePath: 'folder/a.md' })
+    await store.showFileInFinder({ sourcePath: 'folder/a.md' })
+    await expect(
+      store.renameFile({ sourcePath: 'folder/a.md', name: 'renamed.md' })
+    ).resolves.toEqual(renamedFile)
+
+    expect(store.tabs[0]).toMatchObject({ sourcePath: 'folder/renamed.md', title: 'renamed.md' })
+    await expect(store.moveFileToTrash(renamedFile)).resolves.toBe(true)
+    expect(store.tabs).toEqual([])
+    expect(copyContent).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
+    expect(copyPath).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
+    expect(showInFinder).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
   })
 
   it('records recency before closing a tab for closeTabToRecent', async () => {

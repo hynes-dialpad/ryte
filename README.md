@@ -9,6 +9,7 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 - **Optionally adds semantic search** using OpenAI embeddings when explicitly enabled in Settings
 - **Optionally generates answers** using a configured OpenAI or Anthropic model
 - **Browses** your notes in a file tree sidebar with clean markdown rendering and syntax-highlighted code blocks
+- **Manages files** from sidebar and tab context menus with copy, inline rename, Finder, path, close, and confirmed Trash actions
 - **Watches** for file changes and updates the file tree, viewer, and local index incrementally
 
 ## Requirements

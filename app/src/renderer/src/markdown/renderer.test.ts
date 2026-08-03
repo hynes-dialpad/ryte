@@ -99,6 +99,8 @@ describe('render', () => {
   it('should render task markers as interactive controls when requested', async () => {
     const html = await render('- [ ] Follow up\n- [x] Done', { interactiveTasks: true })
 
+    expect(html).toContain('<ul class="markdown-task-list">')
+    expect(html).toContain('<li class="markdown-task-item">')
     expect(html).toContain('class="markdown-task-toggle"')
     expect(html).toContain('class="markdown-task-content"')
     expect(html).toContain('data-task-line="1"')

@@ -7,10 +7,12 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
+import type { FileRenameInput } from '../shared/files'
 import type { TaskListInput, TaskToggleInput } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
   WorkspaceFileRef,
+  WorkspaceFolderSortMode,
   WorkspaceFocusTabInput,
   WorkspaceLibraryUpdate,
   WorkspaceOpenFileInput,
@@ -34,6 +36,7 @@ import {
 } from '../shared/provider-registry'
 
 const MAX_PATH_LENGTH = 4096
+const MAX_FILE_NAME_LENGTH = 255
 const MAX_QUERY_LENGTH = 2000
 const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
@@ -129,6 +132,52 @@ function assertValidWorkspaceSourcePath(value: unknown): string {
   }
 
   return sourcePath
+}
+
+function assertValidFileName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_FILE_NAME_LENGTH ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    extname(value).toLowerCase() !== '.md'
+  ) {
+    throw new Error('Invalid file name')
+  }
+  return value
+}
+
+function assertValidWorkspaceTopLevelFolderPath(value: unknown): string {
+  const sourcePath = assertValidWorkspaceSourcePath(value)
+  if (sourcePath.includes(sep) || sourcePath.includes('/')) {
+    throw new Error('Invalid workspace top-level folder path')
+  }
+  return sourcePath
+}
+
+function assertValidWorkspaceFolderSortMode(value: unknown): WorkspaceFolderSortMode {
+  if (value !== 'az' && value !== 'za' && value !== 'recency') {
+    throw new Error('Invalid workspace folder sort mode')
+  }
+  return value
+}
+
+function assertValidWorkspaceFolderSortModes(
+  value: unknown
+): Record<string, WorkspaceFolderSortMode> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace folder sort modes')
+  }
+
+  const modes: Record<string, WorkspaceFolderSortMode> = {}
+  for (const [folder, mode] of Object.entries(value)) {
+    modes[assertValidWorkspaceTopLevelFolderPath(folder)] = assertValidWorkspaceFolderSortMode(mode)
+  }
+  return modes
 }
 
 function assertValidWorkspaceExternalPath(value: unknown): string {
@@ -486,7 +535,7 @@ export function assertValidWorkspaceLibraryPatch(value: unknown): WorkspaceLibra
   }
   const input = value as Record<string, unknown>
   for (const key of Object.keys(input)) {
-    if (key !== 'expandedFolders' && key !== 'scrollTop') {
+    if (key !== 'expandedFolders' && key !== 'scrollTop' && key !== 'folderSortModes') {
       throw new Error(`Invalid workspace library key: ${key}`)
     }
   }
@@ -501,6 +550,9 @@ export function assertValidWorkspaceLibraryPatch(value: unknown): WorkspaceLibra
     const scrollTop = assertFiniteNumber(input.scrollTop, 'scrollTop')
     if (scrollTop < 0) throw new Error('Invalid scrollTop')
     patch.scrollTop = scrollTop
+  }
+  if ('folderSortModes' in input) {
+    patch.folderSortModes = assertValidWorkspaceFolderSortModes(input.folderSortModes)
   }
   return patch
 }
@@ -528,6 +580,22 @@ export function assertValidWorkspaceFileRefInput(value: unknown): WorkspaceFileR
   return hasSourcePath
     ? { sourcePath: assertValidWorkspaceSourcePath(input.sourcePath) }
     : { externalPath: assertValidWorkspaceExternalPath(input.externalPath) }
+}
+
+export function assertValidFileRenameInput(value: unknown): FileRenameInput {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'externalPath', 'name'],
+    'file rename input'
+  )
+  const file = assertValidWorkspaceFileRefInput({
+    ...(input.sourcePath !== undefined ? { sourcePath: input.sourcePath } : {}),
+    ...(input.externalPath !== undefined ? { externalPath: input.externalPath } : {})
+  })
+  return {
+    ...file,
+    name: assertValidFileName(input.name)
+  }
 }
 
 export function assertValidWorkspaceOpenRecentFileInput(

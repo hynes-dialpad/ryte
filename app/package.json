@@ -1,7 +1,7 @@
 {
   "name": "ryte",
   "version": "0.3.0",
-  "description": "Local search + read-only viewer for a markdown folder",
+  "description": "Local-first search and file workspace for a markdown folder",
   "main": "./out/main/index.js",
   "author": "Joshua Hynes",
   "private": true,

@@ -7,12 +7,43 @@ import {
   workspaceFileKey,
   type WorkspaceViewMode
 } from '../../../shared/workspace'
-import { useWorkspaceStore } from './workspace'
+import { isOptimisticWorkspaceTabId, useWorkspaceStore } from './workspace'
 
 interface RenderedTaskToggleInput {
   line: number
   checkboxColumn: number
   checked: boolean
+}
+
+interface MarkdownLine {
+  text: string
+  ending: string
+}
+
+function splitMarkdownLines(markdown: string): MarkdownLine[] {
+  if (markdown.length === 0) return []
+
+  const lines: MarkdownLine[] = []
+  let start = 0
+  for (let index = 0; index < markdown.length; index += 1) {
+    const char = markdown[index]
+    if (char !== '\n' && char !== '\r') continue
+
+    let ending = char
+    if (char === '\r' && markdown[index + 1] === '\n') {
+      ending = '\r\n'
+      index += 1
+    }
+    lines.push({ text: markdown.slice(start, index + 1 - ending.length), ending })
+    start = index + 1
+  }
+
+  if (start < markdown.length) lines.push({ text: markdown.slice(start), ending: '' })
+  return lines
+}
+
+function joinMarkdownLines(lines: MarkdownLine[]): string {
+  return lines.map(({ text, ending }) => text + ending).join('')
 }
 
 function sourceLineAt(markdown: string, line: number): string | null {
@@ -34,16 +65,34 @@ function sourceLineAt(markdown: string, line: number): string | null {
   return null
 }
 
+function toggleMarkdownTaskMarker(markdown: string, input: RenderedTaskToggleInput): string | null {
+  const lines = splitMarkdownLines(markdown)
+  const targetLine = lines[input.line - 1]
+  if (!targetLine) return null
+
+  const marker = targetLine.text.slice(input.checkboxColumn, input.checkboxColumn + 3)
+  if (marker !== '[ ]' && marker !== '[x]' && marker !== '[X]') return null
+
+  lines[input.line - 1] = {
+    ...targetLine,
+    text:
+      targetLine.text.slice(0, input.checkboxColumn) +
+      (input.checked ? '[x]' : '[ ]') +
+      targetLine.text.slice(input.checkboxColumn + 3)
+  }
+  return joinMarkdownLines(lines)
+}
+
 function taskToggleFailureMessage(reason: string): string {
   switch (reason) {
     case 'source-line-changed':
-      return 'Task changed on disk before it could be updated. Reloaded the file.'
+      return 'Task changed on disk before it could be updated. Refreshed the file.'
     case 'missing-file':
       return 'Task file no longer exists.'
     case 'invalid-source':
       return 'Task file is outside the notes folder.'
     default:
-      return 'Task changed before it could be updated. Reloaded the file.'
+      return 'Task changed before it could be updated. Refreshed the file.'
   }
 }
 
@@ -67,6 +116,8 @@ export const useViewerStore = defineStore('viewer', () => {
   const sourceMode = computed(() => viewMode.value === 'source')
 
   let contentRequestId = 0
+  let renderedTaskMutationId = 0
+  let pendingRenderedTaskToggles = 0
   let unsubscribeSourceChange: (() => void) | null = null
   let unsubscribeTreeChange: (() => void) | null = null
   let stopActiveTabWatch: (() => void) | null = null
@@ -78,12 +129,12 @@ export const useViewerStore = defineStore('viewer', () => {
   }
 
   function isCurrentRequest(requestId: number, tabId: string, requestedFileKey: string): boolean {
+    return requestId === contentRequestId && isCurrentActiveTab(tabId, requestedFileKey)
+  }
+
+  function isCurrentActiveTab(tabId: string, requestedFileKey: string): boolean {
     const tab = activeTab.value
-    return (
-      requestId === contentRequestId &&
-      tab?.id === tabId &&
-      workspaceFileKey(tab) === requestedFileKey
-    )
+    return tab?.id === tabId && workspaceFileKey(tab) === requestedFileKey
   }
 
   async function refreshTree(): Promise<void> {
@@ -122,6 +173,8 @@ export const useViewerStore = defineStore('viewer', () => {
     content.value = ''
     error.value = null
 
+    if (isOptimisticWorkspaceTabId(tab.id)) return
+
     try {
       const requestedFileKey = workspaceFileKey(tab)
       const nextContent = await window.ryte.files.readWorkspaceTab({ tabId: tab.id })
@@ -146,6 +199,26 @@ export const useViewerStore = defineStore('viewer', () => {
     }
   }
 
+  async function refreshActiveTabInBackground(): Promise<void> {
+    const tab = activeTab.value
+    if (!tab || isOptimisticWorkspaceTabId(tab.id)) return
+
+    const requestedFileKey = workspaceFileKey(tab)
+    const mutationId = renderedTaskMutationId
+
+    try {
+      const nextContent = await window.ryte.files.readWorkspaceTab({ tabId: tab.id })
+      if (!isCurrentActiveTab(tab.id, requestedFileKey)) return
+      if (pendingRenderedTaskToggles > 0 || mutationId !== renderedTaskMutationId) return
+
+      if (content.value !== nextContent) content.value = nextContent
+      error.value = null
+    } catch (e) {
+      if (!isCurrentActiveTab(tab.id, requestedFileKey)) return
+      error.value = e instanceof Error ? e.message : String(e)
+    }
+  }
+
   async function hydrate(): Promise<void> {
     await refreshTree()
 
@@ -155,13 +228,13 @@ export const useViewerStore = defineStore('viewer', () => {
 
     unsubscribeSourceChange = window.ryte.files.onSourceChange((changedSourcePath) => {
       if (changedSourcePath === sourcePath.value) {
-        void loadActiveTab()
+        void refreshActiveTabInBackground()
       }
     })
 
     const unsubscribeWorkspaceTabChange = window.ryte.files.onWorkspaceTabChange((changedTabId) => {
       if (changedTabId === activeTabId.value) {
-        void loadActiveTab()
+        void refreshActiveTabInBackground()
       }
     })
 
@@ -202,11 +275,23 @@ export const useViewerStore = defineStore('viewer', () => {
       return
     }
 
-    const expectedLine = sourceLineAt(content.value, input.line)
+    const previousContent = content.value
+    const expectedLine = sourceLineAt(previousContent, input.line)
     if (expectedLine === null) {
       error.value = 'Task line is no longer available.'
       return
     }
+
+    const optimisticContent = toggleMarkdownTaskMarker(previousContent, input)
+    if (optimisticContent === null) {
+      error.value = 'Task checkbox is no longer available.'
+      return
+    }
+
+    const mutationId = ++renderedTaskMutationId
+    pendingRenderedTaskToggles += 1
+    content.value = optimisticContent
+    error.value = null
 
     try {
       const result = await window.ryte.tasks.toggle({
@@ -217,16 +302,22 @@ export const useViewerStore = defineStore('viewer', () => {
         expectedLine
       })
 
+      if (mutationId !== renderedTaskMutationId || sourcePath.value !== currentSourcePath) return
+
       if (result.ok) {
-        content.value = result.markdown
+        if (content.value !== result.markdown) content.value = result.markdown
         error.value = null
         return
       }
 
       error.value = taskToggleFailureMessage(result.reason)
-      await loadActiveTab()
+      void refreshActiveTabInBackground()
     } catch (e) {
+      if (mutationId !== renderedTaskMutationId || sourcePath.value !== currentSourcePath) return
+      content.value = previousContent
       error.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      pendingRenderedTaskToggles -= 1
     }
   }
 

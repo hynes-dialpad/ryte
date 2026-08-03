@@ -165,7 +165,12 @@ function onToggleSourceMode(): void {
 
 function onRenderedClick(event: MouseEvent): void {
   const target = event.target instanceof Element ? event.target : null
-  const button = target?.closest<HTMLButtonElement>('.markdown-task-toggle')
+  if (target?.closest('a')) return
+
+  const taskLine = target?.closest<HTMLElement>('.markdown-task-line')
+  const button =
+    target?.closest<HTMLButtonElement>('.markdown-task-toggle') ??
+    taskLine?.querySelector<HTMLButtonElement>('.markdown-task-toggle')
   if (!button || !proseEl.value?.contains(button)) return
 
   const line = Number(button.dataset.taskLine)
@@ -436,9 +441,12 @@ onUnmounted(() => {
 }
 
 .document-outline-overview-row:hover,
-.document-outline-overview-row:focus-within,
+.document-outline-overview-row:focus-within {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .document-outline-overview-row.document-outline-item--active {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .document-outline-item {
@@ -466,10 +474,14 @@ onUnmounted(() => {
   background: transparent;
 }
 
-.document-outline-item:hover,
+.document-outline-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .document-outline-item:focus-visible,
 .document-outline-item--active {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.9);
 }
 
@@ -510,7 +522,7 @@ onUnmounted(() => {
 
 .document-outline-collapse-button:hover,
 .document-outline-expand-button:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.06);
   color: white;
 }
 
@@ -551,24 +563,26 @@ onUnmounted(() => {
 .document-outline-resize {
   position: absolute;
   top: 0;
-  right: -0.25rem;
+  right: 0;
   bottom: 0;
-  width: 0.5rem;
+  z-index: 3;
+  width: 20px;
   cursor: col-resize;
+  touch-action: none;
 }
 
 .document-outline-resize::after {
   content: '';
   position: absolute;
-  top: 0.75rem;
-  right: 0.2rem;
-  bottom: 0.75rem;
-  width: 1px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
   background: transparent;
 }
 
 .document-outline-resize:hover::after {
-  background: rgba(255, 255, 255, 0.18);
+  background: oklch(66.267% 0.18645 249.972 / 80%);
 }
 
 .empty,
@@ -618,6 +632,7 @@ onUnmounted(() => {
   max-width: 100%;
   color: rgba(255, 255, 255, 0.88);
   font-family:
+    'Geist',
     'Inter',
     system-ui,
     -apple-system,
@@ -674,14 +689,31 @@ onUnmounted(() => {
   list-style-type: circle;
 }
 
+.prose :deep(.markdown-task-list) {
+  padding-left: 0.5em;
+}
+
 .prose :deep(li) {
   margin: 0.25em 0;
+}
+
+.prose :deep(.markdown-task-item) {
+  list-style-type: none;
+}
+
+.prose :deep(.markdown-task-item::marker) {
+  content: '';
 }
 
 .prose :deep(.markdown-task-line) {
   display: inline-flex;
   align-items: baseline;
   gap: 0.55em;
+  cursor: pointer;
+}
+
+.prose :deep(.markdown-task-content) {
+  cursor: pointer;
 }
 
 .prose :deep(.markdown-task-toggle) {
@@ -700,6 +732,7 @@ onUnmounted(() => {
 }
 
 .prose :deep(.markdown-task-toggle:hover),
+.prose :deep(.markdown-task-line:hover .markdown-task-toggle),
 .prose :deep(.markdown-task-toggle:focus-visible) {
   border-color: rgba(255, 255, 255, 0.62);
   background: rgba(255, 255, 255, 0.1);
@@ -793,6 +826,7 @@ onUnmounted(() => {
   align-self: stretch;
   color: rgba(255, 184, 184, 0.9);
   font-family:
+    'Geist',
     'Inter',
     system-ui,
     -apple-system,

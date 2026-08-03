@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import type { FileRenameInput } from '../../../shared/files'
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -31,7 +32,13 @@ import {
   type WorkspaceUpdateTabViewModeInput
 } from '../../../shared/workspace'
 
+const OPTIMISTIC_WORKSPACE_TAB_ID_PREFIX = 'optimistic-workspace-tab-'
+
 let optimisticTabId = 0
+
+export function isOptimisticWorkspaceTabId(tabId: string): boolean {
+  return tabId.startsWith(OPTIMISTIC_WORKSPACE_TAB_ID_PREFIX)
+}
 
 function defaultRendererWorkspaceState(): WorkspaceState {
   return {
@@ -43,7 +50,8 @@ function defaultRendererWorkspaceState(): WorkspaceState {
     },
     library: {
       expandedFolders: null,
-      scrollTop: 0
+      scrollTop: 0,
+      folderSortModes: {}
     },
     window: {
       bounds: null,
@@ -93,7 +101,8 @@ function applyOptimisticLibraryPatch(
       ...(patch.expandedFolders !== undefined ? { expandedFolders: patch.expandedFolders } : {}),
       ...(patch.scrollTop !== undefined
         ? { scrollTop: Math.max(0, Math.round(patch.scrollTop)) }
-        : {})
+        : {}),
+      ...(patch.folderSortModes !== undefined ? { folderSortModes: patch.folderSortModes } : {})
     }
   }
 }
@@ -160,7 +169,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     () =>
       state.value?.library ?? {
         expandedFolders: null,
-        scrollTop: 0
+        scrollTop: 0,
+        folderSortModes: {}
       }
   )
   const tabs = computed(() => state.value?.tabs ?? [])
@@ -234,7 +244,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function openFile(input: WorkspaceOpenFileInput): Promise<void> {
-    const temporaryTabId = `optimistic-workspace-tab-${++optimisticTabId}`
+    const temporaryTabId = `${OPTIMISTIC_WORKSPACE_TAB_ID_PREFIX}${++optimisticTabId}`
     await runOptimisticWorkspaceOperation(
       (base) => {
         const tab: WorkspaceFileTab = {
@@ -396,6 +406,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  async function runFileAction<Result>(action: () => Promise<Result>): Promise<Result> {
+    error.value = null
+    try {
+      return await action()
+    } catch (e) {
+      error.value = messageFromError(e)
+      throw e
+    }
+  }
+
+  async function copyFile(file: WorkspaceFileRef): Promise<void> {
+    await runFileAction(() => window.ryte.files.copyContent(file))
+  }
+
+  async function copyFilePath(file: WorkspaceFileRef): Promise<void> {
+    await runFileAction(() => window.ryte.files.copyPath(file))
+  }
+
+  async function showFileInFinder(file: WorkspaceFileRef): Promise<void> {
+    await runFileAction(() => window.ryte.files.showInFinder(file))
+  }
+
+  async function renameFile(input: FileRenameInput): Promise<WorkspaceFileRef> {
+    const result = await runFileAction(() => window.ryte.files.rename(input))
+    state.value = result.workspace
+    return result.file
+  }
+
+  async function moveFileToTrash(file: WorkspaceFileRef): Promise<boolean> {
+    const result = await runFileAction(() => window.ryte.files.moveToTrash(file))
+    state.value = result.workspace
+    return result.trashed
+  }
+
   async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
     await updateShell({ sidebarCollapsed: collapsed })
   }
@@ -444,6 +488,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setOutlineCollapsed,
     setOutlineWidth,
     pruneMissingFileRefs,
+    copyFile,
+    copyFilePath,
+    showFileInFinder,
+    renameFile,
+    moveFileToTrash,
     setSidebarCollapsed,
     setSidebarWidth,
     setActiveSidebar,

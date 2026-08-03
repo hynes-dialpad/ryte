@@ -186,6 +186,53 @@ function renderTaskContentClose(): string {
   return '</span></span>'
 }
 
+function hasTokenClass(token: Token, className: string): boolean {
+  return token.attrGet('class')?.split(/\s+/).includes(className) ?? false
+}
+
+function markTaskList(tokens: Token[], listItemOpenIndex: number): void {
+  let nestedClosedLists = 0
+
+  for (let index = listItemOpenIndex - 1; index >= 0; index -= 1) {
+    const token = tokens[index]
+    if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') {
+      nestedClosedLists += 1
+      continue
+    }
+    if (token.type !== 'bullet_list_open' && token.type !== 'ordered_list_open') continue
+    if (nestedClosedLists > 0) {
+      nestedClosedLists -= 1
+      continue
+    }
+
+    if (!hasTokenClass(token, 'markdown-task-list')) {
+      token.attrJoin('class', 'markdown-task-list')
+    }
+    return
+  }
+}
+
+function markTaskListItem(tokens: Token[], inlineIndex: number): void {
+  let nestedClosedItems = 0
+
+  for (let index = inlineIndex - 1; index >= 0; index -= 1) {
+    const token = tokens[index]
+    if (token.type === 'list_item_close') {
+      nestedClosedItems += 1
+      continue
+    }
+    if (token.type !== 'list_item_open') continue
+    if (nestedClosedItems > 0) {
+      nestedClosedItems -= 1
+      continue
+    }
+
+    token.attrJoin('class', 'markdown-task-item')
+    markTaskList(tokens, index)
+    return
+  }
+}
+
 function slugifyHeading(text: string): string {
   const slug = text
     .toLowerCase()
@@ -248,7 +295,8 @@ async function getMd(): Promise<MarkdownIt> {
         const env = state.env as RenderEnv
         if (!env.taskMarkers || env.taskMarkers.size === 0) return
 
-        for (const token of state.tokens) {
+        for (let index = 0; index < state.tokens.length; index += 1) {
+          const token = state.tokens[index]
           if (token.type !== 'inline') continue
           const sourceLine =
             token.map?.[0] !== undefined ? token.map[0] + (env.lineOffset ?? 0) + 1 : null
@@ -262,6 +310,7 @@ async function getMd(): Promise<MarkdownIt> {
           if (!firstTextToken) continue
 
           firstTextToken.content = firstTextToken.content.replace(TASK_INLINE_MARKER_RE, '')
+          markTaskListItem(state.tokens, index)
 
           const taskOpen = new state.Token('html_inline', '', 0)
           taskOpen.content = renderTaskButton(task)

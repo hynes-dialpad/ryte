@@ -7,6 +7,7 @@ import {
   type WorkspaceFileTab,
   type WorkspaceState
 } from '../../../shared/workspace'
+import type { TaskToggleResponse } from '../../../shared/tasks'
 import { useViewerStore } from './viewer'
 import { useWorkspaceStore } from './workspace'
 
@@ -20,7 +21,8 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     },
     library: {
       expandedFolders: null,
-      scrollTop: 0
+      scrollTop: 0,
+      folderSortModes: {}
     },
     window: {
       bounds: null,
@@ -60,6 +62,20 @@ async function flushAsync(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
   await nextTick()
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
 }
 
 describe('useViewerStore', () => {
@@ -263,6 +279,53 @@ describe('useViewerStore', () => {
     expect(viewer.content).toBe('# B\n')
   })
 
+  it('waits for the persisted tab id before reading an optimistic opened tab', async () => {
+    const returnedTab = tab({ id: 'real-tab-id', sourcePath: 'folder/a.md', title: 'a.md' })
+    const returnedState = workspaceState({
+      tabs: [returnedTab],
+      activeTabId: returnedTab.id
+    })
+    let resolveOpen!: (state: WorkspaceState) => void
+    const openFile = vi.fn(
+      () =>
+        new Promise<WorkspaceState>((resolve) => {
+          resolveOpen = resolve
+        })
+    )
+    const readWorkspaceTab = vi.fn().mockResolvedValue('# A\n')
+    const watchWorkspaceTab = vi.fn().mockResolvedValue(undefined)
+
+    installRyteApi({
+      files: { readWorkspaceTab, watchWorkspaceTab },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(workspaceState()),
+        openFile
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+
+    const open = workspace.openFile({ sourcePath: 'folder/a.md' })
+    await flushAsync()
+
+    expect(readWorkspaceTab).not.toHaveBeenCalled()
+    expect(watchWorkspaceTab).not.toHaveBeenCalled()
+    expect(viewer.loading).toBe(true)
+
+    resolveOpen(returnedState)
+    await open
+    await flushAsync()
+
+    expect(readWorkspaceTab).toHaveBeenCalledOnce()
+    expect(readWorkspaceTab).toHaveBeenCalledWith({ tabId: 'real-tab-id' })
+    expect(watchWorkspaceTab).toHaveBeenCalledWith({ tabId: 'real-tab-id' })
+    expect(viewer.content).toBe('# A\n')
+    expect(viewer.error).toBeNull()
+  })
+
   it('reloads the active tab when a matching relative source change event arrives', async () => {
     const active = tab({ id: 'tab-a', sourcePath: 'a.md', title: 'a.md' })
     const readWorkspaceTab = vi
@@ -293,6 +356,44 @@ describe('useViewerStore', () => {
 
     sourceChangeHandler?.('a.md')
     await flushAsync()
+    expect(viewer.content).toBe('# A updated\n')
+  })
+
+  it('keeps current content visible while refreshing a matching source change', async () => {
+    const active = tab({ id: 'tab-a', sourcePath: 'a.md', title: 'a.md' })
+    const sourceRefresh = deferred<string>()
+    const readWorkspaceTab = vi
+      .fn()
+      .mockResolvedValueOnce('# A\n')
+      .mockReturnValueOnce(sourceRefresh.promise)
+
+    installRyteApi({
+      files: { readWorkspaceTab },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+
+    sourceChangeHandler?.('a.md')
+    await flushAsync()
+
+    expect(readWorkspaceTab).toHaveBeenCalledTimes(2)
+    expect(viewer.loading).toBe(false)
+    expect(viewer.content).toBe('# A\n')
+
+    sourceRefresh.resolve('# A updated\n')
+    await flushAsync()
+
     expect(viewer.content).toBe('# A updated\n')
   })
 
@@ -460,6 +561,69 @@ describe('useViewerStore', () => {
       checked: true,
       expectedLine: '- [ ] Follow up'
     })
+    expect(viewer.content).toBe('# Tasks\n\n- [x] Follow up\n')
+    expect(viewer.error).toBeNull()
+  })
+
+  it('optimistically toggles a rendered task before persistence completes', async () => {
+    const active = tab({ id: 'tab-a', sourcePath: 'tasks.md', title: 'tasks.md' })
+    const toggleResponse = deferred<TaskToggleResponse>()
+    const readWorkspaceTab = vi.fn().mockResolvedValue('# Tasks\n\n- [ ] Follow up\n')
+    const toggle = vi.fn().mockReturnValue(toggleResponse.promise)
+
+    installRyteApi({
+      files: {
+        listTree: vi.fn().mockResolvedValue({ notesRoot: '/notes', paths: ['tasks.md'] }),
+        readWorkspaceTab
+      },
+      tasks: { toggle },
+      workspace: {
+        getState: vi.fn().mockResolvedValue(
+          workspaceState({
+            tabs: [active],
+            activeTabId: active.id
+          })
+        )
+      }
+    })
+
+    const workspace = useWorkspaceStore()
+    await workspace.hydrate()
+    const viewer = useViewerStore()
+    await viewer.hydrate()
+
+    const toggleTask = viewer.toggleRenderedTask({ line: 3, checkboxColumn: 2, checked: true })
+
+    expect(viewer.content).toBe('# Tasks\n\n- [x] Follow up\n')
+    expect(readWorkspaceTab).toHaveBeenCalledTimes(1)
+    expect(toggle).toHaveBeenCalledWith({
+      sourcePath: 'tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
+
+    toggleResponse.resolve({
+      ok: true,
+      markdown: '# Tasks\n\n- [x] Follow up\n',
+      task: {
+        id: 'task-1',
+        sourcePath: 'tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        rawLine: '- [x] Follow up',
+        normalizedText: 'Follow up',
+        headingPath: ['Tasks'],
+        occurrenceIndex: 0,
+        fingerprint: 'abc',
+        sourceMtimeMs: 1,
+        extractedAt: '2026-06-30T12:00:00.000Z'
+      }
+    })
+    await toggleTask
+
     expect(viewer.content).toBe('# Tasks\n\n- [x] Follow up\n')
     expect(viewer.error).toBeNull()
   })

@@ -1,4 +1,4 @@
-export const WORKSPACE_SCHEMA_VERSION = 4
+export const WORKSPACE_SCHEMA_VERSION = 5
 
 export const SIDEBAR_DEFAULT_WIDTH = 360
 export const SIDEBAR_MIN_WIDTH = 164
@@ -17,6 +17,7 @@ export const WORKSPACE_RECENTS_LIMIT = 25
 
 export type WorkspaceViewMode = 'preview' | 'source'
 export type WorkspaceSidebarMode = 'files' | 'home'
+export type WorkspaceFolderSortMode = 'az' | 'za' | 'recency'
 
 export interface WorkspaceSourceFileRef {
   sourcePath: string
@@ -46,6 +47,7 @@ export interface WorkspaceShellState {
 export interface WorkspaceLibraryState {
   expandedFolders: string[] | null
   scrollTop: number
+  folderSortModes: Record<string, WorkspaceFolderSortMode>
 }
 
 export interface WorkspaceWindowState {
@@ -92,6 +94,7 @@ export interface WorkspaceWindowUpdate {
 export interface WorkspaceLibraryUpdate {
   expandedFolders?: string[]
   scrollTop?: number
+  folderSortModes?: Record<string, WorkspaceFolderSortMode>
 }
 
 export type WorkspaceOpenFileInput = WorkspaceSourceFileRef

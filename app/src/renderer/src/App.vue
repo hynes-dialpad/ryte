@@ -512,6 +512,8 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
   height: 100vh;
   background: var(--app-shell-tint);
   font-family:
+    Geist,
+    Inter,
     system-ui,
     -apple-system,
     sans-serif;

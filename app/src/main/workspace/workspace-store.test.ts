@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -64,14 +72,24 @@ describe('WorkspaceStore', () => {
     const workspace = store()
     workspace.updateLibrary({
       expandedFolders: ['docs', './sessions/2026-07-02/plans', 'docs'],
-      scrollTop: 482.6
+      scrollTop: 482.6,
+      folderSortModes: {
+        docs: 'za',
+        sessions: 'recency',
+        'sessions/2026-07-02': 'za',
+        research: 'az'
+      }
     })
     workspace.flushSync()
 
     const state = store().publicState()
     expect(state.library).toEqual({
       expandedFolders: ['docs', 'sessions/2026-07-02/plans'],
-      scrollTop: 483
+      scrollTop: 483,
+      folderSortModes: {
+        docs: 'za',
+        sessions: 'recency'
+      }
     })
   })
 
@@ -212,6 +230,90 @@ describe('WorkspaceStore', () => {
       id: tabId,
       viewMode: 'source'
     })
+  })
+
+  it('renames a source file and updates tabs, recents, and outline state', async () => {
+    writeNote('folder/original.md')
+    const workspace = store()
+    const first = await workspace.openFile({ sourcePath: 'folder/original.md' })
+    await workspace.openFile({ sourcePath: 'folder/original.md' })
+    const tabIdsBefore = workspace.publicState().tabs.map((tab) => tab.id)
+    workspace.setOutlineCollapsed({ sourcePath: 'folder/original.md', collapsed: true })
+
+    const result = await workspace.renameFile({
+      sourcePath: 'folder/original.md',
+      name: 'renamed.md'
+    })
+
+    expect(result.file).toEqual({ sourcePath: 'folder/renamed.md' })
+    expect(result.workspace.tabs).toHaveLength(2)
+    expect(result.workspace.tabs.map((tab) => tab.id)).toEqual(tabIdsBefore)
+    expect(result.workspace.tabs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.tabs[0]!.id,
+          sourcePath: 'folder/renamed.md',
+          title: 'renamed.md',
+          viewMode: 'preview'
+        })
+      ])
+    )
+    expect(result.workspace.recents).toEqual([
+      expect.objectContaining({ sourcePath: 'folder/renamed.md', title: 'renamed.md' })
+    ])
+    expect(result.workspace.outlineCollapsedByPath).toEqual({ 'folder/renamed.md': true })
+    expect(existsSync(join(notesRoot, 'folder/original.md'))).toBe(false)
+    expect(readFileSync(join(notesRoot, 'folder/renamed.md'), 'utf-8')).toBe(
+      '# Synthetic fixture\n'
+    )
+  })
+
+  it('renames an external markdown file without moving it into the notes root', async () => {
+    const externalPath = writeExternalNote()
+    const workspace = store()
+    await workspace.openPickedFile({ externalPath })
+
+    const result = await workspace.renameFile({ externalPath, name: 'renamed-external.md' })
+
+    const renamedPath = join(dirname(externalPath), 'renamed-external.md')
+    expect(result.file).toEqual({ externalPath: renamedPath })
+    expect(result.workspace.tabs[0]).toMatchObject({
+      externalPath: renamedPath,
+      title: 'renamed-external.md'
+    })
+    expect(existsSync(externalPath)).toBe(false)
+    expect(existsSync(renamedPath)).toBe(true)
+  })
+
+  it('refuses to overwrite an existing file during rename', async () => {
+    writeNote('original.md')
+    writeNote('existing.md')
+    const workspace = store()
+
+    await expect(
+      workspace.renameFile({ sourcePath: 'original.md', name: 'existing.md' })
+    ).rejects.toThrow('A file with that name already exists')
+
+    expect(existsSync(join(notesRoot, 'original.md'))).toBe(true)
+    expect(existsSync(join(notesRoot, 'existing.md'))).toBe(true)
+  })
+
+  it('removes every matching file reference and repairs active tab state', async () => {
+    writeNote('remove.md')
+    writeNote('keep.md')
+    const workspace = store()
+    await workspace.openFile({ sourcePath: 'remove.md' })
+    const keep = (await workspace.openFile({ sourcePath: 'keep.md' })).tabs[1]!
+    const activeRemoved = (await workspace.openFile({ sourcePath: 'remove.md' })).tabs[2]!
+    workspace.setOutlineCollapsed({ sourcePath: 'remove.md', collapsed: true })
+
+    const state = workspace.removeFileRef({ sourcePath: 'remove.md' })
+
+    expect(state.tabs).toEqual([expect.objectContaining({ id: keep.id, sourcePath: 'keep.md' })])
+    expect(state.activeTabId).toBe(keep.id)
+    expect(state.tabs.some((tab) => tab.id === activeRemoved.id)).toBe(false)
+    expect(state.recents.map((recent) => recent.sourcePath)).toEqual(['keep.md'])
+    expect(state.outlineCollapsedByPath).toEqual({})
   })
 
   it('records recents with dedupe, bump, timestamp, and cap', async () => {
@@ -362,7 +464,8 @@ describe('WorkspaceStore', () => {
     expect(state.window.maximized).toBe(false)
     expect(state.library).toEqual({
       expandedFolders: null,
-      scrollTop: 0
+      scrollTop: 0,
+      folderSortModes: {}
     })
 
     const saved = JSON.parse(readFileSync(join(tempDir, 'workspace.json'), 'utf-8')) as {
@@ -381,7 +484,13 @@ describe('WorkspaceStore', () => {
         schemaVersion: 1,
         library: {
           expandedFolders: ['docs', '../escape', 'sessions/2026-07-02'],
-          scrollTop: 55.4
+          scrollTop: 55.4,
+          folderSortModes: {
+            docs: 'za',
+            sessions: 'recency',
+            'sessions/2026-07-02': 'za',
+            research: 'newest'
+          }
         },
         tabs: [
           { id: 'valid-tab', sourcePath: 'valid.md', title: 'Old', viewMode: 'source' },
@@ -418,7 +527,11 @@ describe('WorkspaceStore', () => {
     expect(state.outlineWidth).toBe(DOCUMENT_OUTLINE_MAX_WIDTH)
     expect(state.library).toEqual({
       expandedFolders: ['docs', 'sessions/2026-07-02'],
-      scrollTop: 55
+      scrollTop: 55,
+      folderSortModes: {
+        docs: 'za',
+        sessions: 'recency'
+      }
     })
   })
 

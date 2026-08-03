@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { extname, relative, resolve, sep } from 'node:path'
+import { basename, extname, relative, resolve, sep } from 'node:path'
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 
 import { refreshAppMenu } from './app-menu'
 import { taskFactsService } from './facts/task-facts-service'
@@ -11,6 +11,7 @@ import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
 import {
   assertValidAbsolutePath,
+  assertValidFileRenameInput,
   assertValidProviderId,
   assertValidRequestId,
   assertValidSearchOptions,
@@ -20,6 +21,7 @@ import {
   assertValidTaskListInput,
   assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFileRefInput,
   assertValidWorkspaceFocusTabInput,
   assertValidWorkspaceLibraryPatch,
   assertValidWorkspaceOpenFileInput,
@@ -296,6 +298,54 @@ export function registerIpc(): void {
   ipcMain.handle('files:list-catalog', async () => {
     const notesRoot = settingsStore.load().notesRoot
     return listFileCatalog(notesRoot)
+  })
+
+  ipcMain.handle('files:copy-content', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    const path = await workspaceStore.resolveFilePath(file)
+    clipboard.writeText(await readFile(path, 'utf8'))
+  })
+
+  ipcMain.handle('files:copy-path', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    clipboard.writeText(await workspaceStore.resolveFilePath(file))
+  })
+
+  ipcMain.handle('files:show-in-finder', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    shell.showItemInFolder(await workspaceStore.resolveFilePath(file))
+  })
+
+  ipcMain.handle('files:rename', async (_event, input: unknown) => {
+    const result = await workspaceStore.renameFile(assertValidFileRenameInput(input))
+    refreshAppMenu()
+    return result
+  })
+
+  ipcMain.handle('files:move-to-trash', async (event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    const path = await workspaceStore.resolveFilePath(file)
+    const options = {
+      type: 'warning' as const,
+      buttons: ['Move to Trash', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      message: `Move "${basename(path)}" to Trash?`,
+      detail: 'The file can be recovered from the Trash.'
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const confirmation = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options)
+    if (confirmation.response !== 0) {
+      return { trashed: false, workspace: workspaceStore.publicState() }
+    }
+
+    await shell.trashItem(path)
+    const workspace = workspaceStore.removeFileRef(file)
+    refreshAppMenu()
+    return { trashed: true, workspace }
   })
 
   ipcMain.handle('tasks:list', async (_event, input: unknown) => {

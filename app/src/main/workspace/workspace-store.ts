@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { mkdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import {
   basename,
   dirname,
@@ -14,9 +14,11 @@ import {
 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+import type { FileRenameInput, FileRenameResult } from '../../shared/files'
 import { walkNotes } from '../indexing/walker'
 import { workspaceFilePath } from '../paths'
 import { settingsStore } from '../settings/settings-store'
+import { renameWorkspaceFile, resolveWorkspaceFilePath } from './workspace-file-actions'
 import {
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MIN_WIDTH,
@@ -32,6 +34,7 @@ import {
   type WorkspaceCloseTabInput,
   type WorkspaceFileRef,
   type WorkspaceFileTab,
+  type WorkspaceFolderSortMode,
   type WorkspaceFocusTabInput,
   type WorkspaceLibraryState,
   type WorkspaceLibraryUpdate,
@@ -74,7 +77,8 @@ function defaultShellState(): WorkspaceShellState {
 function defaultLibraryState(): WorkspaceLibraryState {
   return {
     expandedFolders: null,
-    scrollTop: 0
+    scrollTop: 0,
+    folderSortModes: {}
   }
 }
 
@@ -206,6 +210,26 @@ function requireFileRef(input: WorkspaceOpenRecentFileInput): WorkspaceFileRef {
   return fileRef
 }
 
+function tabWithFileRef(tab: WorkspaceFileTab, file: WorkspaceFileRef): WorkspaceFileTab {
+  return {
+    id: tab.id,
+    title: workspaceFileTitle(file),
+    viewMode: tab.viewMode,
+    ...file
+  }
+}
+
+function recentWithFileRef(
+  recent: WorkspaceRecentFile,
+  file: WorkspaceFileRef
+): WorkspaceRecentFile {
+  return {
+    title: workspaceFileTitle(file),
+    openedAt: recent.openedAt,
+    ...file
+  }
+}
+
 function normalizeTabId(value: unknown): string | null {
   if (typeof value !== 'string' || !WORKSPACE_TAB_ID_RE.test(value) || value.includes('\0')) {
     return null
@@ -306,6 +330,30 @@ function normalizeExpandedFolders(value: unknown): string[] | null {
   return expandedFolders
 }
 
+function normalizeFolderSortMode(value: unknown): WorkspaceFolderSortMode | null {
+  return value === 'az' || value === 'za' || value === 'recency' ? value : null
+}
+
+function normalizeTopLevelFolderPath(value: string): string | null {
+  const sourcePath = normalizeSourcePath(value)
+  if (!sourcePath || sourcePath.includes(sep) || sourcePath.includes('/')) return null
+  return sourcePath
+}
+
+function normalizeFolderSortModes(value: unknown): Record<string, WorkspaceFolderSortMode> {
+  if (!isObject(value)) return {}
+  const modes: Record<string, WorkspaceFolderSortMode> = {}
+
+  for (const [rawFolder, rawMode] of Object.entries(value)) {
+    const folder = normalizeTopLevelFolderPath(rawFolder)
+    const mode = normalizeFolderSortMode(rawMode)
+    if (!folder || !mode || mode === 'az') continue
+    modes[folder] = mode
+  }
+
+  return modes
+}
+
 function repairActiveTabId(value: unknown, tabs: WorkspaceFileTab[]): string | null {
   if (typeof value === 'string' && tabs.some((tab) => tab.id === value)) return value
   return tabs[0]?.id ?? null
@@ -347,7 +395,8 @@ function normalizeWorkspace(parsed: LegacyWorkspaceFile): WorkspaceState {
     },
     library: {
       expandedFolders: normalizeExpandedFolders(library.expandedFolders),
-      scrollTop: normalizeScrollTop(library.scrollTop)
+      scrollTop: normalizeScrollTop(library.scrollTop),
+      folderSortModes: normalizeFolderSortModes(library.folderSortModes)
     },
     window: {
       bounds: normalizeBounds(window.bounds),
@@ -445,7 +494,12 @@ export class WorkspaceStore {
         ...(patch.expandedFolders !== undefined
           ? { expandedFolders: normalizeExpandedFolders(patch.expandedFolders) ?? [] }
           : {}),
-        ...(patch.scrollTop !== undefined ? { scrollTop: normalizeScrollTop(patch.scrollTop) } : {})
+        ...(patch.scrollTop !== undefined
+          ? { scrollTop: normalizeScrollTop(patch.scrollTop) }
+          : {}),
+        ...(patch.folderSortModes !== undefined
+          ? { folderSortModes: normalizeFolderSortModes(patch.folderSortModes) }
+          : {})
       }
     }
     this.persist(next)
@@ -531,6 +585,46 @@ export class WorkspaceStore {
     return isWorkspaceSourceFileRef(tab)
       ? { sourcePath: tab.sourcePath }
       : { externalPath: tab.externalPath }
+  }
+
+  async resolveFilePath(input: WorkspaceFileRef): Promise<string> {
+    const file = requireFileRef(input)
+    return resolveWorkspaceFilePath(file, this.notesRootProvider())
+  }
+
+  async renameFile(input: FileRenameInput): Promise<FileRenameResult> {
+    const previousFile = requireFileRef(input)
+    const file = await renameWorkspaceFile(input, this.notesRootProvider())
+    const workspace = this.replaceFileRef(previousFile, file)
+    return { file, workspace }
+  }
+
+  removeFileRef(input: WorkspaceFileRef): WorkspaceState {
+    const file = requireFileRef(input)
+    const key = workspaceFileKey(file)
+    const current = this.load()
+    const activeIndex = current.tabs.findIndex((tab) => tab.id === current.activeTabId)
+    const activeFileRemoved =
+      activeIndex !== -1 && workspaceFileKey(current.tabs[activeIndex]!) === key
+    const remainingBeforeActive = current.tabs
+      .slice(0, Math.max(0, activeIndex))
+      .filter((tab) => workspaceFileKey(tab) !== key).length
+    const tabs = current.tabs.filter((tab) => workspaceFileKey(tab) !== key)
+    const activeTabId = activeFileRemoved
+      ? (tabs[remainingBeforeActive]?.id ?? tabs[remainingBeforeActive - 1]?.id ?? null)
+      : repairActiveTabId(current.activeTabId, tabs)
+    const outlineCollapsedByPath = { ...current.outlineCollapsedByPath }
+    if (isWorkspaceSourceFileRef(file)) delete outlineCollapsedByPath[file.sourcePath]
+
+    const next: WorkspaceState = {
+      ...current,
+      tabs,
+      activeTabId,
+      recents: current.recents.filter((recent) => workspaceFileKey(recent) !== key),
+      outlineCollapsedByPath
+    }
+    this.persist(next)
+    return this.publicState()
   }
 
   focusTab(input: WorkspaceFocusTabInput): WorkspaceState {
@@ -653,6 +747,42 @@ export class WorkspaceStore {
     return this.publicState()
   }
 
+  private replaceFileRef(previousFile: WorkspaceFileRef, file: WorkspaceFileRef): WorkspaceState {
+    const previousKey = workspaceFileKey(previousFile)
+    const current = this.load()
+    const tabs = current.tabs.map((tab) =>
+      workspaceFileKey(tab) === previousKey ? tabWithFileRef(tab, file) : tab
+    )
+    const seenRecentKeys = new Set<string>()
+    const recents = current.recents
+      .map((recent) =>
+        workspaceFileKey(recent) === previousKey ? recentWithFileRef(recent, file) : recent
+      )
+      .filter((recent) => {
+        const key = workspaceFileKey(recent)
+        if (seenRecentKeys.has(key)) return false
+        seenRecentKeys.add(key)
+        return true
+      })
+    const outlineCollapsedByPath = { ...current.outlineCollapsedByPath }
+    if (isWorkspaceSourceFileRef(previousFile)) {
+      const collapsed = outlineCollapsedByPath[previousFile.sourcePath]
+      delete outlineCollapsedByPath[previousFile.sourcePath]
+      if (collapsed !== undefined && isWorkspaceSourceFileRef(file)) {
+        outlineCollapsedByPath[file.sourcePath] = collapsed
+      }
+    }
+
+    const next: WorkspaceState = {
+      ...current,
+      tabs,
+      recents,
+      outlineCollapsedByPath
+    }
+    this.persist(next)
+    return this.publicState()
+  }
+
   private persist(next: WorkspaceState): void {
     this.cache = next
     this.pendingWrite = {
@@ -740,36 +870,11 @@ export class WorkspaceStore {
   }
 
   private async assertExistingSourceFile(sourcePath: string): Promise<void> {
-    const root = await realpath(resolve(this.notesRootProvider()))
-    let resolvedTarget: string
-    try {
-      resolvedTarget = await realpath(resolve(root, sourcePath))
-    } catch {
-      throw new Error(`Workspace file not found: ${sourcePath}`)
-    }
-
-    if (resolvedTarget !== root && !resolvedTarget.startsWith(root + sep)) {
-      throw new Error('Workspace file outside notes root')
-    }
-
-    const fileStat = await stat(resolvedTarget)
-    if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${sourcePath}`)
+    await resolveWorkspaceFilePath({ sourcePath }, this.notesRootProvider())
   }
 
   private async assertExistingExternalFile(externalPath: string): Promise<void> {
-    let resolvedTarget: string
-    try {
-      resolvedTarget = await realpath(resolve(externalPath))
-    } catch {
-      throw new Error(`Workspace file not found: ${externalPath}`)
-    }
-
-    if (extname(resolvedTarget).toLowerCase() !== '.md') {
-      throw new Error('Selected file must be a Markdown file')
-    }
-
-    const fileStat = await stat(resolvedTarget)
-    if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${externalPath}`)
+    await resolveWorkspaceFilePath({ externalPath }, this.notesRootProvider())
   }
 
   private async assertExistingFileRef(fileRef: WorkspaceFileRef): Promise<void> {

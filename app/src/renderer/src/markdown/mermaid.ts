@@ -21,7 +21,7 @@ async function initializeMermaid(): Promise<MermaidApi> {
     startOnLoad: false,
     securityLevel: 'strict',
     theme: 'dark',
-    fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+    fontFamily: 'Geist, Inter, system-ui, -apple-system, sans-serif'
   })
   initialized = true
   return mermaid

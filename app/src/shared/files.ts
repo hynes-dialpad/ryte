@@ -1,3 +1,10 @@
+import type {
+  WorkspaceExternalFileRef,
+  WorkspaceFileRef,
+  WorkspaceSourceFileRef,
+  WorkspaceState
+} from './workspace'
+
 export interface FileTreeResponse {
   notesRoot: string
   paths: string[]
@@ -19,4 +26,18 @@ export interface FileCatalogEntry {
 export interface FileCatalogResponse {
   notesRoot: string
   files: FileCatalogEntry[]
+}
+
+export type FileRenameInput =
+  | (WorkspaceSourceFileRef & { name: string })
+  | (WorkspaceExternalFileRef & { name: string })
+
+export interface FileRenameResult {
+  file: WorkspaceFileRef
+  workspace: WorkspaceState
+}
+
+export interface FileTrashResult {
+  trashed: boolean
+  workspace: WorkspaceState
 }
