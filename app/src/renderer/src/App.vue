@@ -124,6 +124,11 @@ function openSettings(): void {
   showSettings.value = true
 }
 
+function openSearchSettings(): void {
+  showSearch.value = false
+  openSettings()
+}
+
 function closeActiveTab(): void {
   const tab = workspace.activeTab
   if (!tab) return
@@ -496,7 +501,11 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
     <StatusBar />
 
     <FileOpenOverlay v-if="showFileOpen" @close="showFileOpen = false" />
-    <SearchOverlay v-if="showSearch" @close="showSearch = false" />
+    <SearchOverlay
+      v-if="showSearch"
+      @close="showSearch = false"
+      @open-settings="openSearchSettings"
+    />
     <SettingsModal v-if="showSettings" :dismissable="dismissable" @close="closeSettings" />
   </div>
 </template>

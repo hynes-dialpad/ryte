@@ -57,6 +57,7 @@ export interface SearchSource {
   sourcePath: string
   headingPath: string[]
   preview: string
+  matchCount: number
   retrievalMode: 'keyword' | 'hybrid'
 }
 

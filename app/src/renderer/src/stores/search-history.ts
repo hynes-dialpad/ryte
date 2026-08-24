@@ -40,6 +40,7 @@ function sanitizeHistoryEntry(entry: HistoryEntry, options: SearchHistoryOptions
   const sources = entry.sources.map((source) => ({
     ...source,
     preview: '',
+    matchCount: source.matchCount ?? 0,
     retrievalMode: source.retrievalMode ?? 'keyword',
     index: source.index ?? 0
   }))
@@ -65,6 +66,10 @@ function isSource(value: unknown): value is SearchSource {
     isStringArray(source.headingPath) &&
     (source.index === undefined || typeof source.index === 'number') &&
     (source.preview === undefined || typeof source.preview === 'string') &&
+    (source.matchCount === undefined ||
+      (typeof source.matchCount === 'number' &&
+        Number.isInteger(source.matchCount) &&
+        source.matchCount >= 0)) &&
     (source.retrievalMode === undefined ||
       source.retrievalMode === 'keyword' ||
       source.retrievalMode === 'hybrid')

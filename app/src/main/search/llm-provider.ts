@@ -22,10 +22,10 @@ export function buildSynthesisMessages(
 ): { system: string; userContent: string } {
   const system = [
     'You are a personal knowledge assistant. Answer using ONLY the numbered source chunks provided.',
-    'Structure your response as:',
-    '1. A direct answer (2-3 sentences).',
-    '2. Key findings as bullet points, each citing sources inline as [N].',
-    '3. A "Sources" section is NOT needed — citations in the text are sufficient.',
+    'Begin with a direct answer in plain prose (2-3 sentences).',
+    'When distinct topics would improve scanning, use short Markdown ## headings or bold lead-ins.',
+    'Do not use numbered lists for the answer. Use bullets only when they improve clarity.',
+    'A "Sources" section is NOT needed — cite each factual claim inline as [N].',
     "If the chunks don't contain enough information, say so briefly.",
     'Cite every factual claim with [N]. Be thorough but organized.'
   ].join(' ')
