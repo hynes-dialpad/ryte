@@ -6,7 +6,7 @@
   "author": "Joshua Hynes",
   "private": true,
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=24 <25"
   },
   "scripts": {
     "check:node": "node scripts/check-node-version.mjs",
@@ -22,8 +22,9 @@
     "test:watch": "vitest",
     "smoke:indexer": "node scripts/run-indexer-smoke.mjs",
     "smoke:indexer:notes": "node --import tsx scripts/smoke-indexer.ts",
-    "qa:local": "pnpm validate && pnpm smoke:indexer && pnpm start",
-    "start": "electron-vite preview",
+    "qa:local": "pnpm validate && pnpm smoke:indexer && pnpm launch",
+    "launch": "node scripts/start-preview.mjs",
+    "start": "pnpm build && pnpm launch",
     "dev": "electron-vite dev",
     "build": "node scripts/check-node-version.mjs && npm run typecheck && electron-vite build",
     "postinstall": "node_modules/.pnpm/node_modules/.bin/electron-rebuild -f -w better-sqlite3 || electron-builder install-app-deps",

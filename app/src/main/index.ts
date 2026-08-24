@@ -109,10 +109,15 @@ function installWindowStatePersistence(window: BrowserWindow): void {
   window.on('close', persistNow)
 }
 
+function reportStartupFailure(error: unknown): void {
+  console.error('Ryte failed during startup.', error)
+  app.exit(1)
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+function startApp(): void {
   electronApp.setAppUserModelId('com.joshuahynes.ryte')
 
   app.on('browser-window-created', (_, window) => {
@@ -149,7 +154,9 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
+}
+
+void app.whenReady().then(startApp).catch(reportStartupFailure)
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
