@@ -7,7 +7,7 @@ Use this checklist before merging the Phase 0 foundation PR. Do not paste real n
 - Date: 2026-05-19
 - Branch: `feat/ryte-foundation`
 - App version: `0.1.0`
-- Node version: `v22.14.0`
+- Node version: `v24.14.1`
 - pnpm version: `10.12.1`
 - macOS version: `26.4.1`
 
@@ -21,7 +21,7 @@ Use this checklist before merging the Phase 0 foundation PR. Do not paste real n
 
 | Check                                                                      | Result   | Notes                                                                                                                                            |
 | -------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Launch app under Node 22                                                   | Pass     | Launched Electron with an isolated temp profile and synthetic notes.                                                                             |
+| Launch app under Node 24                                                   | Pass     | Launched Electron with an isolated temp profile and synthetic notes.                                                                             |
 | Existing notes root loads                                                  | Pass     | Synthetic notes root loaded; no real notes were used.                                                                                            |
 | File tree renders                                                          | Pass     | Synthetic markdown files rendered in the sidebar.                                                                                                |
 | New markdown file appears without refresh                                  | Pass     | Synthetic markdown file appeared through the watcher.                                                                                            |
