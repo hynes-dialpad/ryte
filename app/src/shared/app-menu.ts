@@ -1,4 +1,4 @@
-import type { WorkspaceOpenRecentFileInput, WorkspaceSidebarMode } from './workspace'
+import type { WorkspaceOpenRecentFileInput } from './workspace'
 
 export const APP_MENU_COMMAND_CHANNEL = 'app-menu:command'
 
@@ -10,7 +10,6 @@ export type AppMenuCommand =
   | { type: 'close-all-tabs' }
   | { type: 'focus-next-tab' }
   | { type: 'focus-previous-tab' }
-  | { type: 'select-sidebar'; sidebar: WorkspaceSidebarMode }
   | { type: 'toggle-sidebar' }
   | { type: 'toggle-source-mode' }
   | { type: 'open-settings' }

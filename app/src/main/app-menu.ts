@@ -147,17 +147,6 @@ function viewMenu(): MenuItemConstructorOptions {
         label: 'Toggle Developer Tools',
         role: 'toggleDevTools',
         accelerator: `${optionKey}+${commandKey}+I`
-      },
-      { type: 'separator' },
-      {
-        label: 'Home',
-        accelerator: `${commandKey}+1`,
-        click: () => sendMenuCommand({ type: 'select-sidebar', sidebar: 'home' })
-      },
-      {
-        label: 'Library',
-        accelerator: `${commandKey}+2`,
-        click: () => sendMenuCommand({ type: 'select-sidebar', sidebar: 'files' })
       }
     ]
   }

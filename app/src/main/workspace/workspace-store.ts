@@ -248,7 +248,7 @@ function isWorkspaceViewMode(value: unknown): value is WorkspaceViewMode {
 }
 
 function isWorkspaceSidebarMode(value: unknown): value is WorkspaceSidebarMode {
-  return value === 'files' || value === 'home'
+  return value === 'files'
 }
 
 function normalizeTabs(value: unknown): WorkspaceFileTab[] {

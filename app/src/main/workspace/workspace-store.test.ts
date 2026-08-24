@@ -59,13 +59,13 @@ describe('WorkspaceStore', () => {
 
   it('persists shell state updates', () => {
     const workspace = store()
-    workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420, activeSidebar: 'home' })
+    workspace.updateShell({ sidebarCollapsed: true, sidebarWidth: 420, activeSidebar: 'files' })
     workspace.flushSync()
 
     const state = store().publicState()
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
-    expect(state.shell.activeSidebar).toBe('home')
+    expect(state.shell.activeSidebar).toBe('files')
   })
 
   it('persists library tree state updates', () => {
@@ -98,12 +98,12 @@ describe('WorkspaceStore', () => {
     const state = workspace.updateShell({
       sidebarCollapsed: true,
       sidebarWidth: 420,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
 
     expect(state.shell.sidebarCollapsed).toBe(true)
     expect(state.shell.sidebarWidth).toBe(420)
-    expect(state.shell.activeSidebar).toBe('home')
+    expect(state.shell.activeSidebar).toBe('files')
     expect(workspace.publicState().shell.sidebarCollapsed).toBe(true)
     expect(readdirSync(tempDir).filter((name) => name !== 'notes')).toEqual([])
 
@@ -112,7 +112,7 @@ describe('WorkspaceStore', () => {
       shell: {
         sidebarCollapsed: true,
         sidebarWidth: 420,
-        activeSidebar: 'home'
+        activeSidebar: 'files'
       }
     })
   })
@@ -436,7 +436,7 @@ describe('WorkspaceStore', () => {
     expect(state.outlineCollapsedByPath).toEqual({ 'keep.md': false })
   })
 
-  it('migrates malformed workspace files back to safe shell defaults', () => {
+  it('migrates retired and malformed sidebar modes back to the Library', () => {
     writeFileSync(
       join(tempDir, 'workspace.json'),
       JSON.stringify({
@@ -444,7 +444,7 @@ describe('WorkspaceStore', () => {
         shell: {
           sidebarCollapsed: 'yes',
           sidebarWidth: 1,
-          activeSidebar: 'unknown'
+          activeSidebar: 'home'
         },
         window: {
           bounds: { x: 'bad', y: 0, width: 100, height: 100 },

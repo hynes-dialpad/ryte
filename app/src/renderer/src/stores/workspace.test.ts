@@ -58,7 +58,7 @@ describe('useWorkspaceStore', () => {
       shell: {
         sidebarCollapsed: true,
         sidebarWidth: 420,
-        activeSidebar: 'home'
+        activeSidebar: 'files'
       }
     })
     let resolveUpdate: (state: WorkspaceState) => void = () => {}
@@ -79,12 +79,12 @@ describe('useWorkspaceStore', () => {
     const update = store.updateShell({
       sidebarCollapsed: true,
       sidebarWidth: 420,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
     expect(store.shell).toEqual({
       sidebarCollapsed: true,
       sidebarWidth: 420,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
 
     resolveUpdate(persisted)

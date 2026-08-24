@@ -1,4 +1,4 @@
-export const WORKSPACE_SCHEMA_VERSION = 5
+export const WORKSPACE_SCHEMA_VERSION = 6
 
 export const SIDEBAR_DEFAULT_WIDTH = 360
 export const SIDEBAR_MIN_WIDTH = 164
@@ -16,7 +16,7 @@ export const MIN_WINDOW_HEIGHT = 680
 export const WORKSPACE_RECENTS_LIMIT = 25
 
 export type WorkspaceViewMode = 'preview' | 'source'
-export type WorkspaceSidebarMode = 'files' | 'home'
+export type WorkspaceSidebarMode = 'files'
 export type WorkspaceFolderSortMode = 'az' | 'za' | 'recency'
 
 export interface WorkspaceSourceFileRef {

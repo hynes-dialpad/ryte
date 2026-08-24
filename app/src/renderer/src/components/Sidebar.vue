@@ -15,7 +15,6 @@ import {
   modifiedAtMsBySourcePath,
   type SidebarTreeNode as TreeNode
 } from './sidebar-tree-model'
-import SidebarSearchButton from './SidebarSearchButton.vue'
 import type { WorkspaceFolderSortMode } from '../../../shared/workspace'
 import { useFileCatalogStore } from '../stores/file-catalog'
 import { useViewerStore } from '../stores/viewer'
@@ -64,9 +63,6 @@ const FILE_ICON_COMPONENTS: Record<FileIconName, Component> = {
 const viewer = useViewerStore()
 const workspace = useWorkspaceStore()
 const catalog = useFileCatalogStore()
-const emit = defineEmits<{
-  openSearch: []
-}>()
 const expanded = ref<Set<string>>(new Set())
 const focusedIndex = ref(0)
 const treeHasFocus = ref(false)
@@ -520,10 +516,6 @@ onUnmounted(() => {
     @keydown="onKeydown"
     @scroll="onScroll"
   >
-    <div class="sidebar-search">
-      <SidebarSearchButton @search="emit('openSearch')" />
-    </div>
-
     <p v-if="!viewer.notesRoot" class="empty-sidebar">Loading…</p>
     <p v-else-if="visibleRows.length === 0" class="empty-sidebar">No markdown files found.</p>
     <div v-else class="tree-frame">
@@ -633,10 +625,6 @@ onUnmounted(() => {
 .sidebar:focus-visible {
   outline: 2px solid rgba(120, 200, 255, 0.4);
   outline-offset: -2px;
-}
-
-.sidebar-search {
-  padding: 10px 12px 12px;
 }
 
 .empty-sidebar {

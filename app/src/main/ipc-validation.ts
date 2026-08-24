@@ -498,7 +498,7 @@ export function assertValidWorkspaceShellPatch(value: unknown): WorkspaceShellUp
     patch.sidebarWidth = width
   }
   if ('activeSidebar' in input) {
-    if (input.activeSidebar !== 'files' && input.activeSidebar !== 'home') {
+    if (input.activeSidebar !== 'files') {
       throw new Error('Invalid activeSidebar')
     }
     patch.activeSidebar = input.activeSidebar

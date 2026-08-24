@@ -144,12 +144,12 @@ describe('ipc validation', () => {
       assertValidWorkspaceShellPatch({
         sidebarCollapsed: true,
         sidebarWidth: 360,
-        activeSidebar: 'home'
+        activeSidebar: 'files'
       })
     ).toEqual({
       sidebarCollapsed: true,
       sidebarWidth: 360,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
     expect(
       assertValidWorkspaceWindowPatch({
@@ -192,6 +192,9 @@ describe('ipc validation', () => {
       'Invalid sidebarWidth'
     )
     expect(() => assertValidWorkspaceShellPatch({ activeSidebar: 'settings' })).toThrow(
+      'Invalid activeSidebar'
+    )
+    expect(() => assertValidWorkspaceShellPatch({ activeSidebar: 'home' })).toThrow(
       'Invalid activeSidebar'
     )
     expect(() => assertValidWorkspaceWindowPatch({ arbitrary: true })).toThrow(
