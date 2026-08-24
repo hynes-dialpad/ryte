@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, relative, resolve, sep } from 'node:path'
 
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron'
 
 import { refreshAppMenu } from './app-menu'
 import { taskFactsService } from './facts/task-facts-service'
@@ -43,15 +43,68 @@ import {
   readSourceTitleSafe,
   resolveSourcePathUnderRoot
 } from './viewer/file-reader'
-import { listFileCatalog } from './viewer/file-catalog'
+import { fileCatalogEntryFor, listFileCatalog } from './viewer/file-catalog'
 import { sourcePathForViewerChange } from './viewer/source-change-path'
 import { viewerWatcher } from './viewer/viewer-watcher'
 import { workspaceStore } from './workspace/workspace-store'
+import { type FileCatalogChangeEvent } from '../shared/files'
 import { isWorkspaceSourceFileRef, type WorkspaceFileRef } from '../shared/workspace'
 
 let searchService: SearchService | null = null
 let watchedViewerSourcePath: string | null = null
 let watchedViewerTabId: string | null = null
+
+interface ActiveSearchRequest {
+  owner: WebContents
+  service: SearchService
+  onOwnerDestroyed: () => void
+}
+
+const activeSearchRequests = new Map<string, ActiveSearchRequest>()
+
+function clearActiveSearchRequest(requestId: string): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  activeRequest.owner.removeListener('destroyed', activeRequest.onOwnerDestroyed)
+  activeSearchRequests.delete(requestId)
+}
+
+function cancelActiveSearchRequest(requestId: string): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  activeRequest.service.cancel(requestId)
+  clearActiveSearchRequest(requestId)
+}
+
+function cancelAllActiveSearchRequests(): void {
+  for (const requestId of [...activeSearchRequests.keys()]) {
+    cancelActiveSearchRequest(requestId)
+  }
+}
+
+function registerActiveSearchRequest(
+  requestId: string,
+  owner: WebContents,
+  service: SearchService
+): void {
+  const onOwnerDestroyed = (): void => cancelActiveSearchRequest(requestId)
+  activeSearchRequests.set(requestId, { owner, service, onOwnerDestroyed })
+  owner.once('destroyed', onOwnerDestroyed)
+}
+
+function sendSearchEvent(
+  requestId: string,
+  channel: string,
+  payload: Record<string, unknown>
+): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  if (activeRequest.owner.isDestroyed()) {
+    cancelActiveSearchRequest(requestId)
+    return
+  }
+  activeRequest.owner.send(channel, payload)
+}
 
 async function resolveExternalMarkdownFile(absPath: string): Promise<string> {
   const safePath = await realpath(resolve(absPath))
@@ -116,8 +169,9 @@ function getOrCreateSearchService(): SearchService | null {
 }
 
 /**
- * Register all IPC handlers. Call once during app.whenReady() after
- * indexer-service is initialized.
+ * Register all IPC handlers once during app.whenReady(). Search and indexing
+ * handlers preserve their not-ready responses while the index initializes
+ * after the first window is visible.
  */
 export function registerIpc(): void {
   ipcMain.handle('app:get-version', () => app.getVersion())
@@ -212,10 +266,11 @@ export function registerIpc(): void {
       settingsPatchRequiresIndexerRestart(validatedPatch, previousSettings, settingsStore.load())
     ) {
       // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
+      await watcher.stop()
+      cancelAllActiveSearchRequests()
       indexerService.close()
       searchService = null // vectorStore is replaced; recreate on next search
       const ready = indexerService.init()
-      await watcher.stop()
       if (ready) {
         watcher.start(settingsStore.load().notesRoot)
       }
@@ -463,49 +518,84 @@ export function registerIpc(): void {
     }
   })
 
-  watcher.onCatalogChanged(() => {
+  watcher.onCatalogChanged((event) => {
+    const notesRoot = settingsStore.load().notesRoot
+    // Settings update their persisted root before the previous watcher has
+    // finished closing. Do not resolve a final old-root event against the new
+    // corpus root.
+    if (event.notesRoot !== notesRoot) return
+
     taskFactsService.markStale()
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('files:catalog-changed')
       win.webContents.send('tasks:changed')
     }
+
+    void (async () => {
+      let catalogChange: FileCatalogChangeEvent | undefined
+      if (event.type === 'remove') {
+        catalogChange = {
+          type: 'remove',
+          sourcePath: relative(notesRoot, event.path).split(sep).join('/')
+        }
+      } else {
+        try {
+          catalogChange = {
+            type: 'upsert',
+            file: await fileCatalogEntryFor(notesRoot, event.path)
+          }
+        } catch {
+          // A rapid follow-up rename/delete can invalidate an upsert before it is read.
+          // Preserve the previous full-refresh fallback for that exceptional race.
+        }
+      }
+
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('files:catalog-changed', catalogChange)
+      }
+    })()
   })
 
-  function broadcast(channel: string, payload: Record<string, unknown>): void {
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(channel, payload)
-    }
-  }
-
-  ipcMain.handle('search:query', (_, rawQuery: unknown, rawOptions: unknown) => {
+  ipcMain.handle('search:query', (event, rawQuery: unknown, rawOptions: unknown) => {
     const query = assertValidSearchQuery(rawQuery)
     const options = assertValidSearchOptions(rawOptions)
     const svc = getOrCreateSearchService()
     if (!svc) {
-      broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('search:error', { requestId: '', error: 'Indexer not initialized' })
+      }
       return null
     }
     const requestId = randomUUID()
+    registerActiveSearchRequest(requestId, event.sender, svc)
     setImmediate(() => {
-      void svc.search(
-        query,
-        requestId,
-        {
-          onToken: (token) => broadcast('search:stream-token', { requestId, token }),
-          onSources: (sources) => broadcast('search:sources', { requestId, sources }),
-          onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
-          onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
-          onDone: () => broadcast('search:done', { requestId }),
-          onError: (error) => broadcast('search:error', { requestId, error })
-        },
-        options
-      )
+      void svc
+        .search(
+          query,
+          requestId,
+          {
+            onToken: (token) =>
+              sendSearchEvent(requestId, 'search:stream-token', { requestId, token }),
+            onSources: (sources) =>
+              sendSearchEvent(requestId, 'search:sources', { requestId, sources }),
+            onCitation: (citation) =>
+              sendSearchEvent(requestId, 'search:citation', { requestId, ...citation }),
+            onNotice: (notice) =>
+              sendSearchEvent(requestId, 'search:notice', { requestId, notice }),
+            onDone: () => sendSearchEvent(requestId, 'search:done', { requestId }),
+            onError: (error) => sendSearchEvent(requestId, 'search:error', { requestId, error })
+          },
+          options
+        )
+        .finally(() => clearActiveSearchRequest(requestId))
     })
     return requestId
   })
 
-  ipcMain.handle('search:cancel', (_, requestId: unknown) => {
-    const svc = getOrCreateSearchService()
-    svc?.cancel(assertValidRequestId(requestId))
+  ipcMain.handle('search:cancel', (event, requestId: unknown) => {
+    const validRequestId = assertValidRequestId(requestId)
+    const activeRequest = activeSearchRequests.get(validRequestId)
+    if (activeRequest?.owner === event.sender) {
+      cancelActiveSearchRequest(validRequestId)
+    }
   })
 }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
 import { useWorkspaceStore } from '../stores/workspace'
 import { buildSearchResults, documentTitle } from './search-result-model'
+import { createAnswerRenderScheduler } from './search-answer-render-scheduler'
 import type {
   SearchCitation,
   SearchQueryOptions,
@@ -28,6 +29,13 @@ const showCloudWarning = ref(false)
 const retrievalMode = ref<SearchRetrievalMode>('auto')
 const retainedPanelHeight = ref(0)
 const providerSetupNoticeDismissed = ref(loadProviderSetupNoticeDismissal())
+const answerRenderScheduler = createAnswerRenderScheduler(
+  () => search.answer,
+  async (markdown) => {
+    const html = markdown ? await renderAnswer(markdown, search.citations) : ''
+    if (markdown === search.answer) renderedAnswer.value = html
+  }
+)
 
 const searchResults = computed(() => buildSearchResults(search.sources, search.citations))
 const showSearchResults = computed(
@@ -54,11 +62,23 @@ const visibleNotices = computed(() =>
 
 watch(
   [() => search.answer, () => search.citations],
-  async ([md, citations]) => {
-    renderedAnswer.value = md ? await renderAnswer(md, citations) : ''
+  ([markdown]) => {
+    if (!markdown) renderedAnswer.value = ''
+    answerRenderScheduler.schedule()
   },
   { deep: true }
 )
+
+watch(
+  () => search.status,
+  (status) => {
+    if (status === 'done' || status === 'error') void answerRenderScheduler.flush()
+  }
+)
+
+onBeforeUnmount(() => {
+  answerRenderScheduler.dispose()
+})
 
 watch(
   () => true,

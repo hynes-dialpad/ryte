@@ -4,6 +4,7 @@ import type { PublicSettingsState, SettingsUpdate } from '../main/settings/setti
 import type { ProviderKeyValidationResult } from '../main/settings/key-validation'
 import type {
   FileCatalogResponse,
+  FileCatalogChangeEvent,
   FileRenameInput,
   FileRenameResult,
   FileTrashResult,
@@ -138,7 +139,7 @@ export interface RyteApi {
     onSourceChange(cb: (sourcePath: string) => void): () => void
     onWorkspaceTabChange(cb: (tabId: string) => void): () => void
     onTreeChanged(cb: () => void): () => void
-    onCatalogChanged(cb: () => void): () => void
+    onCatalogChanged(cb: (event?: FileCatalogChangeEvent) => void): () => void
   }
   tasks: {
     list(input?: TaskListInput): Promise<TaskFactsResponse>
@@ -239,7 +240,7 @@ const api: RyteApi = {
       return () => ipcRenderer.removeListener('files:tree-changed', listener)
     },
     onCatalogChanged: (cb) => {
-      const listener = (): void => cb()
+      const listener = (_: unknown, event?: FileCatalogChangeEvent): void => cb(event)
       ipcRenderer.on('files:catalog-changed', listener)
       return () => ipcRenderer.removeListener('files:catalog-changed', listener)
     }

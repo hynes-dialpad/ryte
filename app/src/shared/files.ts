@@ -28,6 +28,10 @@ export interface FileCatalogResponse {
   files: FileCatalogEntry[]
 }
 
+export type FileCatalogChangeEvent =
+  | { type: 'upsert'; file: FileCatalogEntry }
+  | { type: 'remove'; sourcePath: string }
+
 export type FileRenameInput =
   | (WorkspaceSourceFileRef & { name: string })
   | (WorkspaceExternalFileRef & { name: string })
