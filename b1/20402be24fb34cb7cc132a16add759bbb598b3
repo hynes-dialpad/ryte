@@ -1,0 +1,48 @@
+app/src/main/indexing/indexer-service.test.ts
+  s_73308c7e484c71::t_d661978cbc30a2 6-7,27-28,72,153-165
+  s_73308c7e484c71::t_ac8ca22974397d 166
+app/src/main/indexing/watcher.test.ts
+  s_73308c7e484c71::t_d661978cbc30a2 148-150,153-159,161
+  s_73308c7e484c71::t_14c102b590e039 25-37,151-152,160
+  s_73308c7e484c71::t_ec208647ed674f 70-74,107-111,141-145
+app/src/main/indexing/watcher.ts
+  s_73308c7e484c71::t_b2d59f66f8ccbd 23-24,37,42,48,61,80-105
+  s_73308c7e484c71::t_ec208647ed674f 13,36,41,47
+  s_73308c7e484c71::t_10e681543eece6 10-12,14-15,69,78-79
+app/src/main/indexing/indexer.ts
+  s_73308c7e484c71::t_ff326b2bd63976 104-106
+  s_73308c7e484c71::t_10e681543eece6 38-39,95,126-129
+app/src/main/indexing/indexer-service.ts
+  s_73308c7e484c71::t_10e681543eece6 42-43,50-51,61,64-68,70-77,152-154,165,169,193,211-260,266
+app/src/main/indexing/indexer.test.ts
+  s_73308c7e484c71::t_64e025d40703e4 169-174
+  s_73308c7e484c71::t_d661978cbc30a2 162-168,175-186
+app/src/main/index-startup.test.ts
+  s_73308c7e484c71::t_b2d59f66f8ccbd 15-18
+  s_73308c7e484c71::t_47e263915b22f0 111
+  s_73308c7e484c71::t_d661978cbc30a2 2-4,6-14,19-27,29-31,35-70,78-80,86-91,95-98,103-105,107-110,112-113,125-126
+  s_73308c7e484c71::t_b4f61f8c5bedc9 5,28,32-34,106,114-124
+  s_73308c7e484c71::t_fca745cd6a2bd0 71-77,81-85,92-94
+  s_73308c7e484c71::t_60fda9df6d0861 1,99-102
+app/src/main/index.ts
+  s_73308c7e484c71::t_b5095b22e08e0c 18,128,131
+  s_73308c7e484c71::t_56f3083d933dba 20-25
+  s_73308c7e484c71::t_10e681543eece6 31,90-91,127,129-130,132-135,162-165,170-175
+  s_73308c7e484c71::t_82c4b82c27afb3 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "b120402be24fb34cb7cc132a16add759bbb598b3",
+  "prompts": {},
+  "sessions": {
+    "s_73308c7e484c71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00da5-db13-7db1-b400-dc5e65cbebea",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
