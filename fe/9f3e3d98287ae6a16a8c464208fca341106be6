@@ -1,0 +1,65 @@
+app/src/main/ipc-search-lifecycle.test.ts
+  s_73308c7e484c71::t_0ad0d376bf423a 131
+  s_73308c7e484c71::t_9131d66aa0210d 178,182-195
+  s_73308c7e484c71::t_8b3bfd420847bb 14
+  s_73308c7e484c71::t_64e025d40703e4 12
+  s_73308c7e484c71::t_2387a6dc48d12c 94-95,102,104-111
+  s_73308c7e484c71::t_fac7eee6b8b6c3 67
+  s_73308c7e484c71::t_8c667b57039155 223-235,237
+  s_73308c7e484c71::t_ec208647ed674f 13,214
+  s_73308c7e484c71::t_23afa17f85825a 1-11,16-42,45-49,53-66,68-83,88-93,96-101,103,112-130,132-136,139-177,179-181,196-206,222,238
+  s_73308c7e484c71::t_73f000bcd9fd82 236
+  s_73308c7e484c71::t_86c490e6bf1916 15,50-52,84-87,137-138,207-213,215-221
+  s_73308c7e484c71::t_a833db6b6113be 43-44
+app/src/renderer/src/stores/file-catalog.test.ts
+  s_73308c7e484c71::t_ca96a9b1faa79c 7-25,29,104-135
+  s_73308c7e484c71::t_b41e886a590651 136-137
+app/src/shared/files.ts
+  s_73308c7e484c71::t_9d518f6992e077 31-34
+app/src/preload/index.ts
+  s_73308c7e484c71::t_9d518f6992e077 7,142,243
+app/src/main/viewer/file-catalog.ts
+  s_73308c7e484c71::t_7d444f8008ef6c 56-60,87
+app/src/main/ipc.ts
+  s_73308c7e484c71::t_d9b6a77b1bc4a8 172-174
+  s_73308c7e484c71::t_42813f124119e6 269
+  s_73308c7e484c71::t_0ad0d376bf423a 582-583
+  s_73308c7e484c71::t_2387a6dc48d12c 5,57-108,270,558,563-565,569,571-581,584-589,594-599
+  s_73308c7e484c71::t_7d444f8008ef6c 46,521,533,535-537,539-543,545-550,552-555
+  s_73308c7e484c71::t_ec208647ed674f 522-526,538,544
+  s_73308c7e484c71::t_24a05b800ea2ad 50,534
+  s_73308c7e484c71::t_b7909d9cd966d7 527
+  s_73308c7e484c71::t_442311d78b6fe8 556-557
+app/src/renderer/src/components/search-answer-render-scheduler.test.ts
+  s_73308c7e484c71::t_ca96a9b1faa79c 1-10,12-39,41-56,117
+  s_73308c7e484c71::t_0cdb171848199a 110
+  s_73308c7e484c71::t_7987dd2e601074 79-109,111-116
+  s_73308c7e484c71::t_6a33c2770fda73 11,40
+  s_73308c7e484c71::t_e9bd98b7254191 57-78
+app/src/renderer/src/components/search-answer-render-scheduler.ts
+  s_73308c7e484c71::t_9d518f6992e077 1-18,22-25,42-43,46-49,56-58,65-69,71-83
+  s_73308c7e484c71::t_7987dd2e601074 19-21,26-41,44-45,50-55,59-64,70
+app/src/renderer/src/components/SearchOverlay.vue
+  s_73308c7e484c71::t_e9bd98b7254191 2,9,32-38,65-67,72-81
+  s_73308c7e484c71::t_0d1103d8b3a17e 82
+app/src/renderer/src/stores/file-catalog.ts
+  s_73308c7e484c71::t_9d518f6992e077 4,19,21,36,58-59,63-73,79-84,114-130
+  s_73308c7e484c71::t_e9bd98b7254191 25,35
+  s_73308c7e484c71::t_bcfa746105eb62 20,26,46,60-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "fe9f3e3d98287ae6a16a8c464208fca341106be6",
+  "prompts": {},
+  "sessions": {
+    "s_73308c7e484c71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00da5-db13-7db1-b400-dc5e65cbebea",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
