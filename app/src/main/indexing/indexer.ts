@@ -35,6 +35,8 @@ export interface IndexAllSummary {
   chunksIndexed: number
 }
 
+const LOCAL_INDEX_YIELD_BATCH_SIZE = 8
+
 interface PendingFile {
   absPath: string
   relPath: string
@@ -90,7 +92,7 @@ export class Indexer {
 
     // Phase 2: chunk and write file-by-file. This preserves the memory ceiling at
     // roughly one source file plus its chunks instead of all pending chunks.
-    for (const file of pending) {
+    for (const [index, file] of pending.entries()) {
       const chunks = chunkFile(file.absPath, notesRoot)
       chunksTotal += chunks.length
 
@@ -99,6 +101,9 @@ export class Indexer {
         indexState.markIndexed(file.relPath, file.mtimeMs, 0)
         filesDone += 1
         emit({ phase: 'indexing', filesTotal, filesDone, chunksTotal, chunksDone })
+        if (!embedder && (index + 1) % LOCAL_INDEX_YIELD_BATCH_SIZE === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+        }
         continue
       }
 
@@ -118,6 +123,10 @@ export class Indexer {
       filesDone += 1
       chunksDone += chunks.length
       emit({ phase: 'indexing', filesTotal, filesDone, chunksTotal, chunksDone })
+
+      if (!embedder && (index + 1) % LOCAL_INDEX_YIELD_BATCH_SIZE === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
     }
 
     emit({ phase: 'done', filesTotal, filesDone, chunksTotal, chunksDone })

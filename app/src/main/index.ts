@@ -15,12 +15,20 @@ import { safeWindowBounds, workAreasFromDisplays } from './window-state'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '../shared/workspace'
 
 const macOSVibrancyMaterial = 'hud' as const
+let hasInitializedIndexing = false
+
+// An explicit profile override keeps automated launch verification isolated
+// from a developer's normal local workspace. It must be applied before
+// `whenReady`, because the settings, workspace, and index paths all derive
+// from Electron's userData location.
+const userDataDirOverride = process.env['RYTE_USER_DATA_DIR']
+if (userDataDirOverride) app.setPath('userData', userDataDirOverride)
 
 // Set early so macOS notifications show "ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
 app.setName('ryte')
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const rendererUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
   const rendererOrigin = rendererUrl ? originForUrl(rendererUrl) : null
   const allowedAppOrigins = new Set(rendererOrigin ? [rendererOrigin] : [])
@@ -79,6 +87,8 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 function installWindowStatePersistence(window: BrowserWindow): void {
@@ -114,6 +124,15 @@ function reportStartupFailure(error: unknown): void {
   app.exit(1)
 }
 
+function initializeIndexingAfterFirstPaint(): void {
+  if (hasInitializedIndexing) return
+  const ready = indexerService.init()
+  if (!ready) return
+  hasInitializedIndexing = true
+  watcher.start(settingsStore.load().notesRoot)
+  void indexerService.triggerReindex()
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
@@ -124,12 +143,8 @@ function startApp(): void {
     optimizer.watchWindowShortcuts(window)
   })
 
-  const ready = indexerService.init()
   registerIpc()
   installAppMenu()
-  if (ready) {
-    watcher.start(settingsStore.load().notesRoot)
-  }
 
   let lastNotifiedPhase: string | null = null
   indexerService.subscribe((status) => {
@@ -144,15 +159,20 @@ function startApp(): void {
     lastNotifiedPhase = status.phase
   })
 
-  createWindow()
-  if (ready) {
-    void indexerService.triggerReindex()
-  }
+  const mainWindow = createWindow()
+  mainWindow.once('ready-to-show', () => {
+    setImmediate(initializeIndexingAfterFirstPaint)
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const window = createWindow()
+      window.once('ready-to-show', () => {
+        setImmediate(initializeIndexingAfterFirstPaint)
+      })
+    }
   })
 }
 

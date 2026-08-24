@@ -22,6 +22,19 @@ import { Watcher } from './watcher'
 
 type Handler = (path: string) => void
 
+interface Deferred {
+  promise: Promise<void>
+  resolve: () => void
+}
+
+function createDeferred(): Deferred {
+  let resolve!: () => void
+  const promise = new Promise<void>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
+}
+
 describe('Watcher', () => {
   let handlers: Map<string, Handler>
 
@@ -54,7 +67,11 @@ describe('Watcher', () => {
     handlers.get('add')?.('/notes/new.md')
 
     expect(onTreeChanged).toHaveBeenCalledOnce()
-    expect(onCatalogChanged).toHaveBeenCalledOnce()
+    expect(onCatalogChanged).toHaveBeenCalledWith({
+      type: 'upsert',
+      path: '/notes/new.md',
+      notesRoot: '/notes'
+    })
     expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/new.md')
   })
 
@@ -87,7 +104,11 @@ describe('Watcher', () => {
     handlers.get('unlink')?.('/notes/old.md')
 
     expect(onTreeChanged).toHaveBeenCalledOnce()
-    expect(onCatalogChanged).toHaveBeenCalledOnce()
+    expect(onCatalogChanged).toHaveBeenCalledWith({
+      type: 'remove',
+      path: '/notes/old.md',
+      notesRoot: '/notes'
+    })
     expect(mocks.notifyFileRemoved).toHaveBeenCalledWith('/notes/old.md')
   })
 
@@ -117,7 +138,25 @@ describe('Watcher', () => {
     handlers.get('change')?.('/notes/existing.md')
 
     expect(onTreeChanged).not.toHaveBeenCalled()
-    expect(onCatalogChanged).toHaveBeenCalledOnce()
+    expect(onCatalogChanged).toHaveBeenCalledWith({
+      type: 'upsert',
+      path: '/notes/existing.md',
+      notesRoot: '/notes'
+    })
     expect(mocks.notifyFileChanged).toHaveBeenCalledWith('/notes/existing.md')
+  })
+
+  it('serializes and coalesces repeated change events for the same markdown file', () => {
+    const watcher = new Watcher()
+    const indexing = createDeferred()
+    mocks.notifyFileChanged.mockImplementation(() => indexing.promise)
+    watcher.start('/notes')
+
+    handlers.get('change')?.('/notes/existing.md')
+    handlers.get('change')?.('/notes/existing.md')
+    handlers.get('change')?.('/notes/existing.md')
+
+    expect(mocks.notifyFileChanged).toHaveBeenCalledTimes(1)
+    indexing.resolve()
   })
 })
