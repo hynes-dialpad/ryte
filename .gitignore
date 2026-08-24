@@ -1,8 +1,12 @@
 # App
+/node_modules/
 app/node_modules/
 app/out/
 app/dist/
 app/.eslintcache
+
+# Local developer tooling
+.codegraph/
 
 # Spikes (local research only, not committed)
 spikes/
