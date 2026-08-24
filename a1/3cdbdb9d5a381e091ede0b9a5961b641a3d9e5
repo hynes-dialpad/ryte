@@ -1,0 +1,30 @@
+docs/plans/2026-08-24-address-review-findings.md
+  s_73308c7e484c71::t_1a017f07c80773 13-92,94-97,99-102,104-137
+  s_73308c7e484c71::t_ab64b6763692f8 6
+  s_73308c7e484c71::t_a3687c37329637 5
+  s_73308c7e484c71::t_275b83c05b6846 98
+  s_73308c7e484c71::t_fac668bcf654dc 138-146
+  s_73308c7e484c71::t_2cbeae9ddc821f 103
+  s_73308c7e484c71::t_5cd1848504825f 1-4,7-12
+  s_73308c7e484c71::t_b87db2d855df02 93
+app/src/main/runtime-documentation.test.ts
+  s_73308c7e484c71::t_8c68f9d9e7b883 1-14
+docs/phase-0-manual-smoke.md
+  s_73308c7e484c71::t_b298063662c96e 10,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a13cdbdb9d5a381e091ede0b9a5961b641a3d9e5",
+  "prompts": {},
+  "sessions": {
+    "s_73308c7e484c71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00da5-db13-7db1-b400-dc5e65cbebea",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Joshua Hynes <jhynes@dialpad.com>"
+    }
+  }
+}
