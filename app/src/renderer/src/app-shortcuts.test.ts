@@ -4,14 +4,8 @@ import { resolveAppShortcutAction, shouldScheduleControlShortcutBadges } from '.
 
 describe('resolveAppShortcutAction', () => {
   it('resolves primary macOS app commands', () => {
-    expect(resolveAppShortcutAction({ key: '1', metaKey: true })).toEqual({
-      type: 'select-sidebar',
-      sidebar: 'home'
-    })
-    expect(resolveAppShortcutAction({ key: '2', metaKey: true })).toEqual({
-      type: 'select-sidebar',
-      sidebar: 'files'
-    })
+    expect(resolveAppShortcutAction({ key: '1', metaKey: true })).toBeNull()
+    expect(resolveAppShortcutAction({ key: '2', metaKey: true })).toBeNull()
     expect(resolveAppShortcutAction({ key: 'b', metaKey: true })).toEqual({
       type: 'toggle-sidebar'
     })
@@ -36,16 +30,13 @@ describe('resolveAppShortcutAction', () => {
   })
 
   it('resolves control rail commands', () => {
-    expect(resolveAppShortcutAction({ key: '1', ctrlKey: true })).toEqual({
-      type: 'select-sidebar',
-      sidebar: 'home'
-    })
-    expect(resolveAppShortcutAction({ key: '2', ctrlKey: true })).toEqual({
-      type: 'select-sidebar',
-      sidebar: 'files'
-    })
+    expect(resolveAppShortcutAction({ key: '1', ctrlKey: true })).toBeNull()
+    expect(resolveAppShortcutAction({ key: '2', ctrlKey: true })).toBeNull()
     expect(resolveAppShortcutAction({ key: '0', ctrlKey: true })).toEqual({
       type: 'open-settings'
+    })
+    expect(resolveAppShortcutAction({ key: '/', ctrlKey: true })).toEqual({
+      type: 'open-search'
     })
     expect(resolveAppShortcutAction({ key: 't', ctrlKey: true })).toEqual({
       type: 'toggle-sidebar'

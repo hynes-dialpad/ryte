@@ -1,7 +1,13 @@
 import type { FileCatalogEntry } from '../../../shared/files'
-import type { WorkspaceFileTab, WorkspaceRecentFile } from '../../../shared/workspace'
+import type { MarkdownTaskFact } from '../../../shared/tasks'
+import {
+  isWorkspaceSourceFileRef,
+  type WorkspaceFileTab,
+  type WorkspaceRecentFile,
+  type WorkspaceSourceFileRef
+} from '../../../shared/workspace'
 
-export type HomeSmartGroupId = 'briefing' | 'plans' | 'recent'
+export type HomeSmartGroupId = 'tasks' | 'briefing' | 'plans' | 'recent'
 
 export interface HomeSmartGroupItemAction {
   kind: 'open-explicit-file'
@@ -13,6 +19,8 @@ export interface HomeSmartGroupItem {
   sourcePath: string
   title: string
   titleFormat?: 'briefing-date'
+  detail?: string
+  taskFingerprint?: string
   active: boolean
   ariaLabel: string
   action: HomeSmartGroupItemAction
@@ -35,10 +43,22 @@ interface HomeSidebarModelInput {
   recents: WorkspaceRecentFile[]
   tabs: WorkspaceFileTab[]
   activeTabId: string | null
+  taskFacts?: MarkdownTaskFact[]
+  activeTaskFingerprint?: string | null
+}
+
+type SourceWorkspaceRecentFile = WorkspaceRecentFile & WorkspaceSourceFileRef
+
+function isSourceWorkspaceRecentFile(
+  recent: WorkspaceRecentFile
+): recent is SourceWorkspaceRecentFile {
+  return isWorkspaceSourceFileRef(recent)
 }
 
 interface HomeSidebarModelContext extends HomeSidebarModelInput {
+  recents: SourceWorkspaceRecentFile[]
   activeSourcePath: string | null
+  activeTaskFingerprint: string | null
   catalogFilesBySourcePath: Map<string, FileCatalogEntry>
   recentOpenedAtMsBySourcePath: Map<string, number>
 }
@@ -47,6 +67,7 @@ interface HomeSmartGroupDefinition {
   id: HomeSmartGroupId
   title: string
   emptyLabel: string
+  contributesToRecentDedupe?: boolean
   buildItems: (context: HomeSidebarModelContext) => HomeSmartGroupItem[]
 }
 
@@ -110,6 +131,12 @@ function matchesBriefingRule(file: FileCatalogEntry): boolean {
   return hasAnyToken(file, BRIEFING_TOKENS)
 }
 
+function taskDetail(task: MarkdownTaskFact): string {
+  return task.headingPath.length > 0
+    ? `${task.sourcePath} \u203a ${task.headingPath.join(' \u203a ')}`
+    : task.sourcePath
+}
+
 function rankBriefingItems(left: FileCatalogEntry, right: FileCatalogEntry): number {
   const leftDateMs = sourceDateMs(left)
   const rightDateMs = sourceDateMs(right)
@@ -147,9 +174,32 @@ function rankPlansItems(
 
 const HOME_SMART_GROUP_DEFINITIONS: HomeSmartGroupDefinition[] = [
   {
+    id: 'tasks',
+    title: 'Tasks',
+    emptyLabel: 'No open tasks',
+    buildItems: (context) =>
+      (context.taskFacts ?? [])
+        .filter((task) => !task.checked)
+        .slice(0, 10)
+        .map((task) => ({
+          id: `tasks:${task.fingerprint}`,
+          sourcePath: task.sourcePath,
+          title: task.normalizedText,
+          detail: taskDetail(task),
+          taskFingerprint: task.fingerprint,
+          active: task.fingerprint === context.activeTaskFingerprint,
+          ariaLabel: `Open task ${task.normalizedText} in ${task.sourcePath}`,
+          action: {
+            kind: 'open-explicit-file',
+            sourcePath: task.sourcePath
+          }
+        }))
+  },
+  {
     id: 'briefing',
     title: 'Briefing',
     emptyLabel: 'No briefings',
+    contributesToRecentDedupe: true,
     buildItems: (context) =>
       context.catalogFiles
         .filter(matchesBriefingRule)
@@ -172,6 +222,7 @@ const HOME_SMART_GROUP_DEFINITIONS: HomeSmartGroupDefinition[] = [
     id: 'plans',
     title: 'Plans',
     emptyLabel: 'No plans',
+    contributesToRecentDedupe: true,
     buildItems: (context) =>
       context.catalogFiles
         .filter(matchesPlansRule)
@@ -214,13 +265,18 @@ const HOME_SMART_GROUP_DEFINITIONS: HomeSmartGroupDefinition[] = [
 
 export function buildHomeSidebarModel(input: HomeSidebarModelInput): HomeSidebarModel {
   const activeTab = input.tabs.find((tab) => tab.id === input.activeTabId) ?? null
-  const activeSourcePath = activeTab?.sourcePath ?? null
+  const activeSourcePath =
+    activeTab && isWorkspaceSourceFileRef(activeTab) ? activeTab.sourcePath : null
+  const sourceRecents = input.recents.filter(isSourceWorkspaceRecentFile)
   const context: HomeSidebarModelContext = {
     ...input,
+    recents: sourceRecents,
+    taskFacts: input.taskFacts ?? [],
+    activeTaskFingerprint: input.activeTaskFingerprint ?? null,
     activeSourcePath,
     catalogFilesBySourcePath: new Map(input.catalogFiles.map((file) => [file.sourcePath, file])),
     recentOpenedAtMsBySourcePath: new Map(
-      input.recents.flatMap((recent) => {
+      sourceRecents.flatMap((recent) => {
         const openedAtMs = recentOpenedAtMs(recent)
         return openedAtMs === null ? [] : [[recent.sourcePath, openedAtMs]]
       })
@@ -235,8 +291,10 @@ export function buildHomeSidebarModel(input: HomeSidebarModelInput): HomeSidebar
         ? builtItems.filter((item) => !renderedSourcePaths.has(item.sourcePath))
         : builtItems
 
-    for (const item of items) {
-      renderedSourcePaths.add(item.sourcePath)
+    if (definition.contributesToRecentDedupe) {
+      for (const item of items) {
+        renderedSourcePaths.add(item.sourcePath)
+      }
     }
 
     return {

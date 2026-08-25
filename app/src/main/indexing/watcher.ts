@@ -7,6 +7,12 @@ import { indexerService } from './indexer-service'
 const TREE_CHANGED_EVENT = 'tree-changed'
 const CATALOG_CHANGED_EVENT = 'catalog-changed'
 
+export interface CatalogChangeEvent {
+  type: 'upsert' | 'remove'
+  path: string
+  notesRoot: string
+}
+
 function isMarkdownFile(path: string): boolean {
   return path.toLowerCase().endsWith('.md')
 }
@@ -14,6 +20,8 @@ function isMarkdownFile(path: string): boolean {
 export class Watcher {
   private fsw: FSWatcher | null = null
   private readonly events = new EventEmitter()
+  private readonly pendingIndexOperations = new Map<string, 'changed' | 'removed'>()
+  private processingIndexOperations = false
 
   start(notesRoot: string): void {
     if (this.fsw) this.stop()
@@ -25,19 +33,19 @@ export class Watcher {
     this.fsw.on('add', (path) => {
       if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
-      this.emitCatalogChanged()
-      void indexerService.notifyFileChanged(path)
+      this.emitCatalogChanged({ type: 'upsert', path, notesRoot })
+      this.queueIndexOperation(path, 'changed')
     })
     this.fsw.on('change', (path) => {
       if (!isMarkdownFile(path)) return
-      this.emitCatalogChanged()
-      void indexerService.notifyFileChanged(path)
+      this.emitCatalogChanged({ type: 'upsert', path, notesRoot })
+      this.queueIndexOperation(path, 'changed')
     })
     this.fsw.on('unlink', (path) => {
       if (!isMarkdownFile(path)) return
       this.emitTreeChanged()
-      this.emitCatalogChanged()
-      void indexerService.notifyFileRemoved(path)
+      this.emitCatalogChanged({ type: 'remove', path, notesRoot })
+      this.queueIndexOperation(path, 'removed')
     })
     this.fsw.on('addDir', () => {
       this.emitTreeChanged()
@@ -50,6 +58,7 @@ export class Watcher {
   async stop(): Promise<void> {
     await this.fsw?.close()
     this.fsw = null
+    this.pendingIndexOperations.clear()
   }
 
   onTreeChanged(cb: () => void): () => void {
@@ -57,7 +66,7 @@ export class Watcher {
     return () => this.events.off(TREE_CHANGED_EVENT, cb)
   }
 
-  onCatalogChanged(cb: () => void): () => void {
+  onCatalogChanged(cb: (event: CatalogChangeEvent) => void): () => void {
     this.events.on(CATALOG_CHANGED_EVENT, cb)
     return () => this.events.off(CATALOG_CHANGED_EVENT, cb)
   }
@@ -66,8 +75,34 @@ export class Watcher {
     this.events.emit(TREE_CHANGED_EVENT)
   }
 
-  private emitCatalogChanged(): void {
-    this.events.emit(CATALOG_CHANGED_EVENT)
+  private emitCatalogChanged(event: CatalogChangeEvent): void {
+    this.events.emit(CATALOG_CHANGED_EVENT, event)
+  }
+
+  private queueIndexOperation(path: string, operation: 'changed' | 'removed'): void {
+    this.pendingIndexOperations.set(path, operation)
+    if (this.processingIndexOperations) return
+    this.processingIndexOperations = true
+    void this.drainIndexOperations()
+  }
+
+  private async drainIndexOperations(): Promise<void> {
+    while (this.pendingIndexOperations.size > 0) {
+      const next = this.pendingIndexOperations.entries().next().value
+      if (!next) break
+      const [path, operation] = next
+      this.pendingIndexOperations.delete(path)
+      try {
+        if (operation === 'changed') {
+          await indexerService.notifyFileChanged(path)
+        } else {
+          await indexerService.notifyFileRemoved(path)
+        }
+      } catch (error) {
+        console.error('Ryte could not apply a watched file change.', error)
+      }
+    }
+    this.processingIndexOperations = false
   }
 }
 

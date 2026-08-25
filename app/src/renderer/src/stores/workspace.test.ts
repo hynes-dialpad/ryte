@@ -12,6 +12,11 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
       sidebarWidth: 360,
       activeSidebar: 'files'
     },
+    library: {
+      expandedFolders: null,
+      scrollTop: 0,
+      folderSortModes: {}
+    },
     window: {
       bounds: null,
       maximized: false,
@@ -20,6 +25,7 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
     tabs: [],
     activeTabId: null,
     recents: [],
+    outlineWidth: 216,
     outlineCollapsedByPath: {},
     ...overrides
   }
@@ -27,12 +33,12 @@ function workspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState
 
 function installWorkspaceApi(
   workspace: Partial<Window['ryte']['workspace']>,
-  dialog: Partial<Window['ryte']['dialog']> = {}
+  files: Partial<Window['ryte']['files']> = {}
 ): void {
   vi.stubGlobal('window', {
     ryte: {
       workspace,
-      dialog
+      files
     }
   })
 }
@@ -52,7 +58,7 @@ describe('useWorkspaceStore', () => {
       shell: {
         sidebarCollapsed: true,
         sidebarWidth: 420,
-        activeSidebar: 'home'
+        activeSidebar: 'files'
       }
     })
     let resolveUpdate: (state: WorkspaceState) => void = () => {}
@@ -73,12 +79,12 @@ describe('useWorkspaceStore', () => {
     const update = store.updateShell({
       sidebarCollapsed: true,
       sidebarWidth: 420,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
     expect(store.shell).toEqual({
       sidebarCollapsed: true,
       sidebarWidth: 420,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
 
     resolveUpdate(persisted)
@@ -104,6 +110,54 @@ describe('useWorkspaceStore', () => {
     await expect(update).rejects.toThrow('Invalid workspace shell patch')
     expect(store.state).toEqual(initial)
     expect(store.error).toBe('Invalid workspace shell patch')
+  })
+
+  it('applies library patches optimistically before IPC resolves', async () => {
+    const initial = workspaceState()
+    const persisted = workspaceState({
+      library: {
+        expandedFolders: ['docs', 'sessions/2026-07-02'],
+        scrollTop: 340,
+        folderSortModes: {
+          sessions: 'za'
+        }
+      }
+    })
+    let resolveUpdate: (state: WorkspaceState) => void = () => {}
+
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      updateLibrary: vi.fn(
+        () =>
+          new Promise<WorkspaceState>((resolve) => {
+            resolveUpdate = resolve
+          })
+      )
+    })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    const update = store.updateLibrary({
+      expandedFolders: ['docs', 'sessions/2026-07-02'],
+      scrollTop: 340.4,
+      folderSortModes: {
+        sessions: 'za'
+      }
+    })
+    expect(store.library).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02'],
+      scrollTop: 340,
+      folderSortModes: {
+        sessions: 'za'
+      }
+    })
+
+    resolveUpdate(persisted)
+    await update
+
+    expect(store.state).toEqual(persisted)
+    expect(store.error).toBeNull()
   })
 
   it('creates a temporary optimistic tab for openFile and reconciles returned state', async () => {
@@ -264,7 +318,7 @@ describe('useWorkspaceStore', () => {
     expect(store.state).toEqual(returned)
   })
 
-  it('opens a picked native file through the explicit open path', async () => {
+  it('opens a native file through the workspace-owned picker path', async () => {
     const initial = workspaceState()
     const returned = workspaceState({
       tabs: [
@@ -277,83 +331,136 @@ describe('useWorkspaceStore', () => {
       ],
       activeTabId: 'native-tab-id'
     })
-    const dialogOpenFile = vi.fn().mockResolvedValue({ sourcePath: 'folder/native.md' })
-    const openFile = vi.fn().mockResolvedValue(returned)
-    installWorkspaceApi(
-      { getState: vi.fn().mockResolvedValue(initial), openFile },
-      { openFile: dialogOpenFile }
-    )
+    const openNativeFile = vi.fn().mockResolvedValue(returned)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      openNativeFile
+    })
 
     const store = useWorkspaceStore()
     await store.hydrate()
 
     await store.openNativeFile()
 
-    expect(dialogOpenFile).toHaveBeenCalledOnce()
-    expect(openFile).toHaveBeenCalledWith({ sourcePath: 'folder/native.md' })
+    expect(openNativeFile).toHaveBeenCalledOnce()
     expect(store.state).toEqual(returned)
     expect(store.error).toBeNull()
   })
 
-  it('focuses an existing tab for a picked native file', async () => {
+  it('opens recent file refs through the workspace API', async () => {
     const tab = {
       id: 'tab-native',
-      sourcePath: 'folder/native.md',
+      externalPath: '/Users/hynes/Desktop/native.md',
       title: 'native.md',
       viewMode: 'preview' as const
     }
-    const initial = workspaceState({ tabs: [tab], activeTabId: null })
+    const initial = workspaceState()
     const focused = workspaceState({ tabs: [tab], activeTabId: tab.id })
-    const recented = workspaceState({
-      tabs: [tab],
-      activeTabId: tab.id,
-      recents: [
-        {
-          sourcePath: 'folder/native.md',
-          title: 'native.md',
-          openedAt: '2026-05-21T12:00:00.000Z'
-        }
-      ]
+    const openRecentFile = vi.fn().mockResolvedValue(focused)
+    installWorkspaceApi({
+      getState: vi.fn().mockResolvedValue(initial),
+      openRecentFile
     })
-    const dialogOpenFile = vi.fn().mockResolvedValue({ sourcePath: 'folder/native.md' })
-    const focusTab = vi.fn().mockResolvedValue(focused)
-    const recordRecent = vi.fn().mockResolvedValue(recented)
-    const openFile = vi.fn()
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openRecentFile({ externalPath: '/Users/hynes/Desktop/native.md' })
+
+    expect(openRecentFile).toHaveBeenCalledWith({ externalPath: '/Users/hynes/Desktop/native.md' })
+    expect(store.state).toEqual(focused)
+  })
+
+  it('keeps returned workspace state when the native file picker is canceled', async () => {
+    const initial = workspaceState()
+    const openNativeFile = vi.fn().mockResolvedValue(initial)
+    installWorkspaceApi({ getState: vi.fn().mockResolvedValue(initial), openNativeFile })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await store.openNativeFile()
+
+    expect(openNativeFile).toHaveBeenCalledOnce()
+    expect(store.state).toEqual(initial)
+    expect(store.error).toBeNull()
+  })
+
+  it('normalizes native file picker errors for display', async () => {
+    const initial = workspaceState()
+    const openNativeFile = vi
+      .fn()
+      .mockRejectedValue(new Error('Selected file must be a Markdown file'))
+    installWorkspaceApi({ getState: vi.fn().mockResolvedValue(initial), openNativeFile })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await expect(store.openNativeFile()).rejects.toThrow('Selected file must be a Markdown file')
+
+    expect(store.state).toEqual(initial)
+    expect(store.error).toBe('Selected file must be a Markdown file')
+  })
+
+  it('normalizes Electron-wrapped native file picker errors for display', async () => {
+    const initial = workspaceState()
+    const openNativeFile = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "Error invoking remote method 'workspace:open-native-file': Error: Selected file must be a Markdown file"
+        )
+      )
+    installWorkspaceApi({ getState: vi.fn().mockResolvedValue(initial), openNativeFile })
+
+    const store = useWorkspaceStore()
+    await store.hydrate()
+
+    await expect(store.openNativeFile()).rejects.toThrow('Error invoking remote method')
+
+    expect(store.state).toEqual(initial)
+    expect(store.error).toBe('Selected file must be a Markdown file')
+  })
+
+  it('delegates file actions and applies rename and trash workspace results', async () => {
+    const tab = {
+      id: 'tab-a',
+      sourcePath: 'folder/a.md',
+      title: 'a.md',
+      viewMode: 'preview' as const
+    }
+    const initial = workspaceState({ tabs: [tab], activeTabId: tab.id })
+    const renamedFile = { sourcePath: 'folder/renamed.md' }
+    const renamed = workspaceState({
+      tabs: [{ ...tab, ...renamedFile, title: 'renamed.md' }],
+      activeTabId: tab.id
+    })
+    const trashed = workspaceState({ tabs: [], activeTabId: null })
+    const copyContent = vi.fn().mockResolvedValue(undefined)
+    const copyPath = vi.fn().mockResolvedValue(undefined)
+    const showInFinder = vi.fn().mockResolvedValue(undefined)
+    const rename = vi.fn().mockResolvedValue({ file: renamedFile, workspace: renamed })
+    const moveToTrash = vi.fn().mockResolvedValue({ trashed: true, workspace: trashed })
     installWorkspaceApi(
-      {
-        getState: vi.fn().mockResolvedValue(initial),
-        focusTab,
-        recordRecent,
-        openFile
-      },
-      { openFile: dialogOpenFile }
+      { getState: vi.fn().mockResolvedValue(initial) },
+      { copyContent, copyPath, showInFinder, rename, moveToTrash }
     )
 
     const store = useWorkspaceStore()
     await store.hydrate()
+    await store.copyFile({ sourcePath: 'folder/a.md' })
+    await store.copyFilePath({ sourcePath: 'folder/a.md' })
+    await store.showFileInFinder({ sourcePath: 'folder/a.md' })
+    await expect(
+      store.renameFile({ sourcePath: 'folder/a.md', name: 'renamed.md' })
+    ).resolves.toEqual(renamedFile)
 
-    await store.openNativeFile()
-
-    expect(dialogOpenFile).toHaveBeenCalledOnce()
-    expect(focusTab).toHaveBeenCalledWith({ tabId: tab.id })
-    expect(recordRecent).toHaveBeenCalledWith({ sourcePath: 'folder/native.md' })
-    expect(openFile).not.toHaveBeenCalled()
-    expect(store.state).toEqual(recented)
-  })
-
-  it('keeps workspace state unchanged when the native file picker is canceled', async () => {
-    const initial = workspaceState()
-    const openFile = vi.fn().mockResolvedValue(null)
-    installWorkspaceApi({ getState: vi.fn().mockResolvedValue(initial) }, { openFile })
-
-    const store = useWorkspaceStore()
-    await store.hydrate()
-
-    await store.openNativeFile()
-
-    expect(openFile).toHaveBeenCalledOnce()
-    expect(store.state).toEqual(initial)
-    expect(store.error).toBeNull()
+    expect(store.tabs[0]).toMatchObject({ sourcePath: 'folder/renamed.md', title: 'renamed.md' })
+    await expect(store.moveFileToTrash(renamedFile)).resolves.toBe(true)
+    expect(store.tabs).toEqual([])
+    expect(copyContent).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
+    expect(copyPath).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
+    expect(showInFinder).toHaveBeenCalledWith({ sourcePath: 'folder/a.md' })
   })
 
   it('records recency before closing a tab for closeTabToRecent', async () => {
@@ -381,7 +488,7 @@ describe('useWorkspaceStore', () => {
     const store = useWorkspaceStore()
     await store.hydrate()
 
-    await store.closeTabToRecent({ tabId: tabB.id, sourcePath: 'b.md' })
+    await store.closeTabToRecent({ tabId: tabB.id })
 
     expect(recordRecent).toHaveBeenCalledWith({ sourcePath: 'b.md' })
     expect(closeTab).toHaveBeenCalledWith({ tabId: tabB.id })
@@ -412,7 +519,7 @@ describe('useWorkspaceStore', () => {
     const store = useWorkspaceStore()
     await store.hydrate()
 
-    await store.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath })
+    await store.closeTabToRecent({ tabId: tab.id })
 
     expect(recordRecent).toHaveBeenCalledWith({ sourcePath: tab.sourcePath })
     expect(closeTab).toHaveBeenCalledWith({ tabId: tab.id })
@@ -439,6 +546,7 @@ describe('useWorkspaceStore', () => {
     })
     const outlined = workspaceState({
       ...recent,
+      outlineWidth: 260,
       outlineCollapsedByPath: { 'c.md': true }
     })
     installWorkspaceApi({
@@ -447,7 +555,11 @@ describe('useWorkspaceStore', () => {
       updateTabViewMode: vi.fn().mockResolvedValue(updatedViewMode),
       closeTab: vi.fn().mockResolvedValue(closed),
       recordRecent: vi.fn().mockResolvedValue(recent),
-      setOutlineCollapsed: vi.fn().mockResolvedValue(outlined)
+      setOutlineCollapsed: vi.fn().mockResolvedValue({
+        ...recent,
+        outlineCollapsedByPath: { 'c.md': true }
+      }),
+      setOutlineWidth: vi.fn().mockResolvedValue(outlined)
     })
 
     const store = useWorkspaceStore()
@@ -473,6 +585,10 @@ describe('useWorkspaceStore', () => {
     const outline = store.setOutlineCollapsed({ sourcePath: 'c.md', collapsed: true })
     expect(store.outlineCollapsedByPath).toEqual({ 'c.md': true })
     await outline
+
+    const outlineWidth = store.setOutlineWidth({ width: 260 })
+    expect(store.outlineWidth).toBe(260)
+    await outlineWidth
 
     expect(store.state).toEqual(outlined)
   })

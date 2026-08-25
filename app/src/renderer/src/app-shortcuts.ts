@@ -1,5 +1,3 @@
-import type { WorkspaceSidebarMode } from '../../shared/workspace'
-
 export interface AppShortcutInput {
   key: string
   defaultPrevented?: boolean
@@ -15,7 +13,6 @@ export type AppShortcutAction =
   | { type: 'open-file' }
   | { type: 'open-native-file' }
   | { type: 'open-settings' }
-  | { type: 'select-sidebar'; sidebar: WorkspaceSidebarMode }
   | { type: 'toggle-sidebar' }
   | { type: 'focus-next-tab' }
   | { type: 'focus-previous-tab' }
@@ -54,17 +51,14 @@ export function resolveAppShortcutAction(input: AppShortcutInput): AppShortcutAc
   const key = input.key.toLowerCase()
 
   if (hasOnlyControl(input)) {
-    if (key === '1') return { type: 'select-sidebar', sidebar: 'home' }
-    if (key === '2') return { type: 'select-sidebar', sidebar: 'files' }
     if (key === '0') return { type: 'open-settings' }
+    if (key === '/') return { type: 'open-search' }
     if (key === 't') return { type: 'toggle-sidebar' }
     if (key === 'o') return { type: 'open-native-file' }
     return null
   }
 
   if (hasOnlyMeta(input)) {
-    if (key === '1') return { type: 'select-sidebar', sidebar: 'home' }
-    if (key === '2') return { type: 'select-sidebar', sidebar: 'files' }
     if (key === 'b') return { type: 'toggle-sidebar' }
     if (key === 'k') return { type: 'open-search' }
     if (key === 'p') return { type: 'open-file' }

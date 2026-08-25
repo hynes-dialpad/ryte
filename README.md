@@ -9,12 +9,13 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 - **Optionally adds semantic search** using OpenAI embeddings when explicitly enabled in Settings
 - **Optionally generates answers** using a configured OpenAI or Anthropic model
 - **Browses** your notes in a file tree sidebar with clean markdown rendering and syntax-highlighted code blocks
+- **Manages files** from sidebar and tab context menus with copy, inline rename, Finder, path, close, and confirmed Trash actions
 - **Watches** for file changes and updates the file tree, viewer, and local index incrementally
 
 ## Requirements
 
 - macOS
-- Node.js 22.x
+- Node.js 24.x
 - pnpm 10.12+
 - API keys are optional. Local keyword search works without network access.
 
@@ -22,9 +23,8 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 
 ```bash
 cd app
-corepack enable
+nvm use # reads the repository's .nvmrc
 pnpm install
-nvm use 22.14.0
 pnpm dev
 ```
 
@@ -44,11 +44,24 @@ Search history is stored locally in the renderer process using `localStorage` an
 
 ## Development
 
+From the repository root:
+
+```bash
+nvm use # switches only this shell to the repository's Node 24
+corepack enable # once per Node installation; pnpm versions remain project-scoped
+pnpm build:local # production build only
+pnpm qa:local    # validate, smoke the indexer, then launch the built app
+```
+
+Or run individual commands from `app`:
+
 ```bash
 cd app
-nvm use 22.14.0
+nvm use # reads the repository's .nvmrc
 pnpm check:node
 pnpm validate      # full local validation: node, lint, typecheck, test, build
+pnpm qa:local      # validate, smoke the indexer, then launch the built app
+pnpm launch -- --user-data-dir=/tmp/ryte-profile # launch an existing production build with optional Electron flags
 pnpm dev          # start with hot-reload
 pnpm test         # unit tests (vitest)
 pnpm typecheck    # tsc + vue-tsc
@@ -61,9 +74,13 @@ Branch and PR expectations are documented in [docs/branch-workflow.md](docs/bran
 
 Runtime/tooling versions:
 
-- Node.js: `.node-version` pins major version `22`; current validated local version is `v22.14.0`.
+- Node.js: `.node-version` pins major version `24`; current validated local version is `v24.14.1`.
 - pnpm: `app/package.json` pins `pnpm@10.12.1`.
 - Electron: `41.6.1`.
+
+### Electron launch troubleshooting
+
+If `pnpm qa:local` reports that Electron exited from `SIGABRT`, the Electron process stopped before Ryte could start. Retry from a regular macOS Terminal session; if it persists after a macOS crash or restart, log out and back in (or restart macOS) before retrying.
 
 ## Versioning
 

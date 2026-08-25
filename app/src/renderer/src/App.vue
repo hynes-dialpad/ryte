@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import ryteLogo from './assets/ryte-logo.svg'
 import FileOpenOverlay from './components/FileOpenOverlay.vue'
-import HomeSidebar from './components/HomeSidebar.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import ShellRail from './components/ShellRail.vue'
@@ -17,7 +16,6 @@ import { useSettingsStore } from './stores/settings'
 import { useViewerStore } from './stores/viewer'
 import { useWorkspaceStore } from './stores/workspace'
 import type { AppMenuCommand } from '../../shared/app-menu'
-import type { WorkspaceSidebarMode } from '../../shared/workspace'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../../shared/workspace'
 import {
   resolveAppShortcutAction,
@@ -37,7 +35,6 @@ const viewportWidth = ref(window.innerWidth)
 const dragSidebarWidth = ref<number | null>(null)
 const dragSidebarCollapsed = ref(false)
 const sidebarPopoverOpen = ref(false)
-const hasActivatedHomeSidebar = ref(false)
 const showControlShortcutBadges = ref(false)
 
 let _unbindSearch: (() => void) | undefined
@@ -70,7 +67,6 @@ onUnmounted(() => {
 })
 
 const dismissable = computed(() => true)
-const activeSidebar = computed<WorkspaceSidebarMode>(() => workspace.shell.activeSidebar)
 const sidebarAutoCollapsed = computed(() => workspace.sidebarAutoCollapsed(viewportWidth.value))
 const sidebarCollapsed = computed(
   () => workspace.shell.sidebarCollapsed || sidebarAutoCollapsed.value || dragSidebarCollapsed.value
@@ -87,16 +83,6 @@ const sidebarFrameStyle = computed(() => ({
 const sidebarPopoverStyle = computed(() => ({
   width: `${Math.min(sidebarWidth.value, Math.max(280, viewportWidth.value - 48))}px`
 }))
-
-watch(
-  activeSidebar,
-  (sidebar) => {
-    if (sidebar === 'home') {
-      hasActivatedHomeSidebar.value = true
-    }
-  },
-  { immediate: true }
-)
 
 function openSearch(): void {
   search.$patch({
@@ -124,11 +110,16 @@ function openSettings(): void {
   showSettings.value = true
 }
 
+function openSearchSettings(): void {
+  showSearch.value = false
+  openSettings()
+}
+
 function closeActiveTab(): void {
   const tab = workspace.activeTab
   if (!tab) return
 
-  void workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath }).catch(() => {
+  void workspace.closeTabToRecent({ tabId: tab.id }).catch(() => {
     // The workspace store owns the user-facing error state for failed closes.
   })
 }
@@ -137,7 +128,7 @@ function closeAllTabs(): void {
   const tabs = [...workspace.tabs]
   void (async () => {
     for (const tab of tabs) {
-      await workspace.closeTabToRecent({ tabId: tab.id, sourcePath: tab.sourcePath })
+      await workspace.closeTabToRecent({ tabId: tab.id })
     }
   })().catch(() => {
     // The workspace store owns the user-facing error state for failed closes.
@@ -178,19 +169,6 @@ function toggleSidebar(): void {
     return
   }
   void workspace.setSidebarCollapsed(!sidebarCollapsed.value)
-}
-
-function selectSidebar(activeSidebar: WorkspaceSidebarMode): void {
-  if (sidebarAutoCollapsed.value) {
-    void workspace.setActiveSidebar(activeSidebar)
-    showSidebarPopover()
-    return
-  }
-
-  void workspace.updateShell({
-    activeSidebar,
-    sidebarCollapsed: false
-  })
 }
 
 function showSidebarPopover(): void {
@@ -306,11 +284,6 @@ function runAppShortcutAction(action: AppShortcutAction): void {
     return
   }
 
-  if (action.type === 'select-sidebar') {
-    selectSidebar(action.sidebar)
-    return
-  }
-
   if (action.type === 'toggle-sidebar') {
     toggleSidebar()
     return
@@ -344,6 +317,13 @@ function handleMenuCommand(command: AppMenuCommand): void {
     return
   }
 
+  if (command.type === 'open-recent-file') {
+    void workspace.openRecentFile(command.file).catch(() => {
+      // The workspace store owns the user-facing error state for failed opens.
+    })
+    return
+  }
+
   if (command.type === 'close-active-tab') {
     closeActiveTab()
     return
@@ -361,6 +341,11 @@ function handleMenuCommand(command: AppMenuCommand): void {
 
   if (command.type === 'focus-previous-tab') {
     focusAdjacentTab(-1)
+    return
+  }
+
+  if (command.type === 'toggle-source-mode') {
+    window.dispatchEvent(new Event('ryte:toggle-source-mode'))
     return
   }
 
@@ -429,23 +414,15 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
 
         <div class="shell-sidebar-body">
           <ShellRail
-            :active-sidebar="activeSidebar"
             :sidebar-collapsed="sidebarCollapsed"
             :show-shortcut-badges="showControlShortcutBadges"
             @toggle-sidebar="toggleSidebar"
-            @select-sidebar="selectSidebar"
-            @open-file="openFileOpen"
             @open-search="openSearch"
             @open-settings="openSettings"
           />
 
           <section v-if="!sidebarCollapsed" class="sidebar-frame" :style="sidebarFrameStyle">
-            <Sidebar v-show="activeSidebar === 'files'" @open-search="openSearch" />
-            <HomeSidebar
-              v-if="hasActivatedHomeSidebar"
-              v-show="activeSidebar === 'home'"
-              @open-search="openSearch"
-            />
+            <Sidebar />
             <div
               class="sidebar-resize-handle"
               role="separator"
@@ -463,12 +440,7 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
         :style="sidebarPopoverStyle"
         @mouseleave="hideSidebarPopover"
       >
-        <Sidebar v-show="activeSidebar === 'files'" @open-search="openSearch" />
-        <HomeSidebar
-          v-if="hasActivatedHomeSidebar"
-          v-show="activeSidebar === 'home'"
-          @open-search="openSearch"
-        />
+        <Sidebar />
       </aside>
 
       <section class="workspace-region" aria-label="Workspace">
@@ -484,7 +456,11 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
     <StatusBar />
 
     <FileOpenOverlay v-if="showFileOpen" @close="showFileOpen = false" />
-    <SearchOverlay v-if="showSearch" @close="showSearch = false" />
+    <SearchOverlay
+      v-if="showSearch"
+      @close="showSearch = false"
+      @open-settings="openSearchSettings"
+    />
     <SettingsModal v-if="showSettings" :dismissable="dismissable" @close="closeSettings" />
   </div>
 </template>
@@ -500,6 +476,8 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
   height: 100vh;
   background: var(--app-shell-tint);
   font-family:
+    Geist,
+    Inter,
     system-ui,
     -apple-system,
     sans-serif;
@@ -519,6 +497,7 @@ function onGlobalAppKeyup(event: KeyboardEvent): void {
 
 .shell-sidebar.collapsed {
   width: var(--shell-rail-width);
+  background: transparent;
 }
 
 .shell-chrome {

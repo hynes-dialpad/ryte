@@ -81,9 +81,10 @@ function source(
   preview: string,
   index = 1,
   retrievalMode: SearchAppliedRetrievalMode = 'hybrid',
-  headingPath: string[] = []
+  headingPath: string[] = [],
+  matchCount = 0
 ): SourceResult {
-  return { index, sourcePath, headingPath, preview, retrievalMode }
+  return { index, sourcePath, headingPath, preview, matchCount, retrievalMode }
 }
 
 function service(
@@ -181,6 +182,21 @@ describe('SearchService', () => {
     expect(cb.onError).not.toHaveBeenCalled()
     expect(mockSynthesize).not.toHaveBeenCalled()
     expect(cb.onDone).toHaveBeenCalledOnce()
+  })
+
+  it('centres long previews on matching text and reports match counts', async () => {
+    const text = `${'before '.repeat(50)}release plan risks ${'after '.repeat(50)}release plan`
+    const svc = service([row('release.md', text)])
+    const cb = makeCallbacks()
+
+    await svc.search('release plan', 'req-preview', cb, { answerMode: 'local-only' })
+
+    expect(cb.onSources).toHaveBeenCalledWith([
+      expect.objectContaining({
+        matchCount: 4,
+        preview: expect.stringContaining('release plan risks')
+      })
+    ])
   })
 
   it('reports when no local sources are found', async () => {

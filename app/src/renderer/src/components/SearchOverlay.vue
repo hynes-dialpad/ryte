@@ -1,40 +1,84 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { render } from '../markdown/renderer'
 import { useSearchStore } from '../stores/search'
 import { useSettingsStore } from '../stores/settings'
 import { useWorkspaceStore } from '../stores/workspace'
-import type { SearchQueryOptions, SearchRetrievalMode } from '../../../preload/index'
+import { buildSearchResults, documentTitle } from './search-result-model'
+import { createAnswerRenderScheduler } from './search-answer-render-scheduler'
+import type {
+  SearchCitation,
+  SearchQueryOptions,
+  SearchRetrievalMode
+} from '../../../preload/index'
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; openSettings: [] }>()
+
+const PROVIDER_SETUP_NOTICE_STORAGE_KEY = 'ryte.search.provider-setup-notice-dismissed.v1'
 
 const search = useSearchStore()
 const settings = useSettingsStore()
 const workspace = useWorkspaceStore()
-const RETRIEVAL_MODES: SearchRetrievalMode[] = ['auto', 'keyword', 'hybrid']
-
 const inputRef = ref<HTMLInputElement | null>(null)
+const panelRef = ref<HTMLElement | null>(null)
 const localQuery = ref('')
 const renderedAnswer = ref('')
 const pendingCloudQuery = ref('')
 const showCloudWarning = ref(false)
 const retrievalMode = ref<SearchRetrievalMode>('auto')
-const generatedAnswersEnabled = ref(true)
-
-const retrievalLabel = computed(() => {
-  const mode = search.sources[0]?.retrievalMode ?? retrievalMode.value
-  if (mode === 'hybrid') return 'Hybrid'
-  if (mode === 'keyword') return 'Keyword'
-  return 'Auto'
-})
-
-watch(
+const retainedPanelHeight = ref(0)
+const providerSetupNoticeDismissed = ref(loadProviderSetupNoticeDismissal())
+const answerRenderScheduler = createAnswerRenderScheduler(
   () => search.answer,
-  async (md) => {
-    renderedAnswer.value = md ? await render(md) : ''
+  async (markdown) => {
+    const html = markdown ? await renderAnswer(markdown, search.citations) : ''
+    if (markdown === search.answer) renderedAnswer.value = html
   }
 )
+
+const searchResults = computed(() => buildSearchResults(search.sources, search.citations))
+const showSearchResults = computed(
+  () => searchResults.value.length > 0 && (search.status === 'done' || search.status === 'error')
+)
+const showHistory = computed(
+  () => localQuery.value.trim().length === 0 && search.status === 'idle' && !search.answer
+)
+const hasConfiguredAnswerProvider = computed(() => {
+  if (!settings.state) return false
+  return settings.state.answerProvider === 'anthropic'
+    ? settings.state.hasAnthropicKey
+    : settings.state.hasOpenAIKey
+})
+const showProviderSetupNotice = computed(
+  () =>
+    settings.state?.cloudAnswersEnabled === true &&
+    !hasConfiguredAnswerProvider.value &&
+    !providerSetupNoticeDismissed.value
+)
+const visibleNotices = computed(() =>
+  search.notices.filter((notice) => notice.code !== 'provider-key-missing')
+)
+
+watch(
+  [() => search.answer, () => search.citations],
+  ([markdown]) => {
+    if (!markdown) renderedAnswer.value = ''
+    answerRenderScheduler.schedule()
+  },
+  { deep: true }
+)
+
+watch(
+  () => search.status,
+  (status) => {
+    if (status === 'done' || status === 'error') void answerRenderScheduler.flush()
+  }
+)
+
+onBeforeUnmount(() => {
+  answerRenderScheduler.dispose()
+})
 
 watch(
   () => true,
@@ -54,16 +98,12 @@ async function submit(): Promise<void> {
     return
   if (!settings.state) await settings.hydrate()
   const q = localQuery.value.trim()
-  if (
-    generatedAnswersEnabled.value &&
-    settings.state?.cloudAnswersEnabled &&
-    !hasCurrentCloudAcknowledgement()
-  ) {
+  if (settings.state?.cloudAnswersEnabled && !hasCurrentCloudAcknowledgement()) {
     pendingCloudQuery.value = q
     showCloudWarning.value = true
     return
   }
-  await search.runQuery(q, searchOptions())
+  await runSearch(q)
 }
 
 async function continueWithCloud(): Promise<void> {
@@ -79,7 +119,7 @@ async function continueWithCloud(): Promise<void> {
   })
   showCloudWarning.value = false
   pendingCloudQuery.value = ''
-  await search.runQuery(q, searchOptions())
+  await runSearch(q)
 }
 
 async function searchLocallyOnly(): Promise<void> {
@@ -87,8 +127,33 @@ async function searchLocallyOnly(): Promise<void> {
   if (!q) return
   showCloudWarning.value = false
   pendingCloudQuery.value = ''
-  generatedAnswersEnabled.value = false
-  await search.runQuery(q, searchOptions('local-only'))
+  await runSearch(q, 'local-only')
+}
+
+function loadProviderSetupNoticeDismissal(): boolean {
+  try {
+    return window.localStorage.getItem(PROVIDER_SETUP_NOTICE_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function dismissProviderSetupNotice(): void {
+  providerSetupNoticeDismissed.value = true
+  try {
+    window.localStorage.setItem(PROVIDER_SETUP_NOTICE_STORAGE_KEY, 'true')
+  } catch {
+    // The notice remains dismissed for this session if local storage is unavailable.
+  }
+}
+
+function openProviderSettings(): void {
+  emit('openSettings')
+}
+
+async function relaunchHistory(query: string): Promise<void> {
+  localQuery.value = query
+  await submit()
 }
 
 function openCitation(sourcePath: string): void {
@@ -96,15 +161,33 @@ function openCitation(sourcePath: string): void {
   void closeOverlay()
 }
 
-function formatPath(sourcePath: string, headingPath: string[]): string {
-  return headingPath.length ? `${sourcePath} › ${headingPath.join(' › ')}` : sourcePath
+function openAnswerCitation(event: MouseEvent): void {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const citationIndex = Number(
+    target.closest<HTMLElement>('[data-citation-index]')?.dataset.citationIndex
+  )
+  const citation = search.citations.find((item) => item.index === citationIndex)
+  if (citation) openCitation(citation.sourcePath)
+}
+
+function preservePanelHeight(): void {
+  const height = panelRef.value?.getBoundingClientRect().height
+  if (height) retainedPanelHeight.value = Math.ceil(height)
+}
+
+async function runSearch(
+  query: string,
+  answerMode?: SearchQueryOptions['answerMode']
+): Promise<void> {
+  preservePanelHeight()
+  await search.runQuery(query, searchOptions(answerMode))
 }
 
 function searchOptions(answerMode?: SearchQueryOptions['answerMode']): SearchQueryOptions {
-  return {
-    retrievalMode: retrievalMode.value,
-    answerMode: answerMode ?? (generatedAnswersEnabled.value ? 'settings' : 'local-only')
-  }
+  return answerMode
+    ? { retrievalMode: retrievalMode.value, answerMode }
+    : { retrievalMode: retrievalMode.value }
 }
 
 function hasCurrentCloudAcknowledgement(): boolean {
@@ -114,6 +197,52 @@ function hasCurrentCloudAcknowledgement(): boolean {
     s.cloudAnswersAcknowledgement.provider === s.answerProvider &&
     s.cloudAnswersAcknowledgement.model === s.answerModel
   )
+}
+
+async function renderAnswer(markdown: string, citations: SearchCitation[]): Promise<string> {
+  const html = await render(markdown)
+  if (citations.length === 0) return html
+
+  const citationsByIndex = new Map(citations.map((citation) => [citation.index, citation]))
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  let node = walker.nextNode()
+
+  while (node) {
+    const textNode = node as Text
+    if (!textNode.parentElement?.closest('a, button, code, pre')) textNodes.push(textNode)
+    node = walker.nextNode()
+  }
+
+  for (const textNode of textNodes) {
+    const fragments = document.createDocumentFragment()
+    const segments = textNode.textContent?.split(/(\[\d+\])/g) ?? []
+    let hasCitation = false
+
+    for (const segment of segments) {
+      const match = /^\[(\d+)\]$/.exec(segment)
+      const index = match ? Number(match[1]) : Number.NaN
+      if (!match || !citationsByIndex.has(index)) {
+        fragments.append(segment)
+        continue
+      }
+
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'answer-citation'
+      button.dataset.citationIndex = String(index)
+      button.setAttribute('aria-label', `Open cited source ${index}`)
+      button.textContent = segment
+      fragments.append(button)
+      hasCitation = true
+    }
+
+    if (hasCitation) textNode.replaceWith(fragments)
+  }
+
+  return template.innerHTML
 }
 
 async function closeOverlay(): Promise<void> {
@@ -130,132 +259,170 @@ async function closeOverlay(): Promise<void> {
     @click.self="closeOverlay"
     @keydown="onKeydown"
   >
-    <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search notes">
-      <!-- Input row -->
-      <div class="search-input-row">
-        <input
-          ref="inputRef"
-          v-model="localQuery"
-          class="search-input"
-          type="text"
-          placeholder="Ask anything about your notes…"
-          @keydown.enter="submit"
-          @keydown.esc="closeOverlay"
-        />
-        <button
-          class="search-btn"
-          :disabled="
-            !localQuery.trim() || search.status === 'searching' || search.status === 'streaming'
-          "
-          @click="submit"
-        >
-          {{ search.status === 'searching' || search.status === 'streaming' ? '…' : '↵' }}
-        </button>
-      </div>
-
-      <div class="search-controls" aria-label="Search controls">
-        <div class="segmented-control" role="radiogroup" aria-label="Retrieval mode">
+    <div
+      ref="panelRef"
+      class="search-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search notes"
+      :style="
+        search.status === 'searching' || search.status === 'streaming'
+          ? { minHeight: `${retainedPanelHeight}px` }
+          : undefined
+      "
+    >
+      <header class="search-header">
+        <div class="search-input-row">
+          <div class="search-input-shell">
+            <input
+              ref="inputRef"
+              v-model="localQuery"
+              class="search-input"
+              type="text"
+              placeholder="Ask anything about your notes…"
+              @keydown.enter="submit"
+              @keydown.esc="closeOverlay"
+            />
+            <select
+              v-model="retrievalMode"
+              class="search-mode"
+              aria-label="Search mode"
+              title="Best match uses semantic retrieval when available and falls back to keyword search."
+            >
+              <option value="auto">Best match</option>
+              <option value="keyword">Keywords only</option>
+            </select>
+          </div>
           <button
-            v-for="mode in RETRIEVAL_MODES"
-            :key="mode"
-            type="button"
-            :class="{ active: retrievalMode === mode }"
-            :aria-pressed="retrievalMode === mode"
-            @click="retrievalMode = mode"
+            class="search-btn"
+            aria-label="Run search"
+            :disabled="
+              !localQuery.trim() || search.status === 'searching' || search.status === 'streaming'
+            "
+            @click="submit"
           >
-            {{ mode === 'auto' ? 'Auto' : mode === 'keyword' ? 'Keyword' : 'Hybrid' }}
+            {{ search.status === 'searching' || search.status === 'streaming' ? '…' : '↵' }}
           </button>
         </div>
-        <label class="answer-toggle">
-          <input v-model="generatedAnswersEnabled" type="checkbox" />
-          <span>Generated answer</span>
-        </label>
-      </div>
 
-      <div v-if="showCloudWarning" class="cloud-warning" role="alertdialog" aria-live="assertive">
-        <p>
-          This is the first time Ryte will send note content outside your Mac. Ryte will send this
-          query and selected matching excerpts to your configured model provider. Local keyword
-          search remains available without sending data.
-        </p>
-        <div class="cloud-warning-actions">
-          <button type="button" @click="searchLocallyOnly">Search locally</button>
-          <button type="button" class="primary-action" @click="continueWithCloud">Continue</button>
-        </div>
-      </div>
-
-      <!-- Current result -->
-      <template v-if="search.status !== 'idle' || search.answer">
-        <div v-if="search.status === 'searching'" class="search-status">Searching…</div>
-
-        <div v-if="search.notices.length > 0" class="search-notices" aria-live="polite">
-          <p v-for="notice in search.notices" :key="notice.code" class="search-notice">
-            {{ notice.message }}
+        <div v-if="showCloudWarning" class="cloud-warning" role="alertdialog" aria-live="assertive">
+          <p>
+            This is the first time Ryte will send note content outside your Mac. Ryte will send this
+            query and selected matching excerpts to your configured model provider. Local keyword
+            search remains available without sending data.
           </p>
+          <div class="cloud-warning-actions">
+            <button type="button" @click="searchLocallyOnly">Search locally</button>
+            <button type="button" class="primary-action" @click="continueWithCloud">
+              Continue
+            </button>
+          </div>
         </div>
+      </header>
 
-        <!-- Sources found (appear as retrieval completes, before synthesis) -->
-        <div v-if="search.sources.length > 0 && search.status !== 'idle'" class="sources-section">
-          <span class="sources-label"
-            >Found {{ search.sources.length }} local source{{
-              search.sources.length !== 1 ? 's' : ''
-            }}
-            · {{ retrievalLabel }}</span
+      <main class="search-content ryte-scrollbar ryte-scrollbar--y" aria-label="Search content">
+        <!-- Current result -->
+        <template v-if="search.status !== 'idle' || search.answer">
+          <div v-if="search.status === 'searching'" class="search-status">Searching…</div>
+
+          <div v-if="visibleNotices.length > 0" class="search-notices" aria-live="polite">
+            <p v-for="notice in visibleNotices" :key="notice.code" class="search-notice">
+              {{ notice.message }}
+            </p>
+          </div>
+
+          <aside v-if="showProviderSetupNotice" class="provider-setup-notice" aria-live="polite">
+            <span
+              >No API key is set for
+              {{ settings.state?.answerProvider === 'anthropic' ? 'Anthropic' : 'OpenAI' }}.</span
+            >
+            <button type="button" @click="openProviderSettings">Set up AI</button>
+            <button
+              type="button"
+              class="provider-setup-dismiss"
+              @click="dismissProviderSetupNotice"
+            >
+              Dismiss
+            </button>
+          </aside>
+
+          <Transition name="answer-reveal">
+            <!-- eslint-disable vue/no-v-html -->
+            <div
+              v-if="renderedAnswer"
+              class="search-answer"
+              @click="openAnswerCitation"
+              v-html="renderedAnswer"
+            />
+            <!-- eslint-enable vue/no-v-html -->
+          </Transition>
+
+          <div v-if="search.status === 'error' && search.error" class="search-error">
+            {{ search.error }}
+          </div>
+
+          <section
+            v-if="search.citations.length > 0"
+            class="citation-section"
+            aria-label="Cited sources"
           >
-          <ul class="sources-list">
-            <li v-for="(s, i) in search.sources" :key="i" class="source-item">
-              <button type="button" class="source-btn" @click="openCitation(s.sourcePath)">
-                <span class="source-index">[{{ s.index }}]</span>
-                <span class="source-content">
-                  <span class="source-path">{{ formatPath(s.sourcePath, s.headingPath) }}</span>
-                  <span v-if="s.preview" class="source-preview">{{ s.preview }}</span>
-                </span>
+            <div class="section-heading">Cited sources</div>
+            <ul class="citation-list">
+              <li v-for="c in search.citations" :key="c.index">
+                <button class="citation-btn" type="button" @click="openCitation(c.sourcePath)">
+                  <span class="citation-index">[{{ c.index }}]</span>
+                  <span class="citation-content">
+                    <span class="citation-title">{{ documentTitle(c.sourcePath) }}</span>
+                    <span class="citation-path">{{ c.sourcePath }}</span>
+                    <span v-if="c.headingPath.length" class="citation-heading">
+                      {{ c.headingPath.join(' › ') }}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="showSearchResults" class="results-section" aria-label="Search results">
+            <div class="section-heading">
+              Search results
+              <span>
+                · {{ searchResults.length }} document{{ searchResults.length === 1 ? '' : 's' }}
+              </span>
+            </div>
+            <ul class="results-list">
+              <li v-for="result in searchResults" :key="result.sourcePath">
+                <button type="button" class="result-btn" @click="openCitation(result.sourcePath)">
+                  <span class="result-title">{{ result.title }}</span>
+                  <span class="result-path">{{ result.sourcePath }}</span>
+                  <span v-if="result.headingPath.length" class="result-heading">
+                    {{ result.headingPath.join(' › ') }}
+                  </span>
+                  <span class="result-preview">{{ result.preview }}</span>
+                  <span v-if="result.matchCount > 0" class="result-matches">
+                    {{ result.matchCount }} match{{ result.matchCount === 1 ? '' : 'es' }}
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </section>
+        </template>
+
+        <!-- Local search history -->
+        <div v-if="showHistory && search.history.length > 0" class="history-section">
+          <div class="history-header">
+            <div class="history-label">Search history</div>
+            <button class="history-clear" type="button" @click="search.clearHistory">Clear</button>
+          </div>
+          <ul class="history-list">
+            <li v-for="(entry, i) in search.history" :key="i">
+              <button type="button" class="history-entry" @click="relaunchHistory(entry.query)">
+                {{ entry.query }}
               </button>
             </li>
           </ul>
         </div>
-
-        <!-- eslint-disable vue/no-v-html -->
-        <div
-          v-if="renderedAnswer"
-          class="search-answer ryte-scrollbar ryte-scrollbar--y"
-          v-html="renderedAnswer"
-        />
-        <!-- eslint-enable vue/no-v-html -->
-
-        <div v-if="search.status === 'error' && search.error" class="search-error">
-          {{ search.error }}
-        </div>
-
-        <ol v-if="search.citations.length > 0" class="citation-list">
-          <li v-for="c in search.citations" :key="c.index">
-            <button class="citation-btn" @click="openCitation(c.sourcePath)">
-              <span class="citation-index">[{{ c.index }}]</span>
-              <span class="citation-path">{{ formatPath(c.sourcePath, c.headingPath) }}</span>
-            </button>
-          </li>
-        </ol>
-      </template>
-
-      <!-- Local search history -->
-      <div v-if="search.history.length > 0" class="history-section">
-        <div class="history-header">
-          <div class="history-label">Search history</div>
-          <button class="history-clear" type="button" @click="search.clearHistory">Clear</button>
-        </div>
-        <div v-for="(entry, i) in search.history" :key="i" class="history-entry">
-          <div class="history-query">{{ entry.query }}</div>
-          <div class="history-answer ryte-scrollbar ryte-scrollbar--y">{{ entry.answer }}</div>
-          <ol v-if="entry.citations.length > 0" class="citation-list citation-list--compact">
-            <li v-for="c in entry.citations" :key="c.index">
-              <button class="citation-btn" @click="openCitation(c.sourcePath)">
-                <span class="citation-index">[{{ c.index }}]</span>
-                <span class="citation-path">{{ formatPath(c.sourcePath, c.headingPath) }}</span>
-              </button>
-            </li>
-          </ol>
-        </div>
-      </div>
+      </main>
     </div>
   </div>
 </template>
@@ -264,133 +431,147 @@ async function closeOverlay(): Promise<void> {
 .search-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
   z-index: 200;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: 10vh;
-  overflow-y: auto;
+  overflow: hidden;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .search-panel {
-  width: min(700px, 92vw);
-  background: var(--color-background-soft);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 1rem;
+  width: min(760px, 92vw);
+  min-height: min(34rem, calc(100vh - 2rem));
+  max-height: calc(100vh - 2rem);
+  margin: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  background: var(--color-background-soft);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  margin-bottom: 2rem;
+}
+
+.search-header {
+  flex: 0 0 auto;
+  padding: 1.25rem 1.25rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.search-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0.9rem 1.25rem 1.25rem;
+}
+
+.search-input-row,
+.search-input-shell {
+  display: flex;
+  min-width: 0;
 }
 
 .search-input-row {
-  display: flex;
   gap: 0.5rem;
+}
+
+.search-input-shell {
+  flex: 1;
+  align-items: center;
+  background: var(--color-background-mute);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+}
+
+.search-input-shell:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(45, 108, 223, 0.2);
 }
 
 .search-input {
   flex: 1;
-  background: var(--color-background-mute);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
+  min-width: 0;
+  padding: 0.7rem 0.85rem;
   color: var(--color-text);
-  font-size: 1rem;
-  padding: 0.55rem 0.75rem;
+  background: transparent;
+  border: 0;
   outline: none;
   font-family: inherit;
+  font-size: 1rem;
 }
 
-.search-input:focus {
-  border-color: rgba(255, 255, 255, 0.28);
+.search-mode {
+  min-height: 2rem;
+  margin-right: 0.4rem;
+  padding: 0 1.6rem 0 0.55rem;
+  color: var(--ev-c-text-2);
+  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.search-mode:focus-visible,
+.search-btn:focus-visible,
+.history-entry:focus-visible,
+.result-btn:focus-visible,
+.citation-btn:focus-visible,
+.cloud-warning button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .search-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  color: var(--color-text);
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.85rem;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 7px;
   cursor: pointer;
   font-size: 1rem;
-  padding: 0.5rem 0.9rem;
+  font-weight: 650;
 }
 
 .search-btn:disabled {
-  opacity: 0.35;
+  color: var(--ev-c-text-3);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
   cursor: default;
 }
 
 .search-btn:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
-.search-controls {
-  align-items: center;
-  display: flex;
-  gap: 0.75rem;
-  justify-content: space-between;
-}
-
-.segmented-control {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  display: inline-flex;
-  overflow: hidden;
-}
-
-.segmented-control button {
-  background: transparent;
-  border: none;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--ev-c-text-3);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.76rem;
-  min-width: 4.6rem;
-  padding: 0.38rem 0.55rem;
-}
-
-.segmented-control button:last-child {
-  border-right: none;
-}
-
-.segmented-control button.active {
-  background: rgba(255, 255, 255, 0.11);
-  color: var(--color-text);
-}
-
-.answer-toggle {
-  align-items: center;
-  color: var(--ev-c-text-2);
-  display: inline-flex;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-  white-space: nowrap;
-}
-
-.answer-toggle input {
-  height: 0.9rem;
-  width: 0.9rem;
-}
-
-.cloud-warning {
+.cloud-warning,
+.search-notice {
+  color: #ffd9a3;
   background: rgba(255, 184, 77, 0.1);
   border: 1px solid rgba(255, 184, 77, 0.24);
   border-radius: 6px;
-  color: #ffd9a3;
+}
+
+.cloud-warning {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
   padding: 0.75rem;
 }
 
-.cloud-warning p {
+.cloud-warning p,
+.search-notice {
+  margin: 0;
   font-size: 0.84rem;
   line-height: 1.5;
-  margin: 0;
 }
 
 .cloud-warning-actions {
@@ -400,19 +581,60 @@ async function closeOverlay(): Promise<void> {
 }
 
 .cloud-warning button {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  color: var(--color-text);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 4px;
-  color: var(--color-text);
   cursor: pointer;
   font-family: inherit;
   font-size: 0.82rem;
-  padding: 0.35rem 0.7rem;
 }
 
 .cloud-warning .primary-action {
-  background: #2d6cdf;
-  border-color: #2d6cdf;
+  color: var(--color-primary-text);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.provider-setup-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  padding: 0.55rem 0.65rem;
+  color: var(--ev-c-text-2);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.provider-setup-notice button {
+  padding: 0.2rem 0;
+  color: #b8d2ff;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.provider-setup-notice button:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.provider-setup-notice .provider-setup-dismiss {
+  margin-left: auto;
+  color: var(--ev-c-text-3);
+  font-weight: 400;
+}
+
+.provider-setup-notice button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .search-status {
@@ -427,251 +649,290 @@ async function closeOverlay(): Promise<void> {
 }
 
 .search-notice {
-  background: rgba(255, 184, 77, 0.08);
-  border: 1px solid rgba(255, 184, 77, 0.18);
-  border-radius: 6px;
-  color: #ffd9a3;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  margin: 0;
   padding: 0.5rem 0.65rem;
-}
-
-.sources-section {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  padding: 0.6rem 0.75rem;
-}
-
-.sources-label {
-  color: var(--ev-c-text-3);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  display: block;
-  margin-bottom: 0.35rem;
-}
-
-.sources-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.source-item {
-  margin: 0;
-}
-
-.source-btn {
-  align-items: flex-start;
-  background: transparent;
-  border: none;
-  color: var(--ev-c-text-2);
-  cursor: pointer;
-  display: flex;
-  font: inherit;
-  font-size: 0.78rem;
-  gap: 0.45rem;
-  padding: 0.25rem 0.3rem;
-  text-align: left;
-  width: 100%;
-}
-
-.source-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-text);
-}
-
-.source-index {
-  color: var(--ev-c-text-3);
-  flex-shrink: 0;
-}
-
-.source-content {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.source-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-preview {
-  color: var(--ev-c-text-3);
-  display: -webkit-box;
-  line-height: 1.35;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .search-answer {
   color: var(--color-text);
-  font-size: 0.9rem;
-  line-height: 1.65;
-  max-height: 50vh;
-  overflow-y: auto;
+  font-size: 0.94rem;
+  line-height: 1.7;
+}
+
+.answer-reveal-enter-active {
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.answer-reveal-enter-from {
+  opacity: 0;
+  transform: translateY(0.35rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .answer-reveal-enter-active {
+    transition: none;
+  }
 }
 
 .search-answer :deep(p) {
-  margin: 0.4rem 0;
+  margin: 0.45rem 0;
 }
-.search-answer :deep(ul),
-.search-answer :deep(ol) {
+
+.search-answer :deep(h2),
+.search-answer :deep(h3) {
+  margin: 1.1rem 0 0.4rem;
+  color: var(--ev-c-text-1);
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.search-answer :deep(ul) {
+  margin: 0.45rem 0;
   padding-left: 1.25rem;
-  margin: 0.4rem 0;
+  list-style: disc;
 }
+
+.search-answer :deep(ol) {
+  margin: 0.45rem 0;
+  padding-left: 1.25rem;
+}
+
 .search-answer :deep(li) {
-  margin: 0.2rem 0;
+  margin: 0.25rem 0;
 }
+
 .search-answer :deep(strong) {
   color: var(--ev-c-text-1);
-  font-weight: 600;
+  font-weight: 650;
 }
+
 .search-answer :deep(code) {
-  font-size: 0.85em;
+  padding: 0.1em 0.3em;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
-  padding: 0.1em 0.3em;
+  font-size: 0.85em;
+}
+
+.search-answer :deep(.answer-citation) {
+  margin: 0 0.08rem;
+  padding: 0.04rem 0.28rem;
+  color: #b8d2ff;
+  background: rgba(45, 108, 223, 0.16);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+
+.search-answer :deep(.answer-citation:hover) {
+  color: #ffffff;
+  background: var(--color-primary);
 }
 
 .search-error {
-  color: #f87171;
+  color: #ff9494;
   font-size: 0.875rem;
 }
 
-.citation-list {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding-top: 0.5rem;
+.citation-section,
+.results-section {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  list-style: none;
+  gap: 0.45rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  padding-top: 0.8rem;
 }
 
-.citation-list--compact {
-  border-top: none;
-  padding-top: 0.25rem;
-  margin-top: 0.25rem;
-}
-
-.citation-btn {
-  background: none;
-  border: none;
-  color: var(--ev-c-text-2);
-  cursor: pointer;
+.history-section {
   display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  font-family: inherit;
-  padding: 0.2rem 0.3rem;
-  border-radius: 4px;
-  text-align: left;
-  width: 100%;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
-.citation-btn:hover {
+.section-heading,
+.history-label {
+  color: var(--ev-c-text-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.section-heading span {
+  color: var(--ev-c-text-3);
+  font-weight: 400;
+}
+
+.citation-list,
+.results-list,
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0 -0.35rem;
+  padding: 0;
+}
+
+.citation-btn,
+.result-btn,
+.history-entry {
+  width: 100%;
+  color: var(--ev-c-text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.citation-btn,
+.result-btn {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.55rem;
+  padding: 0.42rem 0.35rem;
+}
+
+.citation-btn:hover,
+.result-btn:hover,
+.history-entry:hover {
   color: var(--color-text);
   background: rgba(255, 255, 255, 0.05);
 }
 
 .citation-index {
+  grid-row: span 3;
   color: var(--ev-c-text-3);
-  flex-shrink: 0;
+  font-size: 0.78rem;
 }
 
-.citation-path {
+.citation-content {
+  display: grid;
+  gap: 0.06rem;
+  min-width: 0;
+}
+
+.citation-title,
+.result-title {
+  color: var(--ev-c-text-1);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.citation-path,
+.result-path,
+.citation-heading,
+.result-heading,
+.result-preview,
+.result-matches {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+.citation-path,
+.result-path {
+  color: var(--ev-c-text-3);
+  font-size: 0.76rem;
 }
 
-.history-label {
+.citation-heading,
+.result-heading {
   color: var(--ev-c-text-3);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.result-btn {
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 0.08rem;
+}
+
+.result-title,
+.result-path,
+.result-heading,
+.result-preview {
+  grid-column: 1;
+}
+
+.result-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ev-c-text-2);
+  font-size: 0.79rem;
+  line-height: 1.4;
+  text-overflow: clip;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.result-matches {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  color: var(--ev-c-text-3);
+  font-size: 0.72rem;
 }
 
 .history-header {
-  align-items: center;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
 }
 
 .history-clear {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--ev-c-text-2);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
-  color: var(--ev-c-text-3);
   cursor: pointer;
   font: inherit;
   font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
 }
 
 .history-clear:hover {
-  background: rgba(255, 255, 255, 0.08);
   color: var(--color-text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .history-entry {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  padding: 0.6rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.history-query {
-  color: var(--ev-c-text-2);
-  font-size: 0.825rem;
-  font-weight: 500;
-}
-
-.history-answer {
-  color: var(--ev-c-text-3);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  max-height: 8rem;
-  overflow-y: auto;
+  min-height: 2rem;
+  padding: 0.35rem;
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 560px) {
-  .search-controls {
-    align-items: flex-start;
-    flex-direction: column;
+  .search-backdrop {
+    padding: 0.5rem;
   }
 
-  .segmented-control {
+  .search-panel {
     width: 100%;
+    max-height: calc(100vh - 1rem);
   }
 
-  .segmented-control button {
-    flex: 1;
-    min-width: 0;
+  .search-header {
+    padding: 1rem 1rem 0.7rem;
+  }
+
+  .search-content {
+    padding: 0.75rem 1rem 1rem;
+  }
+
+  .search-input-row {
+    align-items: stretch;
+  }
+
+  .search-mode {
+    max-width: 5.4rem;
   }
 }
 </style>

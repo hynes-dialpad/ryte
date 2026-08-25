@@ -159,4 +159,29 @@ describe('Indexer', () => {
     const summary = await indexer.indexAll()
     expect(summary).toEqual({ filesIndexed: 0, chunksIndexed: 0 })
   })
+
+  it('yields to the event loop between bounded local-only indexing batches', async () => {
+    for (let index = 0; index < 40; index += 1) {
+      writeFileSync(join(notesRoot, `local-${index}.md`), `# Local ${index}\n\nbody\n`)
+    }
+
+    let yieldedDuringIndexing = false
+    const indexer = new Indexer({
+      notesRoot,
+      embedder: null,
+      vectorStore: store,
+      indexState: state
+    })
+
+    await indexer.indexAll({
+      onProgress: (progress) => {
+        if (progress.phase !== 'indexing' || progress.filesDone !== 0) return
+        setImmediate(() => {
+          yieldedDuringIndexing = true
+        })
+      }
+    })
+
+    expect(yieldedDuringIndexing).toBe(true)
+  })
 })

@@ -1,27 +1,36 @@
 import { randomUUID } from 'node:crypto'
-import { realpath } from 'node:fs/promises'
-import { extname, relative, resolve } from 'node:path'
+import { readFile, realpath, stat } from 'node:fs/promises'
+import { basename, extname, relative, resolve, sep } from 'node:path'
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from 'electron'
 
 import { refreshAppMenu } from './app-menu'
+import { taskFactsService } from './facts/task-facts-service'
 import { indexerService } from './indexing/indexer-service'
 import { walkNotes } from './indexing/walker'
 import { watcher } from './indexing/watcher'
 import {
   assertValidAbsolutePath,
+  assertValidFileRenameInput,
   assertValidProviderId,
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSourceFileInput,
   assertValidSettingsPatch,
+  assertValidTaskListInput,
+  assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFileRefInput,
   assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceLibraryPatch,
   assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
+  assertValidWorkspaceSetOutlineWidthInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
@@ -32,28 +41,107 @@ import {
   readFileSafe,
   readSourceFileSafe,
   readSourceTitleSafe,
-  resolveAndAssertUnderRoot,
   resolveSourcePathUnderRoot
 } from './viewer/file-reader'
-import { listFileCatalog } from './viewer/file-catalog'
+import { fileCatalogEntryFor, listFileCatalog } from './viewer/file-catalog'
 import { sourcePathForViewerChange } from './viewer/source-change-path'
 import { viewerWatcher } from './viewer/viewer-watcher'
 import { workspaceStore } from './workspace/workspace-store'
+import { type FileCatalogChangeEvent } from '../shared/files'
+import { isWorkspaceSourceFileRef, type WorkspaceFileRef } from '../shared/workspace'
 
 let searchService: SearchService | null = null
 let watchedViewerSourcePath: string | null = null
+let watchedViewerTabId: string | null = null
 
-async function sourcePathForPickedMarkdownFile(
-  absPath: string,
-  notesRoot: string
-): Promise<string> {
-  const safePath = await resolveAndAssertUnderRoot(absPath, notesRoot)
+interface ActiveSearchRequest {
+  owner: WebContents
+  service: SearchService
+  onOwnerDestroyed: () => void
+}
+
+const activeSearchRequests = new Map<string, ActiveSearchRequest>()
+
+function clearActiveSearchRequest(requestId: string): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  activeRequest.owner.removeListener('destroyed', activeRequest.onOwnerDestroyed)
+  activeSearchRequests.delete(requestId)
+}
+
+function cancelActiveSearchRequest(requestId: string): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  activeRequest.service.cancel(requestId)
+  clearActiveSearchRequest(requestId)
+}
+
+function cancelAllActiveSearchRequests(): void {
+  for (const requestId of [...activeSearchRequests.keys()]) {
+    cancelActiveSearchRequest(requestId)
+  }
+}
+
+function registerActiveSearchRequest(
+  requestId: string,
+  owner: WebContents,
+  service: SearchService
+): void {
+  const onOwnerDestroyed = (): void => cancelActiveSearchRequest(requestId)
+  activeSearchRequests.set(requestId, { owner, service, onOwnerDestroyed })
+  owner.once('destroyed', onOwnerDestroyed)
+}
+
+function sendSearchEvent(
+  requestId: string,
+  channel: string,
+  payload: Record<string, unknown>
+): void {
+  const activeRequest = activeSearchRequests.get(requestId)
+  if (!activeRequest) return
+  if (activeRequest.owner.isDestroyed()) {
+    cancelActiveSearchRequest(requestId)
+    return
+  }
+  activeRequest.owner.send(channel, payload)
+}
+
+async function resolveExternalMarkdownFile(absPath: string): Promise<string> {
+  const safePath = await realpath(resolve(absPath))
   if (extname(safePath).toLowerCase() !== '.md') {
     throw new Error('Selected file must be a Markdown file')
   }
 
+  const fileStat = await stat(safePath)
+  if (!fileStat.isFile()) throw new Error(`Workspace file not found: ${absPath}`)
+  return safePath
+}
+
+async function fileRefForPickedMarkdownFile(
+  absPath: string,
+  notesRoot: string
+): Promise<WorkspaceFileRef> {
+  const safePath = await resolveExternalMarkdownFile(absPath)
   const resolvedRoot = await realpath(resolve(notesRoot))
-  return relative(resolvedRoot, safePath)
+  if (safePath === resolvedRoot || safePath.startsWith(resolvedRoot + sep)) {
+    return { sourcePath: relative(resolvedRoot, safePath).split(sep).join('/') }
+  }
+  return { externalPath: safePath }
+}
+
+async function fileRefForWorkspaceTab(tabId: string): Promise<WorkspaceFileRef> {
+  const fileRef = workspaceStore.fileRefForTab(tabId)
+  if (!fileRef) throw new Error('Workspace tab not found')
+  if (isWorkspaceSourceFileRef(fileRef)) return fileRef
+  return { externalPath: await resolveExternalMarkdownFile(fileRef.externalPath) }
+}
+
+async function readWorkspaceTabFile(tabId: string, notesRoot: string): Promise<string> {
+  const fileRef = await fileRefForWorkspaceTab(tabId)
+  if (isWorkspaceSourceFileRef(fileRef)) {
+    return readSourceFileSafe(fileRef.sourcePath, notesRoot)
+  }
+  return readFile(fileRef.externalPath, 'utf8')
 }
 
 function settingsPatchRequiresIndexerRestart(
@@ -81,8 +169,9 @@ function getOrCreateSearchService(): SearchService | null {
 }
 
 /**
- * Register all IPC handlers. Call once during app.whenReady() after
- * indexer-service is initialized.
+ * Register all IPC handlers once during app.whenReady(). Search and indexing
+ * handlers preserve their not-ready responses while the index initializes
+ * after the first window is visible.
  */
 export function registerIpc(): void {
   ipcMain.handle('app:get-version', () => app.getVersion())
@@ -99,8 +188,40 @@ export function registerIpc(): void {
     return workspaceStore.updateWindow(assertValidWorkspaceWindowPatch(patch))
   })
 
-  ipcMain.handle('workspace:open-file', (_event, input: unknown) => {
-    const next = workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+  ipcMain.handle('workspace:update-library', (_event, patch: unknown) => {
+    return workspaceStore.updateLibrary(assertValidWorkspaceLibraryPatch(patch))
+  })
+
+  ipcMain.handle('workspace:open-file', async (_event, input: unknown) => {
+    const next = await workspaceStore.openFile(assertValidWorkspaceOpenFileInput(input))
+    refreshAppMenu()
+    return next
+  })
+
+  ipcMain.handle('workspace:open-recent-file', async (_event, input: unknown) => {
+    const next = await workspaceStore.openRecentFile(assertValidWorkspaceOpenRecentFileInput(input))
+    refreshAppMenu()
+    return next
+  })
+
+  ipcMain.handle('workspace:open-native-file', async (event) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+      : await dialog.showOpenDialog({
+          defaultPath: notesRoot,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          properties: ['openFile']
+        })
+    if (result.canceled || result.filePaths.length === 0) return workspaceStore.publicState()
+
+    const fileRef = await fileRefForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
+    const next = await workspaceStore.openPickedFile(fileRef)
     refreshAppMenu()
     return next
   })
@@ -117,8 +238,8 @@ export function registerIpc(): void {
     return workspaceStore.updateTabViewMode(assertValidWorkspaceUpdateTabViewModeInput(input))
   })
 
-  ipcMain.handle('workspace:record-recent', (_event, input: unknown) => {
-    const next = workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
+  ipcMain.handle('workspace:record-recent', async (_event, input: unknown) => {
+    const next = await workspaceStore.recordRecent(assertValidWorkspaceRecordRecentInput(input))
     refreshAppMenu()
     return next
   })
@@ -127,8 +248,12 @@ export function registerIpc(): void {
     return workspaceStore.setOutlineCollapsed(assertValidWorkspaceSetOutlineCollapsedInput(input))
   })
 
-  ipcMain.handle('workspace:prune-missing-file-refs', () => {
-    const next = workspaceStore.pruneMissingFileRefs()
+  ipcMain.handle('workspace:set-outline-width', (_event, input: unknown) => {
+    return workspaceStore.setOutlineWidth(assertValidWorkspaceSetOutlineWidthInput(input))
+  })
+
+  ipcMain.handle('workspace:prune-missing-file-refs', async () => {
+    const next = await workspaceStore.pruneMissingFileRefs()
     refreshAppMenu()
     return next
   })
@@ -141,10 +266,11 @@ export function registerIpc(): void {
       settingsPatchRequiresIndexerRestart(validatedPatch, previousSettings, settingsStore.load())
     ) {
       // Re-init indexer and restart watcher so new notesRoot / embedding settings take effect.
+      await watcher.stop()
+      cancelAllActiveSearchRequests()
       indexerService.close()
       searchService = null // vectorStore is replaced; recreate on next search
       const ready = indexerService.init()
-      await watcher.stop()
       if (ready) {
         watcher.start(settingsStore.load().notesRoot)
       }
@@ -195,8 +321,7 @@ export function registerIpc(): void {
         })
     if (result.canceled || result.filePaths.length === 0) return null
 
-    const sourcePath = await sourcePathForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
-    return { sourcePath }
+    return fileRefForPickedMarkdownFile(result.filePaths[0]!, notesRoot)
   })
 
   ipcMain.handle('indexer:get-status', () => indexerService.getStatus())
@@ -230,6 +355,80 @@ export function registerIpc(): void {
     return listFileCatalog(notesRoot)
   })
 
+  ipcMain.handle('files:copy-content', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    const path = await workspaceStore.resolveFilePath(file)
+    clipboard.writeText(await readFile(path, 'utf8'))
+  })
+
+  ipcMain.handle('files:copy-path', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    clipboard.writeText(await workspaceStore.resolveFilePath(file))
+  })
+
+  ipcMain.handle('files:show-in-finder', async (_event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    shell.showItemInFolder(await workspaceStore.resolveFilePath(file))
+  })
+
+  ipcMain.handle('files:rename', async (_event, input: unknown) => {
+    const result = await workspaceStore.renameFile(assertValidFileRenameInput(input))
+    refreshAppMenu()
+    return result
+  })
+
+  ipcMain.handle('files:move-to-trash', async (event, input: unknown) => {
+    const file = assertValidWorkspaceFileRefInput(input)
+    const path = await workspaceStore.resolveFilePath(file)
+    const options = {
+      type: 'warning' as const,
+      buttons: ['Move to Trash', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      message: `Move "${basename(path)}" to Trash?`,
+      detail: 'The file can be recovered from the Trash.'
+    }
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const confirmation = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options)
+    if (confirmation.response !== 0) {
+      return { trashed: false, workspace: workspaceStore.publicState() }
+    }
+
+    await shell.trashItem(path)
+    const workspace = workspaceStore.removeFileRef(file)
+    refreshAppMenu()
+    return { trashed: true, workspace }
+  })
+
+  ipcMain.handle('tasks:list', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    return taskFactsService.list(notesRoot, assertValidTaskListInput(input))
+  })
+
+  ipcMain.handle('tasks:refresh', async () => {
+    const notesRoot = settingsStore.load().notesRoot
+    const snapshot = await taskFactsService.refresh(notesRoot)
+    return {
+      notesRoot: snapshot.notesRoot,
+      taskCount: snapshot.tasks.length,
+      refreshedAt: snapshot.refreshedAt
+    }
+  })
+
+  ipcMain.handle('tasks:toggle', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const result = await taskFactsService.toggle(notesRoot, assertValidTaskToggleInput(input))
+    if (result.ok) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('tasks:changed')
+      }
+    }
+    return result
+  })
+
   ipcMain.handle('files:read', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     return readFileSafe(assertValidAbsolutePath(absPath), notesRoot)
@@ -241,6 +440,12 @@ export function registerIpc(): void {
     return readSourceFileSafe(sourcePath, notesRoot)
   })
 
+  ipcMain.handle('files:read-workspace-tab', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { tabId } = assertValidWorkspaceTabFileInput(input)
+    return readWorkspaceTabFile(tabId, notesRoot)
+  })
+
   ipcMain.handle('files:read-source-title', async (_event, input: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
     const { sourcePath } = assertValidSourceFileInput(input)
@@ -249,8 +454,9 @@ export function registerIpc(): void {
 
   ipcMain.handle('files:watch', async (_event, absPath: unknown) => {
     const notesRoot = settingsStore.load().notesRoot
-    const safePath = await resolveAndAssertUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
+    const safePath = await resolveSourcePathUnderRoot(assertValidAbsolutePath(absPath), notesRoot)
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.watch(safePath)
   })
 
@@ -259,12 +465,31 @@ export function registerIpc(): void {
     const { sourcePath } = assertValidSourceFileInput(input)
     const safePath = await resolveSourcePathUnderRoot(sourcePath, notesRoot)
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.watch(safePath)
     watchedViewerSourcePath = sourcePath
   })
 
+  ipcMain.handle('files:watch-workspace-tab', async (_event, input: unknown) => {
+    const notesRoot = settingsStore.load().notesRoot
+    const { tabId } = assertValidWorkspaceTabFileInput(input)
+    const fileRef = await fileRefForWorkspaceTab(tabId)
+    const safePath = isWorkspaceSourceFileRef(fileRef)
+      ? await resolveSourcePathUnderRoot(fileRef.sourcePath, notesRoot)
+      : fileRef.externalPath
+
+    watchedViewerSourcePath = null
+    watchedViewerTabId = null
+    await viewerWatcher.watch(safePath)
+    watchedViewerTabId = tabId
+    if (isWorkspaceSourceFileRef(fileRef)) {
+      watchedViewerSourcePath = fileRef.sourcePath
+    }
+  })
+
   ipcMain.handle('files:unwatch', async () => {
     watchedViewerSourcePath = null
+    watchedViewerTabId = null
     await viewerWatcher.stop()
   })
 
@@ -275,6 +500,11 @@ export function registerIpc(): void {
     if (sourcePath) {
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send('viewer:source-changed', sourcePath)
+      }
+    }
+    if (watchedViewerTabId) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('viewer:workspace-tab-changed', watchedViewerTabId)
       }
     }
     for (const win of BrowserWindow.getAllWindows()) {
@@ -288,47 +518,84 @@ export function registerIpc(): void {
     }
   })
 
-  watcher.onCatalogChanged(() => {
+  watcher.onCatalogChanged((event) => {
+    const notesRoot = settingsStore.load().notesRoot
+    // Settings update their persisted root before the previous watcher has
+    // finished closing. Do not resolve a final old-root event against the new
+    // corpus root.
+    if (event.notesRoot !== notesRoot) return
+
+    taskFactsService.markStale()
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('files:catalog-changed')
+      win.webContents.send('tasks:changed')
     }
+
+    void (async () => {
+      let catalogChange: FileCatalogChangeEvent | undefined
+      if (event.type === 'remove') {
+        catalogChange = {
+          type: 'remove',
+          sourcePath: relative(notesRoot, event.path).split(sep).join('/')
+        }
+      } else {
+        try {
+          catalogChange = {
+            type: 'upsert',
+            file: await fileCatalogEntryFor(notesRoot, event.path)
+          }
+        } catch {
+          // A rapid follow-up rename/delete can invalidate an upsert before it is read.
+          // Preserve the previous full-refresh fallback for that exceptional race.
+        }
+      }
+
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('files:catalog-changed', catalogChange)
+      }
+    })()
   })
 
-  function broadcast(channel: string, payload: Record<string, unknown>): void {
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(channel, payload)
-    }
-  }
-
-  ipcMain.handle('search:query', (_, rawQuery: unknown, rawOptions: unknown) => {
+  ipcMain.handle('search:query', (event, rawQuery: unknown, rawOptions: unknown) => {
     const query = assertValidSearchQuery(rawQuery)
     const options = assertValidSearchOptions(rawOptions)
     const svc = getOrCreateSearchService()
     if (!svc) {
-      broadcast('search:error', { requestId: '', error: 'Indexer not initialized' })
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('search:error', { requestId: '', error: 'Indexer not initialized' })
+      }
       return null
     }
     const requestId = randomUUID()
+    registerActiveSearchRequest(requestId, event.sender, svc)
     setImmediate(() => {
-      void svc.search(
-        query,
-        requestId,
-        {
-          onToken: (token) => broadcast('search:stream-token', { requestId, token }),
-          onSources: (sources) => broadcast('search:sources', { requestId, sources }),
-          onCitation: (citation) => broadcast('search:citation', { requestId, ...citation }),
-          onNotice: (notice) => broadcast('search:notice', { requestId, notice }),
-          onDone: () => broadcast('search:done', { requestId }),
-          onError: (error) => broadcast('search:error', { requestId, error })
-        },
-        options
-      )
+      void svc
+        .search(
+          query,
+          requestId,
+          {
+            onToken: (token) =>
+              sendSearchEvent(requestId, 'search:stream-token', { requestId, token }),
+            onSources: (sources) =>
+              sendSearchEvent(requestId, 'search:sources', { requestId, sources }),
+            onCitation: (citation) =>
+              sendSearchEvent(requestId, 'search:citation', { requestId, ...citation }),
+            onNotice: (notice) =>
+              sendSearchEvent(requestId, 'search:notice', { requestId, notice }),
+            onDone: () => sendSearchEvent(requestId, 'search:done', { requestId }),
+            onError: (error) => sendSearchEvent(requestId, 'search:error', { requestId, error })
+          },
+          options
+        )
+        .finally(() => clearActiveSearchRequest(requestId))
     })
     return requestId
   })
 
-  ipcMain.handle('search:cancel', (_, requestId: unknown) => {
-    const svc = getOrCreateSearchService()
-    svc?.cancel(assertValidRequestId(requestId))
+  ipcMain.handle('search:cancel', (event, requestId: unknown) => {
+    const validRequestId = assertValidRequestId(requestId)
+    const activeRequest = activeSearchRequests.get(validRequestId)
+    if (activeRequest?.owner === event.sender) {
+      cancelActiveSearchRequest(validRequestId)
+    }
   })
 }

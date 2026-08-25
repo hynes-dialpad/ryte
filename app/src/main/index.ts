@@ -15,12 +15,20 @@ import { safeWindowBounds, workAreasFromDisplays } from './window-state'
 import { MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from '../shared/workspace'
 
 const macOSVibrancyMaterial = 'hud' as const
+let hasInitializedIndexing = false
+
+// An explicit profile override keeps automated launch verification isolated
+// from a developer's normal local workspace. It must be applied before
+// `whenReady`, because the settings, workspace, and index paths all derive
+// from Electron's userData location.
+const userDataDirOverride = process.env['RYTE_USER_DATA_DIR']
+if (userDataDirOverride) app.setPath('userData', userDataDirOverride)
 
 // Set early so macOS notifications show "ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
 app.setName('ryte')
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const rendererUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
   const rendererOrigin = rendererUrl ? originForUrl(rendererUrl) : null
   const allowedAppOrigins = new Set(rendererOrigin ? [rendererOrigin] : [])
@@ -79,6 +87,8 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 function installWindowStatePersistence(window: BrowserWindow): void {
@@ -109,22 +119,32 @@ function installWindowStatePersistence(window: BrowserWindow): void {
   window.on('close', persistNow)
 }
 
+function reportStartupFailure(error: unknown): void {
+  console.error('Ryte failed during startup.', error)
+  app.exit(1)
+}
+
+function initializeIndexingAfterFirstPaint(): void {
+  if (hasInitializedIndexing) return
+  const ready = indexerService.init()
+  if (!ready) return
+  hasInitializedIndexing = true
+  watcher.start(settingsStore.load().notesRoot)
+  void indexerService.triggerReindex()
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+function startApp(): void {
   electronApp.setAppUserModelId('com.joshuahynes.ryte')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  const ready = indexerService.init()
   registerIpc()
   installAppMenu()
-  if (ready) {
-    watcher.start(settingsStore.load().notesRoot)
-  }
 
   let lastNotifiedPhase: string | null = null
   indexerService.subscribe((status) => {
@@ -139,17 +159,24 @@ app.whenReady().then(() => {
     lastNotifiedPhase = status.phase
   })
 
-  createWindow()
-  if (ready) {
-    void indexerService.triggerReindex()
-  }
+  const mainWindow = createWindow()
+  mainWindow.once('ready-to-show', () => {
+    setImmediate(initializeIndexingAfterFirstPaint)
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const window = createWindow()
+      window.once('ready-to-show', () => {
+        setImmediate(initializeIndexingAfterFirstPaint)
+      })
+    }
   })
-})
+}
+
+void app.whenReady().then(startApp).catch(reportStartupFailure)
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

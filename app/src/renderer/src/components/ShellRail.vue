@@ -1,23 +1,16 @@
 <script setup lang="ts">
-import type { WorkspaceSidebarMode } from '../../../shared/workspace'
-import IconHome from './icons/IconHome.vue'
-import IconLibrary from './icons/IconLibrary.vue'
-import IconPlus from './icons/IconPlus.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconSettings from './icons/IconSettings.vue'
 import IconSidebar from './icons/IconSidebar.vue'
 import IconSidebarOpen from './icons/IconSidebarOpen.vue'
 
 const props = defineProps<{
-  activeSidebar: WorkspaceSidebarMode
   sidebarCollapsed: boolean
   showShortcutBadges: boolean
 }>()
 
 const emit = defineEmits<{
   toggleSidebar: []
-  selectSidebar: [mode: WorkspaceSidebarMode]
-  openFile: []
   openSearch: []
   openSettings: []
 }>()
@@ -30,29 +23,6 @@ function sidebarToggleLabel(): string {
 <template>
   <nav class="shell-rail" aria-label="Workspace navigation">
     <div class="rail-top">
-      <button
-        v-if="sidebarCollapsed"
-        type="button"
-        class="rail-item"
-        aria-label="Search"
-        title="Search"
-        aria-keyshortcuts="Meta+K"
-        @click="emit('openSearch')"
-      >
-        <IconSearch />
-      </button>
-
-      <button
-        type="button"
-        class="rail-item"
-        aria-label="Open file"
-        title="Open file"
-        aria-keyshortcuts="Meta+P"
-        @click="emit('openFile')"
-      >
-        <IconPlus />
-      </button>
-
       <button
         type="button"
         class="rail-item"
@@ -71,43 +41,27 @@ function sidebarToggleLabel(): string {
       <button
         type="button"
         class="rail-item"
-        :class="{ selected: activeSidebar === 'home' }"
-        aria-label="Home"
-        title="Home"
-        :aria-current="activeSidebar === 'home' ? 'page' : undefined"
-        aria-keyshortcuts="Meta+1 Control+1"
-        @click="emit('selectSidebar', 'home')"
+        aria-label="Search"
+        title="Search"
+        aria-keyshortcuts="Meta+K Control+/"
+        @click="emit('openSearch')"
       >
-        <IconHome />
-        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">1</span>
+        <IconSearch />
+        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">/</span>
       </button>
 
       <button
         type="button"
         class="rail-item"
-        :class="{ selected: activeSidebar === 'files' }"
-        aria-label="Library"
-        title="Library"
-        :aria-current="activeSidebar === 'files' ? 'page' : undefined"
-        aria-keyshortcuts="Meta+2 Control+2"
-        @click="emit('selectSidebar', 'files')"
+        aria-label="Settings"
+        title="Settings"
+        aria-keyshortcuts="Meta+, Control+0"
+        @click="emit('openSettings')"
       >
-        <IconLibrary />
-        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">2</span>
+        <IconSettings />
+        <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">0</span>
       </button>
     </div>
-
-    <button
-      type="button"
-      class="rail-item rail-bottom"
-      aria-label="Settings"
-      title="Settings"
-      aria-keyshortcuts="Meta+, Control+0"
-      @click="emit('openSettings')"
-    >
-      <IconSettings />
-      <span v-if="showShortcutBadges" class="shortcut-badge" aria-hidden="true">0</span>
-    </button>
   </nav>
 </template>
 
@@ -119,7 +73,8 @@ function sidebarToggleLabel(): string {
   flex: 0 0 var(--shell-rail-width);
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  box-sizing: border-box;
   padding: 12px 8px;
   color: rgba(255, 255, 255, 0.75);
   -webkit-app-region: no-drag;
@@ -160,15 +115,6 @@ function sidebarToggleLabel(): string {
   transition-timing-function: ease-in;
 }
 
-.rail-item.selected {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-}
-.rail-item.selected:hover,
-.rail-item.selected:focus-visible {
-  background: rgba(255, 255, 255, 0.15);
-}
-
 .rail-item :deep(.ryte-svg-icon) {
   width: 18px;
   height: 18px;
@@ -194,9 +140,5 @@ function sidebarToggleLabel(): string {
   line-height: 1;
   pointer-events: none;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
-}
-
-.rail-bottom {
-  margin-top: auto;
 }
 </style>

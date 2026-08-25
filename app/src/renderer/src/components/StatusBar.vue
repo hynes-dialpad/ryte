@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue'
 
 import { useIndexStatusStore } from '../stores/index-status'
+import { useWorkspaceStore } from '../stores/workspace'
 
 const indexStatus = useIndexStatusStore()
+const workspace = useWorkspaceStore()
 const visible = ref(false)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -40,6 +42,8 @@ watch(
 )
 
 const message = computed(() => {
+  if (workspace.error) return `Workspace error: ${workspace.error}`
+
   const s = indexStatus.status
   switch (s.phase) {
     case 'walking':
@@ -59,6 +63,8 @@ const message = computed(() => {
 })
 
 const tone = computed(() => {
+  if (workspace.error) return 'error'
+
   switch (indexStatus.status.phase) {
     case 'indexing':
     case 'walking':
@@ -71,10 +77,12 @@ const tone = computed(() => {
       return 'idle'
   }
 })
+
+const isVisible = computed(() => Boolean(workspace.error) || visible.value)
 </script>
 
 <template>
-  <footer class="status-bar" :class="[`tone-${tone}`, { hidden: !visible }]">
+  <footer class="status-bar" :class="[`tone-${tone}`, { hidden: !isVisible }]">
     <span class="status-text">{{ message }}</span>
   </footer>
 </template>

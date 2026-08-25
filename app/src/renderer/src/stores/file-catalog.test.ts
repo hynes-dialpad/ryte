@@ -4,23 +4,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileCatalogResponse } from '../../../shared/files'
 import { useFileCatalogStore } from './file-catalog'
 
+type CatalogChangeEvent =
+  | { type: 'upsert'; file: FileCatalogResponse['files'][number] }
+  | { type: 'remove'; sourcePath: string }
+
+function catalogEntry(sourcePath: string): FileCatalogResponse['files'][number] {
+  return {
+    sourcePath,
+    title: sourcePath,
+    directory: '',
+    searchableText: sourcePath,
+    pathDate: null,
+    modifiedAt: '2026-06-22T12:00:00.000Z',
+    modifiedAtMs: 1,
+    createdAt: null,
+    createdAtMs: null,
+    sizeBytes: 1
+  }
+}
+
 function catalogResponse(sourcePath: string): FileCatalogResponse {
   return {
     notesRoot: '/notes',
-    files: [
-      {
-        sourcePath,
-        title: sourcePath,
-        directory: '',
-        searchableText: sourcePath,
-        pathDate: null,
-        modifiedAt: '2026-06-22T12:00:00.000Z',
-        modifiedAtMs: 1,
-        createdAt: null,
-        createdAtMs: null,
-        sizeBytes: 1
-      }
-    ]
+    files: [catalogEntry(sourcePath)]
   }
 }
 
@@ -93,6 +99,40 @@ describe('useFileCatalogStore', () => {
 
     expect(listCatalog).toHaveBeenCalledTimes(2)
     expect(catalog.files).toEqual([])
+  })
+
+  it('patches one changed catalog entry and removes one deleted entry without rescanning the corpus', async () => {
+    const catalogChangedHandlers: Array<(event: CatalogChangeEvent) => void> = []
+    const listCatalog = vi.fn().mockResolvedValue({
+      notesRoot: '/notes',
+      files: [catalogEntry('plans/a.md'), catalogEntry('plans/b.md')]
+    })
+    vi.stubGlobal('window', {
+      ryte: {
+        files: {
+          listCatalog,
+          onCatalogChanged: vi.fn((cb: (event: CatalogChangeEvent) => void) => {
+            catalogChangedHandlers.push(cb)
+            return vi.fn()
+          })
+        }
+      }
+    })
+
+    const catalog = useFileCatalogStore()
+    await catalog.hydrate()
+
+    catalogChangedHandlers[0]?.({
+      type: 'upsert',
+      file: { ...catalogEntry('plans/a.md'), title: 'Updated plan', modifiedAtMs: 2 }
+    })
+    catalogChangedHandlers[0]?.({ type: 'remove', sourcePath: 'plans/b.md' })
+    await flushAsync()
+
+    expect(listCatalog).toHaveBeenCalledOnce()
+    expect(catalog.files).toEqual([
+      expect.objectContaining({ sourcePath: 'plans/a.md', title: 'Updated plan', modifiedAtMs: 2 })
+    ])
   })
 
   it('ignores stale catalog responses when refreshes complete out of order', async () => {

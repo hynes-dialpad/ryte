@@ -39,12 +39,16 @@ export class IndexerService extends EventEmitter {
     lastIndexedAt: null
   }
   private running = false
+  private readonly pendingIncrementalOperations = new Map<string, 'changed' | 'removed'>()
+  private incrementalDrain: Promise<void> | null = null
 
   /**
    * Initialize the indexer using current settings. Keyword indexing is always
    * available; OpenAI embeddings are enabled only when a key is configured.
    */
   init(): boolean {
+    if (this.indexer) return true
+
     const settings = settingsStore.load()
     const openaiKey = settings.semanticIndexEnabled ? settingsStore.getSecret('openai') : null
     const embedder = openaiKey
@@ -54,14 +58,24 @@ export class IndexerService extends EventEmitter {
 
     try {
       this.initializeStores(dbPath, settings.notesRoot, embedder)
+      return true
     } catch (error) {
       this.close()
-      if (!isRecoverableIndexStoreError(error)) throw error
-      removeIndexDatabaseFiles(dbPath)
-      this.initializeStores(dbPath, settings.notesRoot, embedder)
-    }
+      if (!isRecoverableIndexStoreError(error)) {
+        this.broadcastIndexingError(error)
+        return false
+      }
 
-    return true
+      removeIndexDatabaseFiles(dbPath)
+      try {
+        this.initializeStores(dbPath, settings.notesRoot, embedder)
+        return true
+      } catch (rebuildError) {
+        this.close()
+        this.broadcastIndexingError(rebuildError)
+        return false
+      }
+    }
   }
 
   private initializeStores(
@@ -135,7 +149,9 @@ export class IndexerService extends EventEmitter {
       const dbPath = indexDbPath()
       this.close()
       removeIndexDatabaseFiles(dbPath)
-      this.init()
+      if (!this.init()) {
+        throw new Error(this.lastStatus.error ?? 'Failed to initialize the index store')
+      }
       await this.indexAll()
     } catch (err) {
       this.broadcastIndexingError(err)
@@ -146,30 +162,11 @@ export class IndexerService extends EventEmitter {
   }
 
   async notifyFileChanged(absPath: string): Promise<void> {
-    if (!this.indexer) return
-    const r = await this.indexer.indexFile(absPath)
-    if (r.skipped) return
-    const totals = this.indexState!.totals()
-    this.broadcast({
-      phase: 'done',
-      filesTotal: totals.files,
-      filesDone: totals.files,
-      chunksTotal: totals.chunks,
-      chunksDone: totals.chunks
-    })
+    await this.enqueueIncrementalOperation(absPath, 'changed')
   }
 
   async notifyFileRemoved(absPath: string): Promise<void> {
-    if (!this.indexer) return
-    await this.indexer.removeFile(absPath)
-    const totals = this.indexState!.totals()
-    this.broadcast({
-      phase: 'done',
-      filesTotal: totals.files,
-      filesDone: totals.files,
-      chunksTotal: totals.chunks,
-      chunksDone: totals.chunks
-    })
+    await this.enqueueIncrementalOperation(absPath, 'removed')
   }
 
   subscribe(cb: (status: IndexerProgress) => void): () => void {
@@ -193,6 +190,7 @@ export class IndexerService extends EventEmitter {
     this.indexState = null
     this.indexer = null
     this.embedder = null
+    this.pendingIncrementalOperations.clear()
   }
 
   private broadcast(p: IndexerProgress): void {
@@ -210,13 +208,62 @@ export class IndexerService extends EventEmitter {
     })
   }
 
+  private async enqueueIncrementalOperation(
+    absPath: string,
+    operation: 'changed' | 'removed'
+  ): Promise<void> {
+    this.pendingIncrementalOperations.set(absPath, operation)
+    if (!this.incrementalDrain) {
+      this.incrementalDrain = this.drainIncrementalOperations().finally(() => {
+        this.incrementalDrain = null
+      })
+    }
+    await this.incrementalDrain
+  }
+
+  private async drainIncrementalOperations(): Promise<void> {
+    while (this.pendingIncrementalOperations.size > 0) {
+      const next = this.pendingIncrementalOperations.entries().next().value
+      if (!next) return
+      const [absPath, operation] = next
+      this.pendingIncrementalOperations.delete(absPath)
+
+      try {
+        await this.applyIncrementalOperation(absPath, operation)
+      } catch (error) {
+        this.broadcastIndexingError(error)
+      }
+    }
+  }
+
+  private async applyIncrementalOperation(
+    absPath: string,
+    operation: 'changed' | 'removed'
+  ): Promise<void> {
+    if (!this.indexer || !this.indexState) return
+    if (operation === 'changed') {
+      const result = await this.indexer.indexFile(absPath)
+      if (result.skipped) return
+    } else {
+      await this.indexer.removeFile(absPath)
+    }
+
+    const totals = this.indexState.totals()
+    this.broadcast({
+      phase: 'done',
+      filesTotal: totals.files,
+      filesDone: totals.files,
+      chunksTotal: totals.chunks,
+      chunksDone: totals.chunks
+    })
+  }
+
   private recoverIndexStore(error: unknown): boolean {
     if (!isRecoverableIndexStoreError(error)) return false
     const dbPath = indexDbPath()
     this.close()
     removeIndexDatabaseFiles(dbPath)
-    this.init()
-    return true
+    return this.init()
   }
 
   private broadcastIndexingError(error: unknown): void {

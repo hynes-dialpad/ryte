@@ -53,7 +53,11 @@ async function mapWithConcurrency<T, U>(
   return results
 }
 
-async function catalogEntryFor(notesRoot: string, absolutePath: string): Promise<FileCatalogEntry> {
+/** Build one safe catalog entry for a markdown file below the configured notes root. */
+export async function fileCatalogEntryFor(
+  notesRoot: string,
+  absolutePath: string
+): Promise<FileCatalogEntry> {
   const [metadata, documentTitle] = await Promise.all([
     stat(absolutePath),
     readMarkdownTitleFromFile(absolutePath)
@@ -80,7 +84,7 @@ async function catalogEntryFor(notesRoot: string, absolutePath: string): Promise
 export async function listFileCatalog(notesRoot: string): Promise<FileCatalogResponse> {
   const absolutePaths = await walkNotes(notesRoot)
   const files = await mapWithConcurrency(absolutePaths, CATALOG_ENTRY_CONCURRENCY, (absolutePath) =>
-    catalogEntryFor(notesRoot, absolutePath)
+    fileCatalogEntryFor(notesRoot, absolutePath)
   )
 
   files.sort((a, b) => a.sourcePath.localeCompare(b.sourcePath))

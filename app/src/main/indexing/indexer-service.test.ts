@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   vectorStoreInit: vi.fn(),
   vectorStoreClose: vi.fn(),
-  indexerIndexAll: vi.fn()
+  indexerIndexAll: vi.fn(),
+  indexerIndexFile: vi.fn()
 }))
 
 vi.mock('./vector-store', () => ({
@@ -23,7 +24,8 @@ vi.mock('./index-state', () => ({
 
 vi.mock('./indexer', () => ({
   Indexer: vi.fn().mockImplementation(() => ({
-    indexAll: mocks.indexerIndexAll
+    indexAll: mocks.indexerIndexAll,
+    indexFile: mocks.indexerIndexFile
   }))
 }))
 
@@ -67,6 +69,7 @@ describe('IndexerService.embed()', () => {
     vi.clearAllMocks()
     mocks.vectorStoreInit.mockReturnValue(undefined)
     mocks.indexerIndexAll.mockResolvedValue({ filesIndexed: 0, chunksIndexed: 0 })
+    mocks.indexerIndexFile.mockResolvedValue({ chunkCount: 1, skipped: false })
     mockEmbed.mockResolvedValue([Float32Array.from([1, 0, 0])])
   })
 
@@ -146,5 +149,19 @@ describe('IndexerService.embed()', () => {
     expect(mocks.vectorStoreClose).toHaveBeenCalled()
     expect(mocks.vectorStoreInit).toHaveBeenCalledTimes(2)
     expect(mocks.indexerIndexAll).toHaveBeenCalledOnce()
+  })
+
+  it('reports an incremental indexing failure through index status instead of rejecting detached work', async () => {
+    const { IndexerService } = await import('./indexer-service')
+    mocks.indexerIndexFile.mockRejectedValueOnce(new Error('synthetic incremental index failure'))
+
+    const svc = new IndexerService()
+    svc.init()
+
+    await expect(svc.notifyFileChanged('/tmp/notes/changed.md')).resolves.toBeUndefined()
+    expect(svc.getStatus()).toMatchObject({
+      phase: 'error',
+      error: 'synthetic incremental index failure'
+    })
   })
 })

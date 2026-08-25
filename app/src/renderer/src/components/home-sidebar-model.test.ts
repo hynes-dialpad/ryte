@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { FileCatalogEntry } from '../../../shared/files'
+import type { MarkdownTaskFact } from '../../../shared/tasks'
 import { buildHomeSidebarModel, homeSmartGroupItemTitle } from './home-sidebar-model'
 
 function catalogEntry(overrides: Partial<FileCatalogEntry>): FileCatalogEntry {
@@ -15,6 +16,24 @@ function catalogEntry(overrides: Partial<FileCatalogEntry>): FileCatalogEntry {
     createdAt: '2026-05-26T12:00:00.000Z',
     createdAtMs: 100,
     sizeBytes: 1,
+    ...overrides
+  }
+}
+
+function taskFact(overrides: Partial<MarkdownTaskFact>): MarkdownTaskFact {
+  return {
+    id: 'task-1',
+    sourcePath: 'sessions/2026-06-23/briefing.md',
+    line: 3,
+    checkboxColumn: 2,
+    checked: false,
+    rawLine: '- [ ] Follow up',
+    normalizedText: 'Follow up',
+    headingPath: ['Briefing'],
+    occurrenceIndex: 0,
+    fingerprint: 'task-1',
+    sourceMtimeMs: 100,
+    extractedAt: '2026-06-23T20:00:00.000Z',
     ...overrides
   }
 }
@@ -87,8 +106,8 @@ describe('buildHomeSidebarModel', () => {
       ]
     })
 
-    expect(model.groups.map((group) => group.id)).toEqual(['briefing', 'plans', 'recent'])
-    expect(model.groups[0]).toMatchObject({
+    expect(model.groups.map((group) => group.id)).toEqual(['tasks', 'briefing', 'plans', 'recent'])
+    expect(model.groups.find((group) => group.id === 'briefing')).toMatchObject({
       id: 'briefing',
       title: 'Briefing',
       headingId: 'home-briefing-heading',
@@ -108,14 +127,148 @@ describe('buildHomeSidebarModel', () => {
         }
       ]
     })
-    expect(model.groups[1]?.items.map((item) => item.sourcePath)).toEqual([
-      'plans/latest-plan.md',
-      'sessions/2026-05-25/shaping/widget-shaping.md'
-    ])
-    expect(model.groups[2]?.items.map((item) => item.sourcePath)).toEqual([
-      'reviews/pr-678-review.md'
-    ])
-    expect(model.groups[2]?.items[0]?.title).toBe('pr-678-review.md')
+    expect(
+      model.groups.find((group) => group.id === 'plans')?.items.map((item) => item.sourcePath)
+    ).toEqual(['plans/latest-plan.md', 'sessions/2026-05-25/shaping/widget-shaping.md'])
+    expect(
+      model.groups.find((group) => group.id === 'recent')?.items.map((item) => item.sourcePath)
+    ).toEqual(['reviews/pr-678-review.md'])
+    expect(model.groups.find((group) => group.id === 'recent')?.items[0]?.title).toBe(
+      'pr-678-review.md'
+    )
+  })
+
+  it('builds a read-only task group without deduping file smart groups', () => {
+    const model = buildHomeSidebarModel({
+      activeTabId: 'tab-a',
+      catalogFiles: [
+        catalogEntry({
+          sourcePath: 'plans/task-plan.md',
+          title: 'Task Plan',
+          searchableText: 'task plan plans/task-plan.md'
+        })
+      ],
+      recents: [
+        {
+          sourcePath: 'plans/task-plan.md',
+          title: 'task-plan.md',
+          openedAt: '2026-05-26T12:00:00.000Z'
+        }
+      ],
+      tabs: [
+        {
+          id: 'tab-a',
+          sourcePath: 'plans/task-plan.md',
+          title: 'task-plan.md',
+          viewMode: 'preview'
+        }
+      ],
+      activeTaskFingerprint: 'task-plan-1',
+      taskFacts: [
+        taskFact({
+          sourcePath: 'plans/task-plan.md',
+          normalizedText: 'Review task aggregation',
+          headingPath: ['Plan', 'Next Steps'],
+          fingerprint: 'task-plan-1'
+        }),
+        taskFact({
+          sourcePath: 'plans/done.md',
+          normalizedText: 'Completed task',
+          checked: true,
+          fingerprint: 'done-1'
+        })
+      ]
+    })
+
+    const tasks = model.groups.find((group) => group.id === 'tasks')
+    expect(tasks).toMatchObject({
+      title: 'Tasks',
+      emptyLabel: 'No open tasks',
+      items: [
+        {
+          id: 'tasks:task-plan-1',
+          sourcePath: 'plans/task-plan.md',
+          title: 'Review task aggregation',
+          detail: 'plans/task-plan.md \u203a Plan \u203a Next Steps',
+          active: true,
+          ariaLabel: 'Open task Review task aggregation in plans/task-plan.md'
+        }
+      ]
+    })
+    expect(
+      model.groups.find((group) => group.id === 'plans')?.items.map((item) => item.sourcePath)
+    ).toEqual(['plans/task-plan.md'])
+    expect(model.groups.find((group) => group.id === 'recent')?.items).toEqual([])
+  })
+
+  it('excludes external workspace recents from notes-backed home groups', () => {
+    const model = buildHomeSidebarModel({
+      activeTabId: 'external-tab',
+      catalogFiles: [
+        catalogEntry({
+          sourcePath: 'docs/overview.md',
+          title: 'Overview',
+          searchableText: 'overview docs/overview.md'
+        })
+      ],
+      recents: [
+        {
+          externalPath: '/Users/hynes/Desktop/outside.md',
+          title: 'outside.md',
+          openedAt: '2026-05-26T13:00:00.000Z'
+        },
+        {
+          sourcePath: 'docs/overview.md',
+          title: 'overview.md',
+          openedAt: '2026-05-26T12:00:00.000Z'
+        }
+      ],
+      tabs: [
+        {
+          id: 'external-tab',
+          externalPath: '/Users/hynes/Desktop/outside.md',
+          title: 'outside.md',
+          viewMode: 'preview'
+        }
+      ]
+    })
+
+    expect(
+      model.groups.find((group) => group.id === 'recent')?.items.map((item) => item.sourcePath)
+    ).toEqual(['docs/overview.md'])
+  })
+
+  it('selects one task row by fingerprint instead of highlighting every task from the active file', () => {
+    const model = buildHomeSidebarModel({
+      activeTabId: 'tab-a',
+      catalogFiles: [],
+      recents: [],
+      tabs: [
+        {
+          id: 'tab-a',
+          sourcePath: 'action-items.md',
+          title: 'action-items.md',
+          viewMode: 'preview'
+        }
+      ],
+      activeTaskFingerprint: 'task-2',
+      taskFacts: [
+        taskFact({
+          sourcePath: 'action-items.md',
+          normalizedText: 'First task',
+          fingerprint: 'task-1'
+        }),
+        taskFact({
+          sourcePath: 'action-items.md',
+          normalizedText: 'Second task',
+          fingerprint: 'task-2'
+        })
+      ]
+    })
+
+    const taskItems = model.groups.find((group) => group.id === 'tasks')?.items ?? []
+
+    expect(taskItems.map((item) => item.active)).toEqual([false, true])
   })
 
   it('keeps a recent file visible when it matches a smart rule but is not rendered above recent', () => {
@@ -181,9 +334,13 @@ describe('buildHomeSidebarModel', () => {
       tabs: []
     })
 
-    expect(model.groups[0]?.items[0]?.title).toBe('daily-briefing.md')
-    expect(model.groups[1]?.items[0]?.title).toBe('catalog-plan.md')
-    expect(model.groups[2]?.items[0]?.title).toBe('overview.md')
+    expect(model.groups.find((group) => group.id === 'briefing')?.items[0]?.title).toBe(
+      'daily-briefing.md'
+    )
+    expect(model.groups.find((group) => group.id === 'plans')?.items[0]?.title).toBe(
+      'catalog-plan.md'
+    )
+    expect(model.groups.find((group) => group.id === 'recent')?.items[0]?.title).toBe('overview.md')
   })
 
   it('ranks plans by recent activity before modified time and caps at 10 items', () => {
@@ -289,7 +446,9 @@ describe('buildHomeSidebarModel', () => {
       tabs: []
     })
 
-    expect(model.groups[0]?.items.map((item) => item.sourcePath)).toEqual([
+    expect(
+      model.groups.find((group) => group.id === 'briefing')?.items.map((item) => item.sourcePath)
+    ).toEqual([
       'sessions/2026-06-22/briefing-2026-06-22.md',
       'sessions/2026-06-01/briefing-2026-06-01.md'
     ])
@@ -308,7 +467,7 @@ describe('buildHomeSidebarModel', () => {
       recents: [],
       tabs: []
     })
-    const briefingItem = model.groups[0]?.items[0]
+    const briefingItem = model.groups.find((group) => group.id === 'briefing')?.items[0]
 
     expect(briefingItem).toBeDefined()
     expect(homeSmartGroupItemTitle(briefingItem!)).toBe('2026-06-22')

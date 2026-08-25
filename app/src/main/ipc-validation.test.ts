@@ -2,17 +2,25 @@ import { describe, expect, it } from 'vitest'
 
 import {
   assertValidAbsolutePath,
+  assertValidFileRenameInput,
   assertValidRequestId,
   assertValidSearchOptions,
   assertValidSearchQuery,
   assertValidSourceFileInput,
   assertValidSettingsPatch,
+  assertValidTaskListInput,
+  assertValidTaskToggleInput,
   assertValidWorkspaceCloseTabInput,
+  assertValidWorkspaceFileRefInput,
   assertValidWorkspaceFocusTabInput,
+  assertValidWorkspaceLibraryPatch,
   assertValidWorkspaceOpenFileInput,
+  assertValidWorkspaceOpenRecentFileInput,
   assertValidWorkspaceRecordRecentInput,
   assertValidWorkspaceSetOutlineCollapsedInput,
+  assertValidWorkspaceSetOutlineWidthInput,
   assertValidWorkspaceShellPatch,
+  assertValidWorkspaceTabFileInput,
   assertValidWorkspaceUpdateTabViewModeInput,
   assertValidWorkspaceWindowPatch
 } from './ipc-validation'
@@ -30,6 +38,25 @@ describe('ipc validation', () => {
       retrievalMode: 'keyword',
       answerMode: 'local-only'
     })
+    expect(assertValidTaskListInput({ checked: false, limit: 25 })).toEqual({
+      checked: false,
+      limit: 25
+    })
+    expect(
+      assertValidTaskToggleInput({
+        sourcePath: 'folder/tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toEqual({
+      sourcePath: 'folder/tasks.md',
+      line: 3,
+      checkboxColumn: 2,
+      checked: true,
+      expectedLine: '- [ ] Follow up'
+    })
   })
 
   it('rejects malformed primitive inputs', () => {
@@ -40,6 +67,41 @@ describe('ipc validation', () => {
       'Invalid retrieval mode'
     )
     expect(() => assertValidSearchOptions({ arbitrary: true })).toThrow('Invalid search option')
+    expect(() => assertValidTaskListInput({ arbitrary: true })).toThrow(
+      'Invalid task list input key'
+    )
+    expect(() => assertValidTaskListInput({ checked: 'false' })).toThrow('Invalid task checked')
+    expect(() => assertValidTaskListInput({ limit: 201 })).toThrow('Invalid task list limit')
+    expect(() => assertValidTaskToggleInput({ arbitrary: true })).toThrow(
+      'Invalid task toggle input key'
+    )
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: '../tasks.md',
+        line: 3,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid workspace source path')
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: 'tasks.md',
+        line: 0,
+        checkboxColumn: 2,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid task line')
+    expect(() =>
+      assertValidTaskToggleInput({
+        sourcePath: 'tasks.md',
+        line: 3,
+        checkboxColumn: -1,
+        checked: true,
+        expectedLine: '- [ ] Follow up'
+      })
+    ).toThrow('Invalid task checkbox column')
   })
 
   it('accepts a narrow settings patch', () => {
@@ -82,12 +144,12 @@ describe('ipc validation', () => {
       assertValidWorkspaceShellPatch({
         sidebarCollapsed: true,
         sidebarWidth: 360,
-        activeSidebar: 'home'
+        activeSidebar: 'files'
       })
     ).toEqual({
       sidebarCollapsed: true,
       sidebarWidth: 360,
-      activeSidebar: 'home'
+      activeSidebar: 'files'
     })
     expect(
       assertValidWorkspaceWindowPatch({
@@ -102,6 +164,26 @@ describe('ipc validation', () => {
     })
   })
 
+  it('accepts narrow workspace library patches', () => {
+    expect(
+      assertValidWorkspaceLibraryPatch({
+        expandedFolders: ['./docs', 'sessions/2026-07-02/plans'],
+        scrollTop: 420,
+        folderSortModes: {
+          docs: 'za',
+          sessions: 'recency'
+        }
+      })
+    ).toEqual({
+      expandedFolders: ['docs', 'sessions/2026-07-02/plans'],
+      scrollTop: 420,
+      folderSortModes: {
+        docs: 'za',
+        sessions: 'recency'
+      }
+    })
+  })
+
   it('rejects unexpected workspace keys and invalid dimensions', () => {
     expect(() => assertValidWorkspaceShellPatch({ arbitrary: true })).toThrow(
       'Invalid workspace shell key'
@@ -112,18 +194,51 @@ describe('ipc validation', () => {
     expect(() => assertValidWorkspaceShellPatch({ activeSidebar: 'settings' })).toThrow(
       'Invalid activeSidebar'
     )
+    expect(() => assertValidWorkspaceShellPatch({ activeSidebar: 'home' })).toThrow(
+      'Invalid activeSidebar'
+    )
     expect(() => assertValidWorkspaceWindowPatch({ arbitrary: true })).toThrow(
       'Invalid workspace window key'
     )
     expect(() =>
       assertValidWorkspaceWindowPatch({ bounds: { x: 0, y: 0, width: 0, height: 100 } })
     ).toThrow('Invalid window bounds')
+    expect(() => assertValidWorkspaceLibraryPatch({ arbitrary: true })).toThrow(
+      'Invalid workspace library key'
+    )
+    expect(() => assertValidWorkspaceLibraryPatch({ expandedFolders: ['../escape'] })).toThrow(
+      'Invalid workspace source path'
+    )
+    expect(() => assertValidWorkspaceLibraryPatch({ scrollTop: -1 })).toThrow('Invalid scrollTop')
+    expect(() =>
+      assertValidWorkspaceLibraryPatch({ folderSortModes: { 'sessions/2026-07-02': 'za' } })
+    ).toThrow('Invalid workspace top-level folder path')
+    expect(() =>
+      assertValidWorkspaceLibraryPatch({ folderSortModes: { sessions: 'newest' } })
+    ).toThrow('Invalid workspace folder sort mode')
   })
 
   it('accepts narrow workspace operation payloads', () => {
+    expect(assertValidFileRenameInput({ sourcePath: 'folder/a.md', name: 'renamed.md' })).toEqual({
+      sourcePath: 'folder/a.md',
+      name: 'renamed.md'
+    })
+    expect(
+      assertValidFileRenameInput({ externalPath: '/tmp/outside.md', name: 'renamed.md' })
+    ).toEqual({ externalPath: '/tmp/outside.md', name: 'renamed.md' })
     expect(assertValidWorkspaceOpenFileInput({ sourcePath: 'folder/a.md' })).toEqual({
       sourcePath: 'folder/a.md'
     })
+    expect(assertValidWorkspaceFileRefInput({ sourcePath: 'folder/a.md' })).toEqual({
+      sourcePath: 'folder/a.md'
+    })
+    expect(assertValidWorkspaceFileRefInput({ externalPath: '/tmp/outside.md' })).toEqual({
+      externalPath: '/tmp/outside.md'
+    })
+    expect(assertValidWorkspaceOpenRecentFileInput({ externalPath: '/tmp/outside.md' })).toEqual({
+      externalPath: '/tmp/outside.md'
+    })
+    expect(assertValidWorkspaceTabFileInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(assertValidWorkspaceFocusTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(assertValidWorkspaceCloseTabInput({ tabId: 'tab-1' })).toEqual({ tabId: 'tab-1' })
     expect(
@@ -147,9 +262,19 @@ describe('ipc validation', () => {
       sourcePath: 'folder/a.md',
       collapsed: false
     })
+    expect(assertValidWorkspaceSetOutlineWidthInput({ width: 240 })).toEqual({ width: 240 })
   })
 
   it('rejects invalid workspace operation source paths and unknown keys', () => {
+    expect(() => assertValidFileRenameInput({ sourcePath: 'a.md', name: '../renamed.md' })).toThrow(
+      'Invalid file name'
+    )
+    expect(() => assertValidFileRenameInput({ sourcePath: 'a.md', name: 'renamed.txt' })).toThrow(
+      'Invalid file name'
+    )
+    expect(() =>
+      assertValidFileRenameInput({ sourcePath: 'a.md', name: 'renamed.md', extra: true })
+    ).toThrow('Invalid file rename input key')
     expect(() => assertValidWorkspaceOpenFileInput({ sourcePath: '/tmp/a.md' })).toThrow(
       'Invalid workspace source path'
     )
@@ -159,6 +284,21 @@ describe('ipc validation', () => {
     expect(() =>
       assertValidWorkspaceOpenFileInput({ sourcePath: 'a.md', arbitrary: true })
     ).toThrow('Invalid workspace open file input key')
+    expect(() =>
+      assertValidWorkspaceFileRefInput({
+        sourcePath: 'a.md',
+        externalPath: '/tmp/a.md'
+      })
+    ).toThrow('Invalid workspace file reference')
+    expect(() => assertValidWorkspaceFileRefInput({ externalPath: '/tmp/a.txt' })).toThrow(
+      'Invalid workspace external path'
+    )
+    expect(() => assertValidWorkspaceFileRefInput({ externalPath: 'relative.md' })).toThrow(
+      'Invalid workspace external path'
+    )
+    expect(() =>
+      assertValidWorkspaceFileRefInput({ externalPath: '/tmp/a.md', arbitrary: true })
+    ).toThrow('Invalid workspace file reference key')
     expect(() => assertValidWorkspaceRecordRecentInput({ sourcePath: 'a\0.md' })).toThrow(
       'Invalid workspace source path'
     )
@@ -180,11 +320,23 @@ describe('ipc validation', () => {
     expect(() => assertValidWorkspaceCloseTabInput({ tabId: '../tab' })).toThrow(
       'Invalid workspace tab id'
     )
+    expect(() => assertValidWorkspaceTabFileInput({ tabId: '../tab' })).toThrow(
+      'Invalid workspace tab id'
+    )
     expect(() =>
       assertValidWorkspaceUpdateTabViewModeInput({ tabId: 'tab-1', viewMode: 'diff' })
     ).toThrow('Invalid workspace tab view mode')
     expect(() =>
       assertValidWorkspaceSetOutlineCollapsedInput({ sourcePath: 'a.md', collapsed: 'yes' })
     ).toThrow('Invalid workspace outline state')
+    expect(() => assertValidWorkspaceSetOutlineWidthInput({ width: -1 })).toThrow(
+      'Invalid workspace outline width'
+    )
+    expect(() =>
+      assertValidWorkspaceSetOutlineWidthInput({ width: Number.POSITIVE_INFINITY })
+    ).toThrow('Invalid workspace outline width')
+    expect(() => assertValidWorkspaceSetOutlineWidthInput({ width: 240, extra: true })).toThrow(
+      'Invalid workspace outline width input key: extra'
+    )
   })
 })

@@ -23,6 +23,13 @@ pnpm smoke:indexer
 
 `pnpm smoke:indexer` uses synthetic notes and should not touch a real notes folder by default.
 
+To run the full local check and then launch the built app for manual smoke testing:
+
+```bash
+cd app
+pnpm qa:local
+```
+
 ## Branch Rules
 
 - Do not edit or commit project files on `main` or `master`.

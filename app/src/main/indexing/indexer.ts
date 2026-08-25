@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises'
 import { relative } from 'node:path'
 
-import { chunkFile, type Chunk } from './chunker'
+import { chunkFile } from './chunker'
 import type { EmbeddingProvider } from './embedder'
 import type { IndexStateStore } from './index-state'
 import type { ChunkWithVector, VectorStore } from './vector-store'
@@ -35,11 +35,12 @@ export interface IndexAllSummary {
   chunksIndexed: number
 }
 
+const LOCAL_INDEX_YIELD_BATCH_SIZE = 8
+
 interface PendingFile {
   absPath: string
   relPath: string
   mtimeMs: number
-  chunks: Chunk[]
 }
 
 export class Indexer {
@@ -59,20 +60,19 @@ export class Indexer {
       indexState.markRemoved(sourcePath)
     }
 
-    // Phase 1: stat + chunk all files needing re-index.
+    // Phase 1: stat all files needing re-index. Keep this list metadata-only so
+    // startup indexing never holds the changed corpus' chunks in memory.
     const pending: PendingFile[] = []
     for (const absPath of allPaths) {
       const relPath = relative(notesRoot, absPath)
       const stats = await stat(absPath)
       const mtimeMs = Math.floor(stats.mtimeMs)
       if (!indexState.shouldReindex(relPath, mtimeMs)) continue
-      const chunks = chunkFile(absPath, notesRoot)
-      if (chunks.length === 0) continue
-      pending.push({ absPath, relPath, mtimeMs, chunks })
+      pending.push({ absPath, relPath, mtimeMs })
     }
 
-    const chunksTotal = pending.reduce((acc, p) => acc + p.chunks.length, 0)
     const filesTotal = pending.length
+    let chunksTotal = 0
     let chunksDone = 0
     let filesDone = 0
 
@@ -90,24 +90,43 @@ export class Indexer {
 
     emit({ phase: 'indexing', filesTotal, filesDone, chunksTotal, chunksDone })
 
-    // Phase 2: embed file-by-file (simple, predictable; can batch across files later if needed).
-    for (const file of pending) {
+    // Phase 2: chunk and write file-by-file. This preserves the memory ceiling at
+    // roughly one source file plus its chunks instead of all pending chunks.
+    for (const [index, file] of pending.entries()) {
+      const chunks = chunkFile(file.absPath, notesRoot)
+      chunksTotal += chunks.length
+
+      if (chunks.length === 0) {
+        vectorStore.deleteFileChunks(file.relPath)
+        indexState.markIndexed(file.relPath, file.mtimeMs, 0)
+        filesDone += 1
+        emit({ phase: 'indexing', filesTotal, filesDone, chunksTotal, chunksDone })
+        if (!embedder && (index + 1) % LOCAL_INDEX_YIELD_BATCH_SIZE === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve))
+        }
+        continue
+      }
+
       if (embedder) {
-        const texts = file.chunks.map((c) => c.text)
+        const texts = chunks.map((c) => c.text)
         const vectors = await embedder.embed(texts)
-        const items: ChunkWithVector[] = file.chunks.map((chunk, i) => ({
+        const items: ChunkWithVector[] = chunks.map((chunk, i) => ({
           chunk,
           vector: vectors[i]
         }))
         vectorStore.replaceFileChunks(file.relPath, items)
       } else {
-        vectorStore.replaceFileTextChunks(file.relPath, file.chunks)
+        vectorStore.replaceFileTextChunks(file.relPath, chunks)
       }
-      indexState.markIndexed(file.relPath, file.mtimeMs, file.chunks.length)
+      indexState.markIndexed(file.relPath, file.mtimeMs, chunks.length)
 
       filesDone += 1
-      chunksDone += file.chunks.length
+      chunksDone += chunks.length
       emit({ phase: 'indexing', filesTotal, filesDone, chunksTotal, chunksDone })
+
+      if (!embedder && (index + 1) % LOCAL_INDEX_YIELD_BATCH_SIZE === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
     }
 
     emit({ phase: 'done', filesTotal, filesDone, chunksTotal, chunksDone })

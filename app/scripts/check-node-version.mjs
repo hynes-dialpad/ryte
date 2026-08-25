@@ -1,4 +1,4 @@
-const REQUIRED_MAJOR = 22
+const REQUIRED_MAJOR = 24
 
 const major = Number.parseInt(process.versions.node.split('.')[0] ?? '', 10)
 

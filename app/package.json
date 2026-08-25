@@ -1,12 +1,12 @@
 {
   "name": "ryte",
   "version": "0.3.0",
-  "description": "Local search + read-only viewer for a markdown folder",
+  "description": "Local-first search and file workspace for a markdown folder",
   "main": "./out/main/index.js",
   "author": "Joshua Hynes",
   "private": true,
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=24 <25"
   },
   "scripts": {
     "check:node": "node scripts/check-node-version.mjs",
@@ -22,7 +22,9 @@
     "test:watch": "vitest",
     "smoke:indexer": "node scripts/run-indexer-smoke.mjs",
     "smoke:indexer:notes": "node --import tsx scripts/smoke-indexer.ts",
-    "start": "electron-vite preview",
+    "qa:local": "pnpm validate && pnpm smoke:indexer && pnpm launch",
+    "launch": "node scripts/start-preview.mjs",
+    "start": "pnpm build && pnpm launch",
     "dev": "electron-vite dev",
     "build": "node scripts/check-node-version.mjs && npm run typecheck && electron-vite build",
     "postinstall": "node_modules/.pnpm/node_modules/.bin/electron-rebuild -f -w better-sqlite3 || electron-builder install-app-deps",
@@ -39,6 +41,7 @@
     "chokidar": "^4.0.3",
     "gray-matter": "^4.0.3",
     "markdown-it": "^14.1.1",
+    "mermaid": "^11.16.0",
     "openai": "^4.77.0",
     "pinia": "^2.3.0",
     "shiki": "^4.0.2",

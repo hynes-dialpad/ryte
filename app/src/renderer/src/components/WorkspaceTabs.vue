@@ -10,7 +10,16 @@ import {
 } from 'vue'
 
 import { useWorkspaceStore } from '../stores/workspace'
+import {
+  isWorkspaceSourceFileRef,
+  workspaceFileDisplayPath,
+  type WorkspaceFileRef,
+  type WorkspaceFileTab
+} from '../../../shared/workspace'
+import FileContextMenu from './FileContextMenu.vue'
+import type { FileContextMenuAction } from './file-context-menu-model'
 import IconClose from './icons/IconClose.vue'
+import InlineFileRename from './InlineFileRename.vue'
 import {
   WORKSPACE_TABPANEL_ID,
   getCloseFallbackWorkspaceTabId,
@@ -23,11 +32,24 @@ import { resolveOverflowEdges, resolveScrollDelta } from './workspace-tab-scroll
 const workspace = useWorkspaceStore()
 const TAB_SCROLL_MARGIN = 8
 
+interface TabFileContextMenu {
+  tabId: string
+  fileName: string
+  x: number
+  y: number
+}
+
+interface TabInlineRename {
+  tabId: string
+}
+
 const hasTabs = computed(() => workspace.tabs.length > 0)
 const tabListRef = ref<HTMLElement | null>(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(false)
 const screenReaderStatus = ref('')
+const fileContextMenu = ref<TabFileContextMenu | null>(null)
+const inlineRename = ref<TabInlineRename | null>(null)
 const tabElements = new Map<string, HTMLElement>()
 const tabButtonElements = new Map<string, HTMLButtonElement>()
 let resizeObserver: ResizeObserver | null = null
@@ -167,6 +189,51 @@ function tabAccessibleLabel(title: string, sourcePath: string): string {
   return title === sourcePath ? title : `${title}, ${sourcePath}`
 }
 
+function tabDisplayPath(tab: WorkspaceFileTab): string {
+  return workspaceFileDisplayPath(tab)
+}
+
+function fileRefForTab(tab: WorkspaceFileTab): WorkspaceFileRef {
+  return isWorkspaceSourceFileRef(tab)
+    ? { sourcePath: tab.sourcePath }
+    : { externalPath: tab.externalPath }
+}
+
+function openTabContextMenu(event: MouseEvent, tab: WorkspaceFileTab): void {
+  inlineRename.value = null
+  fileContextMenu.value = {
+    tabId: tab.id,
+    fileName: tab.title,
+    x: event.clientX,
+    y: event.clientY
+  }
+}
+
+function startInlineRename(tab: WorkspaceFileTab): void {
+  inlineRename.value = { tabId: tab.id }
+}
+
+function cancelInlineRename(tabId: string): void {
+  if (inlineRename.value?.tabId === tabId) inlineRename.value = null
+}
+
+async function submitInlineRename(tab: WorkspaceFileTab, name: string): Promise<void> {
+  const editing = inlineRename.value
+  if (!editing || editing.tabId !== tab.id) return
+  if (name === tab.title) {
+    inlineRename.value = null
+    return
+  }
+
+  try {
+    await workspace.renameFile({ ...fileRefForTab(tab), name })
+    inlineRename.value = null
+    announce(`Renamed ${tab.title} to ${name}`)
+  } catch {
+    announce(workspace.error ?? `Could not rename ${tab.title}`)
+  }
+}
+
 function announce(message: string): void {
   screenReaderStatus.value = ''
   void nextTick(() => {
@@ -186,7 +253,7 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
 }
 
 function hasModalOpen(): boolean {
-  return document.querySelector('[aria-modal="true"]') !== null
+  return document.querySelector('[aria-modal="true"], .file-context-menu') !== null
 }
 
 function focusFallbackShellControl(): void {
@@ -214,7 +281,7 @@ function focusTab(
     }
     if (options.announceSelection) {
       const selectedTab = workspace.tabs.find((tab) => tab.id === tabId)
-      if (selectedTab) announce(`Selected ${selectedTab.sourcePath}`)
+      if (selectedTab) announce(`Selected ${tabDisplayPath(selectedTab)}`)
     }
   })
 }
@@ -237,7 +304,7 @@ function closeTabWithFocusRecovery(
     }
   })
   if (closingTab && options.announceClose) {
-    announce(`Closed ${closingTab.sourcePath}`)
+    announce(`Closed ${tabDisplayPath(closingTab)}`)
   }
 }
 
@@ -251,6 +318,53 @@ function closeTab(event: MouseEvent, tabId: string): void {
     moveKeyboardFocus: shouldRecoverFocus,
     announceClose: shouldRecoverFocus
   })
+}
+
+async function handleFileContextAction(action: FileContextMenuAction): Promise<void> {
+  const menu = fileContextMenu.value
+  if (!menu) return
+  fileContextMenu.value = null
+  const tab = workspace.tabs.find((candidate) => candidate.id === menu.tabId)
+  if (!tab) return
+
+  if (action === 'rename') {
+    startInlineRename(tab)
+    return
+  }
+  if (action === 'close') {
+    closeTabWithFocusRecovery(tab.id, { moveKeyboardFocus: true, announceClose: true })
+    return
+  }
+
+  const file = fileRefForTab(tab)
+  try {
+    if (action === 'copy-file') {
+      await workspace.copyFile(file)
+      announce(`Copied ${tab.title}`)
+      return
+    }
+    if (action === 'copy-file-path') {
+      await workspace.copyFilePath(file)
+      announce(`Copied path for ${tab.title}`)
+      return
+    }
+    if (action === 'show-in-finder') {
+      await workspace.showFileInFinder(file)
+      return
+    }
+    if (action === 'move-to-trash' && (await workspace.moveFileToTrash(file))) {
+      announce(`Moved ${tab.title} to Trash`)
+      void nextTick(() => {
+        if (workspace.activeTabId) {
+          focusTabButton(workspace.activeTabId)
+        } else {
+          focusFallbackShellControl()
+        }
+      })
+    }
+  } catch {
+    announce(workspace.error ?? `Could not update ${tab.title}`)
+  }
 }
 
 function onTabKeydown(event: KeyboardEvent, tabId: string): void {
@@ -322,8 +436,18 @@ function onGlobalKeydown(event: KeyboardEvent): void {
           class="tab-item"
           :class="{ active: workspace.activeTabId === tab.id }"
           role="presentation"
+          @contextmenu.prevent.stop="openTabContextMenu($event, tab)"
         >
+          <InlineFileRename
+            v-if="inlineRename?.tabId === tab.id"
+            :name="tab.title"
+            :label="`Rename ${tab.title}`"
+            variant="tab"
+            @submit="submitInlineRename(tab, $event)"
+            @cancel="cancelInlineRename(tab.id)"
+          />
           <button
+            v-else
             :id="tabDomId(tab.id)"
             :ref="(element) => setTabButtonElement(tab.id, element)"
             type="button"
@@ -331,11 +455,11 @@ function onGlobalKeydown(event: KeyboardEvent): void {
             role="tab"
             :aria-selected="workspace.activeTabId === tab.id"
             :aria-controls="tabPanelId()"
-            :aria-label="tabAccessibleLabel(tab.title, tab.sourcePath)"
+            :aria-label="tabAccessibleLabel(tab.title, tabDisplayPath(tab))"
             aria-describedby="workspace-tabs-instructions"
             aria-keyshortcuts="ArrowLeft ArrowRight Home End Delete Backspace Enter Space Meta+W Meta+Shift+[ Meta+Shift+]"
             :tabindex="tabIndex(tab.id)"
-            :title="tab.sourcePath"
+            :title="tabDisplayPath(tab)"
             @click="focusTab(tab.id)"
             @keydown="onTabKeydown($event, tab.id)"
           >
@@ -344,8 +468,8 @@ function onGlobalKeydown(event: KeyboardEvent): void {
           <button
             type="button"
             class="tab-close"
-            :aria-label="`Close ${tab.sourcePath}`"
-            :title="`Close ${tab.sourcePath}`"
+            :aria-label="`Close ${tabDisplayPath(tab)}`"
+            :title="`Close ${tabDisplayPath(tab)}`"
             tabindex="-1"
             @click="closeTab($event, tab.id)"
           >
@@ -356,6 +480,15 @@ function onGlobalKeydown(event: KeyboardEvent): void {
     </div>
     <span class="sr-only" aria-live="polite" aria-atomic="true">{{ screenReaderStatus }}</span>
   </nav>
+  <FileContextMenu
+    v-if="fileContextMenu"
+    :x="fileContextMenu.x"
+    :y="fileContextMenu.y"
+    :file-name="fileContextMenu.fileName"
+    can-close
+    @action="handleFileContextAction"
+    @dismiss="fileContextMenu = null"
+  />
 </template>
 
 <style scoped>

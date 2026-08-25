@@ -36,6 +36,7 @@ function entry(index: number): HistoryEntry {
         sourcePath: `source-${index}.md`,
         headingPath: ['Heading'],
         preview: `preview ${index}`,
+        matchCount: 1,
         retrievalMode: 'keyword'
       }
     ],

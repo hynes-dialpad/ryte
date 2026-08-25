@@ -19,6 +19,7 @@ export interface SourceResult {
   sourcePath: string
   headingPath: string[]
   preview: string
+  matchCount: number
   retrievalMode: SearchAppliedRetrievalMode
 }
 
@@ -85,10 +86,47 @@ function providerLabel(provider: AnswerProviderId): string {
   return provider === 'anthropic' ? 'Anthropic' : 'OpenAI'
 }
 
-function previewText(text: string): string {
+function queryTerms(query: string): string[] {
+  return [...new Set(query.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [])]
+}
+
+function queryMatchDetails(text: string, query: string): { firstIndex: number; count: number } {
   const normalized = text.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= PREVIEW_MAX_CHARS) return normalized
-  return `${normalized.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}...`
+  const lowerText = normalized.toLocaleLowerCase()
+  let firstIndex = -1
+  let count = 0
+
+  for (const term of queryTerms(query)) {
+    let index = lowerText.indexOf(term)
+    while (index !== -1) {
+      if (firstIndex === -1 || index < firstIndex) firstIndex = index
+      count += 1
+      index = lowerText.indexOf(term, index + term.length)
+    }
+  }
+
+  return { firstIndex, count }
+}
+
+function previewText(text: string, query: string): { preview: string; matchCount: number } {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  const { firstIndex, count } = queryMatchDetails(normalized, query)
+  if (normalized.length <= PREVIEW_MAX_CHARS) return { preview: normalized, matchCount: count }
+  if (firstIndex === -1) {
+    return {
+      preview: `${normalized.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}...`,
+      matchCount: count
+    }
+  }
+
+  const start = Math.max(0, firstIndex - Math.floor(PREVIEW_MAX_CHARS / 3))
+  const end = Math.min(normalized.length, start + PREVIEW_MAX_CHARS)
+  const prefix = start > 0 ? '...' : ''
+  const suffix = end < normalized.length ? '...' : ''
+  return {
+    preview: `${prefix}${normalized.slice(start, end).trim()}${suffix}`,
+    matchCount: count
+  }
 }
 
 export class SearchService {
@@ -147,13 +185,17 @@ export class SearchService {
       }))
 
       callbacks.onSources(
-        chunks.map((c) => ({
-          index: c.index,
-          sourcePath: c.sourcePath,
-          headingPath: c.headingPath,
-          preview: previewText(c.text),
-          retrievalMode
-        }))
+        chunks.map((c) => {
+          const { preview, matchCount } = previewText(c.text, query)
+          return {
+            index: c.index,
+            sourcePath: c.sourcePath,
+            headingPath: c.headingPath,
+            preview,
+            matchCount,
+            retrievalMode
+          }
+        })
       )
 
       if (chunks.length === 0) {

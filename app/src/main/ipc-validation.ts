@@ -1,4 +1,4 @@
-import { isAbsolute, normalize, sep, win32 } from 'node:path'
+import { extname, isAbsolute, normalize, sep, win32 } from 'node:path'
 
 import type {
   DataFlowAcknowledgement,
@@ -7,13 +7,21 @@ import type {
   SettingsUpdate
 } from './settings/settings-store'
 import type { SearchOptions } from './search/search-service'
+import type { FileRenameInput } from '../shared/files'
+import type { TaskListInput, TaskToggleInput } from '../shared/tasks'
 import type {
   WorkspaceCloseTabInput,
+  WorkspaceFileRef,
+  WorkspaceFolderSortMode,
   WorkspaceFocusTabInput,
+  WorkspaceLibraryUpdate,
   WorkspaceOpenFileInput,
+  WorkspaceOpenRecentFileInput,
   WorkspaceRecordRecentInput,
   WorkspaceSetOutlineCollapsedInput,
+  WorkspaceSetOutlineWidthInput,
   WorkspaceShellUpdate,
+  WorkspaceTabFileInput,
   WorkspaceUpdateTabViewModeInput,
   WorkspaceViewMode,
   WorkspaceWindowUpdate
@@ -28,10 +36,14 @@ import {
 } from '../shared/provider-registry'
 
 const MAX_PATH_LENGTH = 4096
+const MAX_FILE_NAME_LENGTH = 255
 const MAX_QUERY_LENGTH = 2000
 const MAX_WINDOW_DIMENSION = 10000
 const MAX_SIDEBAR_WIDTH = 4000
+const MAX_DOCUMENT_OUTLINE_WIDTH = 1000
 const MAX_TAB_ID_LENGTH = 200
+const MAX_TASK_LIST_LIMIT = 200
+const MAX_TASK_SOURCE_LINE_LENGTH = 20000
 const REQUEST_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WORKSPACE_TAB_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,199}$/
 
@@ -122,6 +134,75 @@ function assertValidWorkspaceSourcePath(value: unknown): string {
   return sourcePath
 }
 
+function assertValidFileName(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_FILE_NAME_LENGTH ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    extname(value).toLowerCase() !== '.md'
+  ) {
+    throw new Error('Invalid file name')
+  }
+  return value
+}
+
+function assertValidWorkspaceTopLevelFolderPath(value: unknown): string {
+  const sourcePath = assertValidWorkspaceSourcePath(value)
+  if (sourcePath.includes(sep) || sourcePath.includes('/')) {
+    throw new Error('Invalid workspace top-level folder path')
+  }
+  return sourcePath
+}
+
+function assertValidWorkspaceFolderSortMode(value: unknown): WorkspaceFolderSortMode {
+  if (value !== 'az' && value !== 'za' && value !== 'recency') {
+    throw new Error('Invalid workspace folder sort mode')
+  }
+  return value
+}
+
+function assertValidWorkspaceFolderSortModes(
+  value: unknown
+): Record<string, WorkspaceFolderSortMode> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace folder sort modes')
+  }
+
+  const modes: Record<string, WorkspaceFolderSortMode> = {}
+  for (const [folder, mode] of Object.entries(value)) {
+    modes[assertValidWorkspaceTopLevelFolderPath(folder)] = assertValidWorkspaceFolderSortMode(mode)
+  }
+  return modes
+}
+
+function assertValidWorkspaceExternalPath(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_PATH_LENGTH ||
+    value.includes('\0') ||
+    (!isAbsolute(value) && !win32.isAbsolute(value))
+  ) {
+    throw new Error('Invalid workspace external path')
+  }
+
+  const externalPath = normalize(value)
+  if (
+    externalPath.includes('\0') ||
+    (!isAbsolute(externalPath) && !win32.isAbsolute(externalPath)) ||
+    extname(externalPath).toLowerCase() !== '.md'
+  ) {
+    throw new Error('Invalid workspace external path')
+  }
+
+  return externalPath
+}
+
 function assertValidWorkspaceTabId(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -182,6 +263,57 @@ export function assertValidSearchOptions(value: unknown): SearchOptions {
     options.answerMode = input.answerMode
   }
   return options
+}
+
+export function assertValidTaskListInput(value: unknown): TaskListInput {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid task list input')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'checked' && key !== 'limit') throw new Error(`Invalid task list input key: ${key}`)
+  }
+
+  const taskListInput: TaskListInput = {}
+  if ('checked' in input) {
+    taskListInput.checked = assertOptionalBoolean(input.checked, 'task checked')
+  }
+  if ('limit' in input) {
+    const limit = assertFiniteNumber(input.limit, 'task list limit')
+    if (limit < 0 || limit > MAX_TASK_LIST_LIMIT) throw new Error('Invalid task list limit')
+    taskListInput.limit = Math.floor(limit)
+  }
+
+  return taskListInput
+}
+
+export function assertValidTaskToggleInput(value: unknown): TaskToggleInput {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'line', 'checkboxColumn', 'checked', 'expectedLine'],
+    'task toggle input'
+  )
+  const line = assertFiniteNumber(input.line, 'task line')
+  const checkboxColumn = assertFiniteNumber(input.checkboxColumn, 'task checkbox column')
+  if (!Number.isInteger(line) || line < 1) throw new Error('Invalid task line')
+  if (!Number.isInteger(checkboxColumn) || checkboxColumn < 0) {
+    throw new Error('Invalid task checkbox column')
+  }
+  if (
+    typeof input.expectedLine !== 'string' ||
+    input.expectedLine.length > MAX_TASK_SOURCE_LINE_LENGTH
+  ) {
+    throw new Error('Invalid task expected line')
+  }
+
+  return {
+    sourcePath: assertValidWorkspaceSourcePath(input.sourcePath),
+    line,
+    checkboxColumn,
+    checked: assertOptionalBoolean(input.checked, 'task checked'),
+    expectedLine: input.expectedLine
+  }
 }
 
 export function assertValidProviderId(value: unknown): ProviderId {
@@ -366,7 +498,7 @@ export function assertValidWorkspaceShellPatch(value: unknown): WorkspaceShellUp
     patch.sidebarWidth = width
   }
   if ('activeSidebar' in input) {
-    if (input.activeSidebar !== 'files' && input.activeSidebar !== 'home') {
+    if (input.activeSidebar !== 'files') {
       throw new Error('Invalid activeSidebar')
     }
     patch.activeSidebar = input.activeSidebar
@@ -397,10 +529,85 @@ export function assertValidWorkspaceWindowPatch(value: unknown): WorkspaceWindow
   return patch
 }
 
+export function assertValidWorkspaceLibraryPatch(value: unknown): WorkspaceLibraryUpdate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid workspace library patch')
+  }
+  const input = value as Record<string, unknown>
+  for (const key of Object.keys(input)) {
+    if (key !== 'expandedFolders' && key !== 'scrollTop' && key !== 'folderSortModes') {
+      throw new Error(`Invalid workspace library key: ${key}`)
+    }
+  }
+  const patch: WorkspaceLibraryUpdate = {}
+  if ('expandedFolders' in input) {
+    if (!Array.isArray(input.expandedFolders)) throw new Error('Invalid expandedFolders')
+    patch.expandedFolders = input.expandedFolders.map((folder) =>
+      assertValidWorkspaceSourcePath(folder)
+    )
+  }
+  if ('scrollTop' in input) {
+    const scrollTop = assertFiniteNumber(input.scrollTop, 'scrollTop')
+    if (scrollTop < 0) throw new Error('Invalid scrollTop')
+    patch.scrollTop = scrollTop
+  }
+  if ('folderSortModes' in input) {
+    patch.folderSortModes = assertValidWorkspaceFolderSortModes(input.folderSortModes)
+  }
+  return patch
+}
+
 export function assertValidWorkspaceOpenFileInput(value: unknown): WorkspaceOpenFileInput {
   const input = assertObjectWithKeys(value, ['sourcePath'], 'workspace open file input')
   return {
     sourcePath: assertValidWorkspaceSourcePath(input.sourcePath)
+  }
+}
+
+export function assertValidWorkspaceFileRefInput(value: unknown): WorkspaceFileRef {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'externalPath'],
+    'workspace file reference'
+  )
+  const hasSourcePath = input.sourcePath !== undefined
+  const hasExternalPath = input.externalPath !== undefined
+
+  if (hasSourcePath === hasExternalPath) {
+    throw new Error('Invalid workspace file reference')
+  }
+
+  return hasSourcePath
+    ? { sourcePath: assertValidWorkspaceSourcePath(input.sourcePath) }
+    : { externalPath: assertValidWorkspaceExternalPath(input.externalPath) }
+}
+
+export function assertValidFileRenameInput(value: unknown): FileRenameInput {
+  const input = assertObjectWithKeys(
+    value,
+    ['sourcePath', 'externalPath', 'name'],
+    'file rename input'
+  )
+  const file = assertValidWorkspaceFileRefInput({
+    ...(input.sourcePath !== undefined ? { sourcePath: input.sourcePath } : {}),
+    ...(input.externalPath !== undefined ? { externalPath: input.externalPath } : {})
+  })
+  return {
+    ...file,
+    name: assertValidFileName(input.name)
+  }
+}
+
+export function assertValidWorkspaceOpenRecentFileInput(
+  value: unknown
+): WorkspaceOpenRecentFileInput {
+  return assertValidWorkspaceFileRefInput(value)
+}
+
+export function assertValidWorkspaceTabFileInput(value: unknown): WorkspaceTabFileInput {
+  const input = assertObjectWithKeys(value, ['tabId'], 'workspace tab file input')
+  return {
+    tabId: assertValidWorkspaceTabId(input.tabId)
   }
 }
 
@@ -450,5 +657,22 @@ export function assertValidWorkspaceSetOutlineCollapsedInput(
   return {
     sourcePath: assertValidWorkspaceSourcePath(input.sourcePath),
     collapsed: input.collapsed
+  }
+}
+
+export function assertValidWorkspaceSetOutlineWidthInput(
+  value: unknown
+): WorkspaceSetOutlineWidthInput {
+  const input = assertObjectWithKeys(value, ['width'], 'workspace outline width input')
+  if (
+    typeof input.width !== 'number' ||
+    !Number.isFinite(input.width) ||
+    input.width <= 0 ||
+    input.width > MAX_DOCUMENT_OUTLINE_WIDTH
+  ) {
+    throw new Error('Invalid workspace outline width')
+  }
+  return {
+    width: input.width
   }
 }
