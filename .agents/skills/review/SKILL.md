@@ -33,13 +33,20 @@ Use this skill to find concrete risks before Ryte work ships.
    - Accessibility: labels, focus, keyboard reachability, and effective states are coherent.
    - Validation: tests cover changed behavior and smoke tests use synthetic fixtures.
 
-3. **Report Findings First**
+3. **Route Focused Evidence**
+   - Use `bug-hunt` to verify a reported runtime defect.
+   - Use `data-trace` for state, persistence, indexing, cache, or watcher concerns.
+   - Use `perf-check` when a performance claim needs measurement.
+   - Use `design-review` for changed user-visible Electron UI.
+   - Use `electron-ipc-contract` for a changed trust-boundary contract.
+
+4. **Report Findings First**
    - Lead with findings ordered by severity.
    - Include file/line references when reviewing code.
    - Separate blockers from follow-ups.
    - If no issues are found, say so and name residual risks.
 
-4. **Update Artifacts**
+5. **Update Artifacts**
    - If findings change the plan, update the active plan/review artifact or today's session note.
 
 ## Output Shape

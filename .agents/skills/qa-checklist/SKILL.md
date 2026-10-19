@@ -24,10 +24,11 @@ Use this skill to produce checkboxes the user can run and report back.
 
 2. **Write Visual Checks First**
    - Cover launch, layout, hover/selected states, focus states, resize/collapse behavior, translucency/vibrancy, empty/loading/error states, and restart persistence when affected.
+   - For startup, native module, icon, packaging, or release changes, include an isolated packaged-app launch. Require an installed-DMG check before a public release.
    - Use concrete expected outcomes.
 
 3. **Add Console Checks Only When Useful**
-   - Use JavaScript only.
+   - Use JavaScript only when DevTools reaches the renderer under test; do not substitute it for native-app verification.
    - Do not include shell commands.
    - Include expected values.
 

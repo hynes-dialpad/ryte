@@ -2,7 +2,7 @@
   "version": 1,
   "files": {
     "breadboard-reflection/SKILL.md": {
-      "sha256": "336dfd1cdac8e9def6b00d6f5ebeaf45de3515a76466382743876545ecfbdf5a",
+      "sha256": "f3cdc0a0361f3beb4ba472d409d772d964d39987e51ec7a110dad690b366ae77",
       "executableMode": 0
     },
     "breadboard-reflection/agents/openai.yaml": {
@@ -10,15 +10,47 @@
       "executableMode": 0
     },
     "breadboard/SKILL.md": {
-      "sha256": "81c94fd2e612f6e1cde6043a8eb712d748c2425ca7c322f170a8f75d4471db95",
+      "sha256": "cbf85c5d091cb9c9b2defd350a49b7445a44ee3c89451c8cf3547199df98e061",
       "executableMode": 0
     },
     "breadboard/agents/openai.yaml": {
       "sha256": "700706da6cc754e3ea471232ecb2b607d13eb2f0783ac895e35d4edd45cfd32d",
       "executableMode": 0
     },
+    "bug-hunt/SKILL.md": {
+      "sha256": "22595ed36ea65964a204749040e5a0ee5d5275316eab6acbeb0a3332c0366904",
+      "executableMode": 0
+    },
+    "bug-hunt/agents/openai.yaml": {
+      "sha256": "e19725fc3c33dc2faafbdb954304e170e821a5c7932aa260a2ee94feeec8f249",
+      "executableMode": 0
+    },
+    "data-trace/SKILL.md": {
+      "sha256": "61b7ce09dcbcbd9ff0a0c48abb3b5989cb6839790825be4e9f5740f58ea4d0a2",
+      "executableMode": 0
+    },
+    "data-trace/agents/openai.yaml": {
+      "sha256": "7fcffe2d69b80d078ac547d8367cf728ec9d1ea8e305d4952e4cb658c48b9c02",
+      "executableMode": 0
+    },
+    "design-review/SKILL.md": {
+      "sha256": "11556541dcf72644ac69b35f290d3676560ccc9287a0feb0577569908dffc1bb",
+      "executableMode": 0
+    },
+    "design-review/agents/openai.yaml": {
+      "sha256": "3464c7a8f4a163f422352fcef418437c4ed3e6ded1d2a49e3556f5ea46f45d1b",
+      "executableMode": 0
+    },
+    "electron-ipc-contract/SKILL.md": {
+      "sha256": "0f7419202850733ea3d47a78391ef2bccbe65492177fce9b514e8a349701a0d0",
+      "executableMode": 0
+    },
+    "electron-ipc-contract/agents/openai.yaml": {
+      "sha256": "fc39b73ba17fb5eaacb1333613e8a993045e9856a4afea335919b73a2dd9e32f",
+      "executableMode": 0
+    },
     "framing/SKILL.md": {
-      "sha256": "0a38c0fb5ebdde3737f2c224f03937ec06de29460878b9f1de4d050bedd4bdce",
+      "sha256": "357af52a71ab5b1cdbb687bca79de5c446ddabbedc50e921aaa9e560bf9734db",
       "executableMode": 0
     },
     "framing/agents/openai.yaml": {
@@ -26,15 +58,31 @@
       "executableMode": 0
     },
     "implement/SKILL.md": {
-      "sha256": "4931dad4f45cbe4e5bac8c9d9d973f38f04bf8b9016d90f6523e3967a6248515",
+      "sha256": "bcd6cf325b8a00a80f8e9c8c65587a233f94d243c1e04b41fe2fd5f26daa92af",
       "executableMode": 0
     },
     "implement/agents/openai.yaml": {
       "sha256": "ec4f60787a6470c1273d809fa3c35ccfdb2afda79c37541e0930193ee1263c78",
       "executableMode": 0
     },
+    "perf-check/SKILL.md": {
+      "sha256": "efe2eb53bbbe5c570a9c67f6f19ecb770b38aaf219d48333303db7965bd912ee",
+      "executableMode": 0
+    },
+    "perf-check/agents/openai.yaml": {
+      "sha256": "5c3240203cb1a9892be381a467b79abd6406fdbdbd17bc8105802bec860489b8",
+      "executableMode": 0
+    },
+    "pr-comments/SKILL.md": {
+      "sha256": "949929c079d7e305e0a3db4e729705b6396aa4a66f24e6fc5ab5e487f266236c",
+      "executableMode": 0
+    },
+    "pr-comments/agents/openai.yaml": {
+      "sha256": "a395f824be3afdd742a4454a6d21c3a4928ac7b5f801d8560539b36a8018b155",
+      "executableMode": 0
+    },
     "pr-complete/SKILL.md": {
-      "sha256": "7212e80582120e4a26c6453d130ee8202659598fe7ccfe80b0d9e5e40ab37794",
+      "sha256": "ac801cd321ba38cf62698584c215a7a352f971c112881edf31683835abfc4127",
       "executableMode": 0
     },
     "pr-complete/agents/openai.yaml": {
@@ -42,15 +90,23 @@
       "executableMode": 0
     },
     "pr-create/SKILL.md": {
-      "sha256": "fdb1d9d176115e196df0c040cc6dd6b96ce225d1f6ef974a4b3604a032b2c234",
+      "sha256": "f05e9c2c606800466ca3b96d6caed88a9088da681cb0ad4f75f76ce41f68e2d3",
       "executableMode": 0
     },
     "pr-create/agents/openai.yaml": {
       "sha256": "4b49180c49fa8d2b0677d805d151b3371123c77da9fd973f6ad5a252d7d50a07",
       "executableMode": 0
     },
+    "pr-prep/SKILL.md": {
+      "sha256": "56f7584bc189aa3c76df44f8bbd93e3996baf26e89e4e5f4db3ed2d73a40d2aa",
+      "executableMode": 0
+    },
+    "pr-prep/agents/openai.yaml": {
+      "sha256": "542fd725bc436052f29c906d0fa5e9c53cebfd7c3aad64bb67cc261b8072ded9",
+      "executableMode": 0
+    },
     "project-start/SKILL.md": {
-      "sha256": "3d7b9c6c36e40e0c35ccfb61368355c6443e49798ec8d06a1c3db3837fbcc85c",
+      "sha256": "96774897f45b8aed254cb86b715828129c1a05709b4881218227077b7fef5295",
       "executableMode": 0
     },
     "project-start/agents/openai.yaml": {
@@ -58,7 +114,7 @@
       "executableMode": 0
     },
     "qa-checklist/SKILL.md": {
-      "sha256": "4d1455a05ade516afd7f8331ebe2c04ad48d9410fddb2cd5ca4ff366832dc800",
+      "sha256": "8c3558c965941783e0141918ab1b9421046f11b236e837e172cc4ca19b857133",
       "executableMode": 0
     },
     "qa-checklist/agents/openai.yaml": {
@@ -66,7 +122,7 @@
       "executableMode": 0
     },
     "review/SKILL.md": {
-      "sha256": "91be0fae8dd89d6edb90e851ffc00e0f285e5a39c6f2ec7993f4a8b685d72604",
+      "sha256": "5014d044816c3288fa3a6ae59940c33b783467bbe47a4ccc81f809dde7726c53",
       "executableMode": 0
     },
     "review/agents/openai.yaml": {
@@ -74,19 +130,35 @@
       "executableMode": 0
     },
     "shaping/SKILL.md": {
-      "sha256": "9d0034724c4b4df26022d81351cc0715717e9abe4fdcb3ee1f75d0c1e163452b",
+      "sha256": "1935c61f35e201399394bd33097948dacb805aab647137ecec40f7bc52f69a80",
       "executableMode": 0
     },
     "shaping/agents/openai.yaml": {
       "sha256": "1cdce79efad33d36e7a98c8576112458c1e10c6fde8468925d9d6b42d6cc38ef",
       "executableMode": 0
     },
+    "test-create/SKILL.md": {
+      "sha256": "363763391653080b5f002577c98b91e3885ed45d3a11f73155d5e1a7fc3a73a1",
+      "executableMode": 0
+    },
+    "test-create/agents/openai.yaml": {
+      "sha256": "d37093617fdede39db320aeab29e4a83e7d4e9092dd15865d120e4d9d66b4d52",
+      "executableMode": 0
+    },
     "validate/SKILL.md": {
-      "sha256": "441173a255214479760056b542b9d17de0aac37e9c64c28d6749d0548c4f0a7b",
+      "sha256": "d7f9f403ca05b451087f7ba43c07d21df401ff6a663971c93db43de7109b3c95",
       "executableMode": 0
     },
     "validate/agents/openai.yaml": {
       "sha256": "e8e6ad14f07483d558d6b0cbe571b09c15fff95e65fb102446b479277dedf446",
+      "executableMode": 0
+    },
+    "workflow-edit/SKILL.md": {
+      "sha256": "13e35a36f9356254763f604ef0dcb9f4c9f56c296cd9d9be6dbce02a52e1d9ee",
+      "executableMode": 0
+    },
+    "workflow-edit/agents/openai.yaml": {
+      "sha256": "a8b08978c406657262426490c0a1eb768f5257d1a36c1372a62b24cd4d83d0b0",
       "executableMode": 0
     }
   }

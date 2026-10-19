@@ -32,20 +32,27 @@ Use this skill to turn an approved Ryte plan into scoped repo changes, validatio
    - Use optimistic UI only when rollback/error behavior is explicit.
    - Use synthetic fixtures for tests; never point validation at the real notes corpus without approval.
 
-3. **Test While Building**
+3. **Route Specialized Work**
+   - Use `electron-ipc-contract` for preload or IPC contract changes.
+   - Use `data-trace` for persistence, indexing, watcher, cache, settings, or stale-state changes.
+   - Use `bug-hunt` for a reported or reproduced defect.
+   - Use `perf-check` only for an observed performance concern.
+   - Use `test-create` for a material coverage gap and `design-review` for changed UI behavior.
+
+4. **Test While Building**
    - Add or update focused tests for changed behavior when practical.
    - Prefer behavior-level tests around IPC validation, store behavior, persistence, search modes, and renderer utilities.
    - Use visual/browser smoke checks for shell or layout work when a dev target is available.
 
-4. **Update Artifacts**
+5. **Update Artifacts**
    - Update today's session note after meaningful milestones.
    - If implementation changes the plan, update the relevant plan/shaping/breadboard doc in the same turn.
 
-5. **Validate**
+6. **Validate**
    - Run the relevant local checks or invoke `$validate` behavior.
    - Report commands, pass/fail status, and residual risk.
 
-6. **Finish With QA**
+7. **Finish With QA**
    - Provide checkboxes the user can mark complete.
    - Include visual checks for layout, hover/selected states, window behavior, responsiveness, persistence, empty/loading/error states, and affected workflows.
    - Include console checks only when useful and always as Chrome DevTools JavaScript with expected result.

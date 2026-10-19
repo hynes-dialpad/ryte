@@ -22,6 +22,7 @@ Use this skill to publish a Ryte branch without duplicate PRs.
    - Confirm current branch is not `main` or `master`.
    - Inspect staged/uncommitted changes; do not stage unrelated files silently.
    - Confirm validation has run or run `$validate`.
+   - When the user explicitly asks for readiness preparation, use `pr-prep` before publishing. Do not make ordinary PR creation wait for a separate prep workflow.
 
 2. **Commit And Push**
    - Commit logically scoped changes if not already committed.

@@ -7,7 +7,9 @@
   "scripts": {
     "build:local": "corepack pnpm --dir app build",
     "qa:local": "corepack pnpm --dir app qa:local",
-    "dmg:local": "corepack pnpm --dir app package:mac:arm64"
+    "dmg:local": "corepack pnpm --dir app package:mac:arm64",
+    "check:skills": "node scripts/check-skill-contracts.mjs",
+    "sync:claude-skills": "node scripts/sync-claude-skills.mjs"
   },
   "packageManager": "pnpm@10.12.1"
 }

@@ -20,9 +20,9 @@ Use this skill to run repeatable Ryte validation without touching the user's rea
 Run from `app/` unless noted otherwise:
 
 ```bash
-PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH" pnpm guard:branch
-PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH" pnpm validate
-PATH="$HOME/.nvm/versions/node/v22.14.0/bin:$PATH" pnpm smoke:indexer
+pnpm guard:branch
+pnpm validate
+pnpm smoke:indexer
 git diff --check
 ```
 
@@ -31,13 +31,14 @@ git diff --check
 1. **Preflight**
    - Run `git status -sb`.
    - Confirm the branch is not `main` or `master` if repo edits are present.
-   - Use Node 22 on PATH for Ryte validation.
+   - Confirm the active Node version satisfies `.node-version` and `app/package.json` before running checks.
 
 2. **Run Checks**
    - Run `pnpm guard:branch`.
    - Run `pnpm validate`.
    - Run `pnpm smoke:indexer`; this is the explicit native SQLite/indexer smoke with synthetic fixtures.
    - Run `git diff --check` from the repo root.
+   - When the changed scope includes Electron Builder, native dependencies, startup, release workflows, or icon assets, also run `pnpm dmg:local` and report that it is an unsigned local package check.
 
 3. **Known Failure Handling**
    - If `pnpm smoke:indexer` passes the synthetic smoke but fails during Electron rebuild due `~/.electron-gyp`, rerun with escalation because native rebuild writes outside the sandbox.
