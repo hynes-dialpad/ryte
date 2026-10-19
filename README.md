@@ -15,6 +15,7 @@ Local macOS app for searching and browsing a user-selected markdown folder — a
 ## Requirements
 
 - macOS
+- Apple Silicon (M-series) Mac for the downloadable DMG
 - Node.js 24.x
 - pnpm 10.12+
 - API keys are optional. Local keyword search works without network access.
@@ -50,6 +51,7 @@ From the repository root:
 nvm use # switches only this shell to the repository's Node 24
 corepack enable # once per Node installation; pnpm versions remain project-scoped
 pnpm build:local # production build only
+pnpm dmg:local   # unsigned Apple Silicon DMG for local installer checks
 pnpm qa:local    # validate, smoke the indexer, then launch the built app
 ```
 
@@ -84,9 +86,9 @@ If `pnpm qa:local` reports that Electron exited from `SIGABRT`, the Electron pro
 
 ## Versioning
 
-`app/package.json` is the source of truth for the app version. Ryte uses pre-1.0 SemVer: `0.1.x` for foundation fixes, `0.2.x` for the first security/privacy UX milestone, and `0.3.x` for the first local-first search milestone.
+`app/package.json` is the source of truth for the app version. Ryte uses pre-1.0 SemVer: `0.1.x` for foundation fixes, `0.2.x` for the first security/privacy UX milestone, `0.3.x` for the first local-first search milestone, and `0.4.x` for the first downloadable macOS release.
 
-Tagged releases should use the `v` prefix, for example `v0.1.0`. Future DMG names and macOS bundle versions should derive from the package version plus a monotonically increasing build number.
+Tagged releases use the `v` prefix, for example `v0.4.0`. GitHub Releases publish a signed, notarized Apple Silicon DMG named `ryte-<version>-arm64.dmg`; see [the macOS release guide](docs/releasing-macos.md) for the one-time Apple/GitHub setup and publishing steps.
 
 ## Architecture
 

@@ -6,7 +6,8 @@
   },
   "scripts": {
     "build:local": "corepack pnpm --dir app build",
-    "qa:local": "corepack pnpm --dir app qa:local"
+    "qa:local": "corepack pnpm --dir app qa:local",
+    "dmg:local": "corepack pnpm --dir app package:mac:arm64"
   },
   "packageManager": "pnpm@10.12.1"
 }
