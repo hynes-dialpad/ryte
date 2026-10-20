@@ -1,6 +1,6 @@
 {
   "name": "ryte",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local-first search and file workspace for a markdown folder",
   "main": "./out/main/index.js",
   "author": "Joshua Hynes",
@@ -26,10 +26,14 @@
     "launch": "node scripts/start-preview.mjs",
     "start": "pnpm build && pnpm launch",
     "dev": "electron-vite dev",
-    "build": "node scripts/check-node-version.mjs && npm run typecheck && electron-vite build",
+    "build": "node scripts/check-node-version.mjs && pnpm typecheck && electron-vite build",
     "postinstall": "node_modules/.pnpm/node_modules/.bin/electron-rebuild -f -w better-sqlite3 || electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:mac": "npm run build && electron-builder --mac"
+    "build:unpack": "pnpm build && electron-builder --dir",
+    "build:mac": "pnpm build && electron-builder --mac",
+    "package:mac:arm64": "pnpm build && electron-builder --mac dmg --arm64 --publish never --config.mac.identity=null",
+    "package:mac:arm64:signed": "pnpm build && electron-builder --mac dmg --arm64 --publish never",
+    "release:check": "node scripts/check-release-version.mjs",
+    "release:mac:arm64": "node scripts/check-release-environment.mjs && pnpm package:mac:arm64:signed"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

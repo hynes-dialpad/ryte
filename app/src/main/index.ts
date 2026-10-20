@@ -138,6 +138,9 @@ function initializeIndexingAfterFirstPaint(): void {
 // Some APIs can only be used after this event occurs.
 function startApp(): void {
   electronApp.setAppUserModelId('com.joshuahynes.ryte')
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(icon)
+  }
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
