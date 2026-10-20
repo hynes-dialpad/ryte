@@ -54,17 +54,29 @@ for (const name of canonicalNames) {
 
   const adapterPath = resolve(claudeSkillsRoot, name, "SKILL.md");
   const adapterSource = await readFile(adapterPath, "utf8").catch(() => null);
-  if (!adapterSource?.includes(`.agents/skills/${name}/SKILL.md`)) {
+  if (adapterSource !== canonicalSource) {
     failures.push(
-      `${relative(repositoryRoot, adapterPath)} must reference the canonical skill.`,
+      `${relative(repositoryRoot, adapterPath)} must match the canonical skill.`,
     );
   }
 
+  const canonicalMetadataPath = resolve(
+    canonicalSkillsRoot,
+    name,
+    "agents/openai.yaml",
+  );
+  const canonicalMetadata = await readFile(canonicalMetadataPath, "utf8").catch(
+    () => null,
+  );
   const metadataPath = resolve(claudeSkillsRoot, name, "agents/openai.yaml");
   const metadata = await readFile(metadataPath, "utf8").catch(() => null);
-  if (!metadata?.includes("display_name:") || !metadata.includes(`$${name}`)) {
+  if (
+    !canonicalMetadata?.includes("display_name:") ||
+    !canonicalMetadata.includes(`$${name}`) ||
+    metadata !== canonicalMetadata
+  ) {
     failures.push(
-      `${relative(repositoryRoot, metadataPath)} must include display metadata and $${name}.`,
+      `${relative(repositoryRoot, metadataPath)} must mirror the canonical skill metadata.`,
     );
   }
 }

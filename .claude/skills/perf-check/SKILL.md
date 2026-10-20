@@ -1,14 +1,20 @@
 ---
-name: "perf-check"
-description: "Measure and diagnose Ryte performance across Electron startup, IPC, indexing, SQLite, file watching, Vue rendering, memory, and packaged builds. Use for slow, memory, re-render, startup, or large-library concerns."
+name: perf-check
+description: Measure and diagnose Ryte performance across Electron startup, IPC, indexing, SQLite, file watching, Vue rendering, memory, and packaged builds. Use for slow, memory, re-render, startup, or large-library concerns.
 ---
 
-# Ryte perf-check
+# Ryte Performance Check
 
-$ARGUMENTS
+Measure an observed bottleneck before proposing optimization.
 
-This is Ryte's Claude adapter. The canonical workflow is local to this repository.
+## Workflow
 
-1. Load `.agents/skills/perf-check/SKILL.md` and follow it exactly.
-2. Preserve the canonical workflow's privacy, Electron-boundary, approval, and validation rules.
-3. Keep this adapter limited to discovery; do not add independent policy here.
+1. Define the user-visible latency, target scenario, corpus size, machine state, and production or development build used for evidence.
+2. Trace only relevant categories: main-process startup, first paint, IPC count or payload, SQLite/indexer work, watcher lifecycle, Vue reactivity, retained resources, hidden windows, or bundle/package size.
+3. Add bounded timing marks or process/resource sampling only when static evidence cannot distinguish the bottleneck. Do not log note content.
+4. Separate measured findings from hypotheses. Prefer deleting, deferring, or narrowing work over speculative caching, workers, or virtualization.
+5. Re-measure the same scenario after a change and report the exact remaining uncertainty.
+
+## Output
+
+Report scenario, measurements, execution path, findings by severity, correction direction, and before/after evidence when available.

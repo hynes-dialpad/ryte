@@ -14,10 +14,6 @@ function frontmatterValue(source, key) {
   return match[1].replace(/^['"]|['"]$/g, "");
 }
 
-function adapterSource(name, description) {
-  return `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n# Ryte ${name}\n\n$ARGUMENTS\n\nThis is Ryte's Claude adapter. The canonical workflow is local to this repository.\n\n1. Load \`.agents/skills/${name}/SKILL.md\` and follow it exactly.\n2. Preserve the canonical workflow's privacy, Electron-boundary, approval, and validation rules.\n3. Keep this adapter limited to discovery; do not add independent policy here.\n`;
-}
-
 async function listSkillNames() {
   const entries = await readdir(canonicalSkillsRoot, { withFileTypes: true });
   return entries
@@ -47,10 +43,17 @@ for (const name of skillNames) {
 
   const adapterPath = resolve(claudeSkillsRoot, name, "SKILL.md");
   await mkdir(dirname(adapterPath), { recursive: true });
-  await writeFile(
-    adapterPath,
-    adapterSource(name, frontmatterValue(canonicalSource, "description")),
+  await writeFile(adapterPath, canonicalSource);
+
+  const metadataPath = resolve(canonicalSkillsRoot, name, "agents/openai.yaml");
+  const metadata = await readFile(metadataPath, "utf8");
+  const claudeMetadataPath = resolve(
+    claudeSkillsRoot,
+    name,
+    "agents/openai.yaml",
   );
+  await mkdir(dirname(claudeMetadataPath), { recursive: true });
+  await writeFile(claudeMetadataPath, metadata);
 }
 
 const manifestFiles = (await listFiles(claudeSkillsRoot))

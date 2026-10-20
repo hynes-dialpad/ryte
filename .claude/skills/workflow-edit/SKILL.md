@@ -1,14 +1,20 @@
 ---
-name: "workflow-edit"
-description: "Safely edit Ryte GitHub Actions workflows with YAML, permissions, secret, and event-input checks. Use for changes under .github/workflows or release automation."
+name: workflow-edit
+description: Safely edit Ryte GitHub Actions workflows with YAML, permissions, secret, and event-input checks. Use for changes under .github/workflows or release automation.
 ---
 
-# Ryte workflow-edit
+# Ryte Workflow Edit
 
-$ARGUMENTS
+Change workflow behavior without weakening release or repository security.
 
-This is Ryte's Claude adapter. The canonical workflow is local to this repository.
+## Workflow
 
-1. Load `.agents/skills/workflow-edit/SKILL.md` and follow it exactly.
-2. Preserve the canonical workflow's privacy, Electron-boundary, approval, and validation rules.
-3. Keep this adapter limited to discovery; do not add independent policy here.
+1. Read the full workflow and identify triggers, permissions, environments, secrets, artifacts, and changed `run` blocks.
+2. Treat pull-request titles, bodies, comments, branch names, commit messages, and issue fields as untrusted. Pass them through environment variables; never interpolate them directly into shell commands.
+3. Keep release credentials only in GitHub secrets or temporary runner files. Do not print, commit, or persist them.
+4. Use least-privilege job permissions and an environment gate for publishing or notarized release work.
+5. Validate YAML with an installed parser or linter, review expression use manually, and describe the smallest safe trigger to verify the workflow after publication.
+
+## Output
+
+Report changed trigger/permission/secret behavior, validation, unverified hosted-run risk, and any required operator action.
