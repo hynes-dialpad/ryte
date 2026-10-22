@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Ryte is a free Markdown viewer for Mac that searches across all your notes, locally. Add a ChatGPT or Claude key for optional AI summaries."
+    />
+    <meta name="theme-color" content="#0b0504" />
+    <title>Ryte — Find the note you remember</title>
+    <link rel="icon" type="image/svg+xml" href="assets/ryte-icon.svg" />
+    <link rel="stylesheet" href="styles.css?v=14" />
+    <script src="main.js?v=14" defer></script>
+  </head>
+  <body>
+    <div class="backdrop" aria-hidden="true">
+      <canvas class="backdrop-canvas" id="backdrop-canvas"></canvas>
+      <div class="backdrop-shade"></div>
+      <div class="backdrop-grain"></div>
+    </div>
+
+    <header class="topbar" id="topbar" inert>
+      <a class="topbar-brand" href="#top" aria-label="Ryte, back to top">
+        <img src="assets/ryte-icon.svg" alt="" width="32" height="32" />
+        <span class="wordmark" role="img" aria-label="Ryte"></span>
+      </a>
+      <a
+        class="button button-compact"
+        href="https://github.com/hynes-dialpad/ryte/releases/latest"
+        >Download for Mac</a
+      >
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <div class="lockup">
+            <img class="lockup-glyph" src="assets/ryte-icon.svg" alt="" width="112" height="112" />
+            <span class="wordmark" role="img" aria-label="Ryte"></span>
+          </div>
+          <h1 id="hero-title">Find the note you remember.</h1>
+          <p class="lede">
+            Ryte is a free Markdown viewer for Mac that searches across all of
+            your notes. Add a ChatGPT or Claude key to turn on AI summaries.
+          </p>
+          <a
+            class="button"
+            id="download"
+            href="https://github.com/hynes-dialpad/ryte/releases/latest"
+          >
+            <span class="button-label">Download for Mac</span>
+            <span class="button-sub">Apple Silicon &middot; macOS 12+</span>
+          </a>
+        </div>
+        <figure class="hero-shot">
+          <img
+            src="assets/ryte-app.webp"
+            alt="Ryte with a folder of Markdown notes in the sidebar and a rendered pricing-decision note open, showing headings, a table and a list."
+            width="2880"
+            height="1800"
+            fetchpriority="high"
+          />
+          <span class="lights" aria-hidden="true">
+            <i class="light-close"></i><i class="light-min"></i><i class="light-max"></i>
+          </span>
+        </figure>
+      </section>
+    </main>
+  </body>
+</html>
