@@ -1,0 +1,285 @@
+:root {
+  color-scheme: dark;
+  --c-bg: #0b0504;
+  --ink: #fff3e3;
+  --ink-soft: #e8cfba;
+  --line: rgb(255 243 227 / 18%);
+  --signal: #ff4b20;
+  --signal-hover: #e8401a;
+  --on-signal: #1a0d08;
+  --sans:
+    "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", sans-serif;
+  --gutter: clamp(1.25rem, 4vw, 4rem);
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: rgb(255 138 30 / 45%);
+}
+a {
+  color: inherit;
+}
+
+/* Fixed backdrop: page content scrolls over it. */
+.backdrop {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* CSS-only fallback when WebGL is unavailable. */
+  background:
+    radial-gradient(ellipse 70% 30% at 78% 100%, rgb(245 117 26 / 75%), transparent 70%),
+    radial-gradient(ellipse 60% 24% at 40% 104%, rgb(212 59 8 / 60%), transparent 70%),
+    var(--c-bg);
+}
+.backdrop-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 900ms ease;
+}
+.backdrop-canvas.is-ready {
+  opacity: 1;
+}
+/* Soft dark shade over the text column; strength comes from params.shade. */
+.backdrop-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(11 5 4 / var(--shade-a, 0.66)) 0%,
+    rgb(11 5 4 / calc(var(--shade-a, 0.66) * 0.85)) 32%,
+    rgb(11 5 4 / 0) 62%
+  );
+}
+.backdrop-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n' x='0' y='0' width='100%' height='100%'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .8  0 0 0 0 .6  0 0 0 .5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+main,
+.topbar {
+  position: relative;
+  z-index: 1;
+}
+
+/* The wordmark is the app's own ryte-logo.svg, tinted with the page ink. */
+.wordmark {
+  display: block;
+  width: 7.5rem;
+  aspect-ratio: 40 / 22;
+  background: var(--ink);
+  -webkit-mask: url("assets/ryte-wordmark.svg") center / contain no-repeat;
+  mask: url("assets/ryte-wordmark.svg") center / contain no-repeat;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: center;
+  gap: clamp(2rem, 5vw, 5rem);
+  min-height: 100svh;
+  padding: 3rem 0 3rem var(--gutter);
+}
+.hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.75rem;
+}
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+.lockup-glyph {
+  display: block;
+  width: 7rem;
+  height: auto;
+  filter: drop-shadow(0 0.7rem 1.2rem rgb(40 10 0 / 35%));
+}
+h1 {
+  max-width: 11ch;
+  margin: 0;
+  font-size: clamp(2.8rem, 5.2vw, 4.9rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+.lede {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
+}
+
+.button {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 4.25rem;
+  padding: 0.8rem 1.9rem 0.8rem 1.6rem;
+  border-radius: 1rem;
+  color: var(--on-signal);
+  background: var(--signal);
+  text-decoration: none;
+  box-shadow: 0 0.9rem 2rem rgb(40 10 0 / 28%);
+  transition: background 160ms ease;
+}
+.button:hover {
+  background: var(--signal-hover);
+}
+.button:focus-visible,
+.topbar-brand:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+.button-label {
+  font-size: 1.2rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.button-sub {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.button-compact {
+  flex-direction: row;
+  min-height: 2.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 650;
+  box-shadow: none;
+}
+
+.hero-shot {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  container-type: inline-size;
+}
+.hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.9rem 0 0 0.9rem;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 14%),
+    0 2.5rem 6rem rgb(40 10 0 / 40%);
+}
+/* Traffic lights match the app's window: 12pt buttons at x=20, y=22 in a 1440pt-wide window. */
+.lights {
+  position: absolute;
+  top: calc(22 / 1440 * 100cqw);
+  left: calc(20 / 1440 * 100cqw);
+  display: flex;
+  gap: calc(8 / 1440 * 100cqw);
+}
+.lights i {
+  display: block;
+  width: calc(12 / 1440 * 100cqw);
+  height: calc(12 / 1440 * 100cqw);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 22%);
+}
+.light-close {
+  background: #ff5f57;
+}
+.light-min {
+  background: #febc2e;
+}
+.light-max {
+  background: #28c840;
+}
+
+.topbar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem var(--gutter);
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--c-bg) 88%, transparent);
+  transform: translateY(-100%);
+  visibility: hidden;
+  transition:
+    transform 260ms ease,
+    visibility 0s linear 260ms;
+}
+.topbar.is-visible {
+  transform: translateY(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
+.topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+}
+.topbar-brand img {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+}
+.topbar .wordmark {
+  width: 3.6rem;
+}
+
+@media (max-width: 56rem) {
+  .backdrop-shade {
+    background: linear-gradient(
+      180deg,
+      rgb(11 5 4 / var(--shade-a, 0.66)) 0%,
+      rgb(11 5 4 / calc(var(--shade-a, 0.66) * 0.85)) 45%,
+      rgb(11 5 4 / 0) 78%
+    );
+  }
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+    padding: 2.5rem var(--gutter) 3rem;
+  }
+  .hero-shot img {
+    border-radius: 0.8rem;
+  }
+  .lockup-glyph {
+    width: 5.5rem;
+  }
+  .wordmark {
+    width: 6rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .backdrop-canvas,
+  .topbar {
+    transition: none;
+  }
+}

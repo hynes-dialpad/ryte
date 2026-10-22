@@ -7,6 +7,7 @@ app/.eslintcache
 
 # Local developer tooling
 .codegraph/
+.playwright-cli/
 
 # Spikes (local research only, not committed)
 spikes/
