@@ -8,6 +8,8 @@ const canonicalSkillsRoot = resolve(repositoryRoot, ".agents/skills");
 const claudeSkillsRoot = resolve(repositoryRoot, ".claude/skills");
 const manifestPath = resolve(claudeSkillsRoot, ".pilot-sync-manifest.json");
 const failures = [];
+const whenToUse =
+  /\b(?:use|used|run|invoke|activate)s?\b[^.]*\b(?:when|whenever|for|before|after|during|while)\b/i;
 
 function frontmatterValue(source, key) {
   return source
@@ -49,6 +51,12 @@ for (const name of canonicalNames) {
   if (frontmatterValue(canonicalSource, "name") !== name) {
     failures.push(
       `${relative(repositoryRoot, canonicalPath)} must declare name: ${name}.`,
+    );
+  }
+  const description = frontmatterValue(canonicalSource, "description");
+  if (!description || !whenToUse.test(description)) {
+    failures.push(
+      `${relative(repositoryRoot, canonicalPath)} must describe when the skill should be used.`,
     );
   }
 

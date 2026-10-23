@@ -74,6 +74,17 @@ pnpm smoke:indexer # safe native SQLite/indexer smoke using synthetic notes
 
 Branch and PR expectations are documented in [docs/branch-workflow.md](docs/branch-workflow.md). Phase 0 manual app smoke is tracked in [docs/phase-0-manual-smoke.md](docs/phase-0-manual-smoke.md).
 
+### Agent tooling
+
+Ryte's canonical agent skills live in `.agents/skills/`. The matching `.claude/skills/` tree is generated and tracked for Claude compatibility; do not edit it directly.
+
+```bash
+pnpm sync:claude-skills # regenerate Claude adapters after changing canonical skills
+pnpm check:skills       # verify skill names, descriptions, metadata, adapters, and manifest hashes
+```
+
+The repository intentionally has no tracked Claude hook or local-settings configuration. Keep personal `.claude/settings.local.json` settings local and uncommitted.
+
 Runtime/tooling versions:
 
 - Node.js: `.node-version` pins major version `24`; current validated local version is `v24.14.1`.
