@@ -65,6 +65,46 @@
       "sha256": "3464c7a8f4a163f422352fcef418437c4ed3e6ded1d2a49e3556f5ea46f45d1b",
       "executableMode": 0
     },
+    "design-spec/SKILL.md": {
+      "sha256": "5f9849c566398137fb65abc144ed0ebecd9b20dd14ea3232b55519f8e3a7812d",
+      "executableMode": 0
+    },
+    "design-spec/agents/openai.yaml": {
+      "sha256": "cad4b9ecb98938782dbe418f7a8f27f9a1396747513911333807def0672dace1",
+      "executableMode": 0
+    },
+    "design-spec/references/evidence-strategy.md": {
+      "sha256": "17fb7ffe0636a9cbeca1d1a83d39562a9e72346819f21b197ea06572c35e5973",
+      "executableMode": 0
+    },
+    "design-spec/references/implementation.md": {
+      "sha256": "013269f44da7db53ae4cf269dd79de8432f0c2d57b119198232ba89695f28cb4",
+      "executableMode": 0
+    },
+    "design-spec/references/output-contract.md": {
+      "sha256": "2fd266c514329788a59a2932d2b4deb759039232bbe4bdc9454d02942845411b",
+      "executableMode": 0
+    },
+    "design-spec/references/plan-contract.md": {
+      "sha256": "56c2db44a8d44f0263d421c81332ebc1968421a5c6accf1f991d962a65d81730",
+      "executableMode": 0
+    },
+    "design-spec/references/plan-review.md": {
+      "sha256": "acf33b9c67e7a61b3355787fd2c01bce832308d0ab83fee3671ff8f7c8382106",
+      "executableMode": 0
+    },
+    "design-spec/references/verification.md": {
+      "sha256": "29e34b45ac0aa1981b41eed8bfa0c1b28a03d43fa360c843c19120dd9e5c44af",
+      "executableMode": 0
+    },
+    "design-spec/scripts/plan-state.mjs": {
+      "sha256": "c3cdf89c8f45b34e920b9e0ea19e347f64dd24c09490a765f9a75e10a725f93b",
+      "executableMode": 0
+    },
+    "design-spec/scripts/plan-state.test.mjs": {
+      "sha256": "014d76d23f17cb5e5773b7791f0733aa9b555d674dae602671a26edf1fcb0688",
+      "executableMode": 0
+    },
     "docs-audit/SKILL.md": {
       "sha256": "3a0522e326919a4ef1ea7afb1df87f5db546ac9bca0f2bae13de51593f7f8207",
       "executableMode": 0
@@ -199,6 +239,22 @@
     },
     "workflow-edit/agents/openai.yaml": {
       "sha256": "a8b08978c406657262426490c0a1eb768f5257d1a36c1372a62b24cd4d83d0b0",
+      "executableMode": 0
+    },
+    "writing-help/LICENSE.txt": {
+      "sha256": "b7a7fe370cc4c9e974528c7cea7841cf8ac886bc9ed947edb11b289441fba4a8",
+      "executableMode": 0
+    },
+    "writing-help/SKILL.md": {
+      "sha256": "9ac135f9cd2cf4b42db54516e83e34e57467fea3dc4262edad5fcd112d2624f6",
+      "executableMode": 0
+    },
+    "writing-help/agents/openai.yaml": {
+      "sha256": "2319c3f2abfe0d15ba616551195906d1cff34ad7b92bcc964098147bbd38f09b",
+      "executableMode": 0
+    },
+    "writing-help/references/patterns.md": {
+      "sha256": "d6f7ca2425d34a4050130632fa8090e1483b8fadf68a4a4a21ee93a5cccd57c5",
       "executableMode": 0
     }
   }
