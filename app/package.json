@@ -30,7 +30,7 @@
     "postinstall": "node_modules/.pnpm/node_modules/.bin/electron-rebuild -f -w better-sqlite3 || electron-builder install-app-deps",
     "build:unpack": "pnpm build && electron-builder --dir",
     "build:mac": "pnpm build && electron-builder --mac",
-    "package:mac:arm64": "pnpm build && electron-builder --mac dmg --arm64 --publish never --config.mac.identity=null",
+    "package:mac:arm64": "pnpm build && electron-builder --mac dmg --arm64 --publish never --config.mac.identity=null && node scripts/remove-unpacked-mac-build.mjs",
     "package:mac:arm64:signed": "pnpm build && electron-builder --mac dmg --arm64 --publish never",
     "release:check": "node scripts/check-release-version.mjs",
     "release:mac:arm64": "node scripts/check-release-environment.mjs && pnpm package:mac:arm64:signed"

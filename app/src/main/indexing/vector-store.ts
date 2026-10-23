@@ -2,6 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3'
 import * as sqliteVec from 'sqlite-vec'
 
 import { buildFtsMatchQuery } from './fts-query'
+import { resolveSQLiteVecLoadablePath } from './sqlite-vec-path'
 import type { Chunk } from './chunker'
 
 export interface ChunkWithVector {
@@ -29,7 +30,7 @@ export class VectorStore {
     this.dim = dim
     this.db = new Database(this.dbPath)
     this.db.pragma('journal_mode = WAL')
-    sqliteVec.load(this.db)
+    this.db.loadExtension(resolveSQLiteVecLoadablePath(sqliteVec.getLoadablePath()))
     this.createSchema()
   }
 

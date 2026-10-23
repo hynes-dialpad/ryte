@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => {
   const order: string[] = []
   const appHandlers = new Map<string, () => void>()
+  const windowOptions: Array<{ title?: string }> = []
 
   class BrowserWindowMock {
     static getAllWindows = vi.fn(() => [])
 
-    constructor() {
+    constructor(options: { title?: string }) {
       order.push('window:create')
+      windowOptions.push(options)
     }
 
     on = vi.fn()
@@ -26,6 +28,7 @@ const mocks = vi.hoisted(() => {
   return {
     order,
     appHandlers,
+    windowOptions,
     app: {
       setName: vi.fn(),
       whenReady: vi.fn(() => Promise.resolve()),
@@ -104,6 +107,7 @@ describe('main startup ordering', () => {
     vi.resetModules()
     mocks.order.length = 0
     mocks.appHandlers.clear()
+    mocks.windowOptions.length = 0
   })
 
   it('creates the first window before initializing the index store', async () => {
@@ -111,6 +115,15 @@ describe('main startup ordering', () => {
     await vi.waitFor(() => expect(mocks.order).toContain('indexer:init'))
 
     expect(mocks.order.indexOf('window:create')).toBeLessThan(mocks.order.indexOf('indexer:init'))
+  })
+
+  it('uses title case for native app and window names', async () => {
+    await import('./index')
+    await vi.waitFor(() => expect(mocks.windowOptions).toHaveLength(1))
+    await vi.waitFor(() => expect(mocks.indexerInit).toHaveBeenCalledOnce())
+
+    expect(mocks.app.setName).toHaveBeenCalledWith('Ryte')
+    expect(mocks.windowOptions[0]?.title).toBe('Ryte')
   })
 
   it('test_reactivating_a_window_does_not_restart_initialized_indexing', async () => {
