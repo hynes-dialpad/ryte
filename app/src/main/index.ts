@@ -24,9 +24,9 @@ let hasInitializedIndexing = false
 const userDataDirOverride = process.env['RYTE_USER_DATA_DIR']
 if (userDataDirOverride) app.setPath('userData', userDataDirOverride)
 
-// Set early so macOS notifications show "ryte" as the source instead of
+// Set early so macOS notifications show "Ryte" as the source instead of
 // "Electron" (only relevant in dev — packaged builds use CFBundleName).
-app.setName('ryte')
+app.setName('Ryte')
 
 function createWindow(): BrowserWindow {
   const rendererUrl = is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined
@@ -46,7 +46,7 @@ function createWindow(): BrowserWindow {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: process.platform === 'darwin' ? '#00000000' : '#CC0A090B',
-    title: 'ryte',
+    title: 'Ryte',
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hidden' as const,
@@ -154,7 +154,7 @@ function startApp(): void {
     if (status.phase === 'done' && lastNotifiedPhase === 'indexing') {
       if (Notification.isSupported()) {
         new Notification({
-          title: 'ryte',
+          title: 'Ryte',
           body: `Index ready: ${status.chunksTotal} chunks across ${status.filesTotal} files`
         }).show()
       }

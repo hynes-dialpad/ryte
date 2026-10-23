@@ -43,7 +43,7 @@ An unsigned DMG is useful for checking the installer layout before credentials a
 pnpm dmg:local
 ```
 
-The resulting file is `app/dist/ryte-<version>-arm64.dmg`. This command intentionally disables macOS code signing so the unsigned bundle remains internally consistent and launchable for local installer checks. It is not suitable for distribution. `pnpm release:mac:arm64` uses the separate signed package path and is intentionally blocked unless signing and notarization credentials are present.
+The resulting file is `app/dist/ryte-<version>-arm64.dmg`. The local command removes electron-builder's generated `app/dist/mac-arm64/` staging app after the DMG succeeds; use `pnpm build:unpack` when you intentionally need that unpacked app for debugging. This command intentionally disables macOS code signing so the unsigned bundle remains internally consistent and launchable for local installer checks. It is not suitable for distribution. `pnpm release:mac:arm64` uses the separate signed package path and is intentionally blocked unless signing and notarization credentials are present.
 
 ## Publishing a release
 

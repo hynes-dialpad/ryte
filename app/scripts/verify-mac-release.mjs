@@ -9,7 +9,7 @@ if (!version) {
 }
 
 const artifactName = `ryte-${version}-arm64.dmg`
-const appPath = join('dist', 'mac-arm64', 'ryte.app')
+const appPath = join('dist', 'mac-arm64', 'Ryte.app')
 const executablePath = join(appPath, 'Contents', 'MacOS', 'ryte')
 
 await access(join('dist', artifactName))

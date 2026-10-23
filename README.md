@@ -51,7 +51,7 @@ From the repository root:
 nvm use # switches only this shell to the repository's Node 24
 corepack enable # once per Node installation; pnpm versions remain project-scoped
 pnpm build:local # production build only
-pnpm dmg:local   # unsigned Apple Silicon DMG for local installer checks
+pnpm dmg:local   # unsigned Apple Silicon DMG for local installer checks; removes the unpacked staging app
 pnpm qa:local    # validate, smoke the indexer, then launch the built app
 ```
 
