@@ -31,8 +31,10 @@ Use this skill after a Ryte PR has merged.
 
 4. **Prune Branches**
    - Prune deleted remote branches.
-   - Delete the merged local branch when safe.
-   - If branch deletion warns about squash/merge ancestry but the PR is confirmed merged, explain the condition before force deletion.
+   - Before deleting the verified merged source branch, capture its exact local SHA and verify any remaining remote source ref has that same SHA. Do not delete another remote merely because it has the same branch name.
+   - Prefer an expected-SHA local deletion (`git update-ref -d refs/heads/<branch> <sha>`) so a reused or advanced branch fails closed.
+   - If a remote source ref still exists, delete it with an exact `--force-with-lease` for the captured SHA; do not fall back to an unguarded delete.
+   - If a squash/rewrite merge leaves Git unable to prove ancestry, explain that condition before deleting only the GitHub-verified source branch.
 
 5. **Record Closeout**
    - Update today's session note with synced commit, deleted branch, validation status if checked, and recommended next effort.

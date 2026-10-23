@@ -22,11 +22,13 @@ Use this skill to orient a Ryte effort before implementation or planning edits b
 
 1. **Sync Context**
    - Run `git status -sb` and identify the current branch.
-   - If on a completed work branch and the user says the PR merged, switch to `main`, pull `--ff-only`, and prune the merged local branch when safe.
-   - Confirm a clean worktree before creating a new branch.
+   - Resolve the ordinary base from the remote symbolic default when available; use the documented local base only when that resolution is unambiguous. Do not assume `main` or `origin`.
+   - If the user says a PR merged, use `pr-complete` rather than manually switching branches or deleting refs here.
+   - Confirm a clean worktree and that the current branch is the resolved base before creating a new branch. Stop and ask before carrying changes forward or branching from another feature.
 
 2. **Create Work Branch**
    - If repo edits are likely, create a branch before edits.
+   - Refresh the resolved base with `git pull --ff-only <remote> <base>` before branching when a remote is available. Stop on any fetch or fast-forward failure; never replace it with a merge, rebase, or reset.
    - Use `codex/<short-purpose>` unless the user provides a branch name.
    - If the user only requested notes outside the repo, a branch is optional unless repo edits follow.
 
@@ -45,7 +47,7 @@ Use this skill to orient a Ryte effort before implementation or planning edits b
    - If the user asks for a durable plan, write it to today's `plan/` folder.
 
 6. **Report Start Plan**
-   - State the branch, goal, active artifacts, and the next 3-6 execution steps.
+   - State the resolved base/remote, branch, goal, active artifacts, and the next 3-6 execution steps.
    - Do not ask to proceed unless a high-impact product choice remains unresolved.
 
 ## Output Shape
@@ -56,5 +58,6 @@ Started Ryte effort on `<branch>`.
 Goal: ...
 Source artifacts: ...
 Next steps:
+
 - ...
 ```

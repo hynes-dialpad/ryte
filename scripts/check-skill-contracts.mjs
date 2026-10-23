@@ -8,6 +8,8 @@ const canonicalSkillsRoot = resolve(repositoryRoot, ".agents/skills");
 const claudeSkillsRoot = resolve(repositoryRoot, ".claude/skills");
 const manifestPath = resolve(claudeSkillsRoot, ".pilot-sync-manifest.json");
 const failures = [];
+const whenToUse =
+  /\b(?:use|used|run|invoke|activate)s?\b[^.]*\b(?:when|whenever|for|before|after|during|while)\b/i;
 
 function frontmatterValue(source, key) {
   return source
@@ -51,13 +53,38 @@ for (const name of canonicalNames) {
       `${relative(repositoryRoot, canonicalPath)} must declare name: ${name}.`,
     );
   }
-
-  const adapterPath = resolve(claudeSkillsRoot, name, "SKILL.md");
-  const adapterSource = await readFile(adapterPath, "utf8").catch(() => null);
-  if (adapterSource !== canonicalSource) {
+  const description = frontmatterValue(canonicalSource, "description");
+  if (!description || !whenToUse.test(description)) {
     failures.push(
-      `${relative(repositoryRoot, adapterPath)} must match the canonical skill.`,
+      `${relative(repositoryRoot, canonicalPath)} must describe when the skill should be used.`,
     );
+  }
+
+  const canonicalSkillRoot = resolve(canonicalSkillsRoot, name);
+  const claudeSkillRoot = resolve(claudeSkillsRoot, name);
+  const canonicalFiles = (await listFiles(canonicalSkillRoot))
+    .map((path) => relative(canonicalSkillRoot, path))
+    .sort();
+  const claudeFiles = (await listFiles(claudeSkillRoot).catch(() => []))
+    .map((path) => relative(claudeSkillRoot, path))
+    .sort();
+  if (JSON.stringify(claudeFiles) !== JSON.stringify(canonicalFiles)) {
+    failures.push(
+      `.claude/skills/${name} must mirror every canonical .agents/skills/${name} support file.`,
+    );
+  }
+  for (const skillFile of canonicalFiles) {
+    const canonicalFile = resolve(canonicalSkillRoot, skillFile);
+    const claudeFile = resolve(claudeSkillRoot, skillFile);
+    const [canonicalContent, claudeContent] = await Promise.all([
+      readFile(canonicalFile),
+      readFile(claudeFile).catch(() => null),
+    ]);
+    if (!claudeContent || !canonicalContent.equals(claudeContent)) {
+      failures.push(
+        `${relative(repositoryRoot, claudeFile)} must match the canonical skill support file.`,
+      );
+    }
   }
 
   const canonicalMetadataPath = resolve(
@@ -68,15 +95,12 @@ for (const name of canonicalNames) {
   const canonicalMetadata = await readFile(canonicalMetadataPath, "utf8").catch(
     () => null,
   );
-  const metadataPath = resolve(claudeSkillsRoot, name, "agents/openai.yaml");
-  const metadata = await readFile(metadataPath, "utf8").catch(() => null);
   if (
     !canonicalMetadata?.includes("display_name:") ||
-    !canonicalMetadata.includes(`$${name}`) ||
-    metadata !== canonicalMetadata
+    !canonicalMetadata.includes(`$${name}`)
   ) {
     failures.push(
-      `${relative(repositoryRoot, metadataPath)} must mirror the canonical skill metadata.`,
+      `${relative(repositoryRoot, canonicalMetadataPath)} must define matching skill metadata.`,
     );
   }
 }

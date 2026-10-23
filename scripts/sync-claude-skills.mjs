@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,25 +35,23 @@ async function listFiles(directory) {
 
 const skillNames = await listSkillNames();
 for (const name of skillNames) {
-  const canonicalPath = resolve(canonicalSkillsRoot, name, "SKILL.md");
+  const canonicalSkillRoot = resolve(canonicalSkillsRoot, name);
+  const canonicalPath = resolve(canonicalSkillRoot, "SKILL.md");
   const canonicalSource = await readFile(canonicalPath, "utf8");
   const declaredName = frontmatterValue(canonicalSource, "name");
   if (declaredName !== name)
     throw new Error(`${canonicalPath} declares ${declaredName}.`);
 
-  const adapterPath = resolve(claudeSkillsRoot, name, "SKILL.md");
-  await mkdir(dirname(adapterPath), { recursive: true });
-  await writeFile(adapterPath, canonicalSource);
-
-  const metadataPath = resolve(canonicalSkillsRoot, name, "agents/openai.yaml");
-  const metadata = await readFile(metadataPath, "utf8");
-  const claudeMetadataPath = resolve(
-    claudeSkillsRoot,
-    name,
-    "agents/openai.yaml",
-  );
-  await mkdir(dirname(claudeMetadataPath), { recursive: true });
-  await writeFile(claudeMetadataPath, metadata);
+  const claudeSkillRoot = resolve(claudeSkillsRoot, name);
+  await rm(claudeSkillRoot, { recursive: true, force: true });
+  for (const sourcePath of await listFiles(canonicalSkillRoot)) {
+    const targetPath = resolve(
+      claudeSkillRoot,
+      relative(canonicalSkillRoot, sourcePath),
+    );
+    await mkdir(dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, await readFile(sourcePath));
+  }
 }
 
 const manifestFiles = (await listFiles(claudeSkillsRoot))
